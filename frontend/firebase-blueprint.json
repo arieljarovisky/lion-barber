@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user profile in the system.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the user" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "points": { "type": "number", "description": "Accumulated points" },
+        "role": { "type": "string", "enum": ["client", "admin"], "description": "User role" },
+        "phone": { "type": "string", "description": "Phone number" }
+      },
+      "required": ["name", "email", "points", "role"]
+    },
+    "Reservation": {
+      "title": "Reservation",
+      "description": "A booking made by a client.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "ID of the user who made the reservation" },
+        "serviceId": { "type": "string", "description": "ID of the service booked" },
+        "date": { "type": "string", "description": "Date of the reservation (YYYY-MM-DD)" },
+        "time": { "type": "string", "description": "Time of the reservation (HH:MM)" },
+        "status": { "type": "string", "enum": ["pending", "completed", "cancelled"], "description": "Status of the reservation" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["userId", "serviceId", "date", "time", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/reservations/{reservationId}": {
+      "schema": { "$ref": "#/entities/Reservation" },
+      "description": "Stores all reservations."
+    }
+  }
+}

@@ -1,0 +1,138 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (matches auth.uid)
+    // Fields:
+    //   - name: string (required, length 1-100)
+    //   - email: string (required, valid email)
+    //   - points: number (required, >= 0)
+    //   - role: string (required, 'client' or 'admin')
+    //   - phone: string (optional, length 0-20)
+    //
+    // Collection: reservations
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required, matches auth.uid)
+    //   - serviceId: string (required, length 1-50)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - time: string (required, HH:MM)
+    //   - status: string (required, 'pending', 'completed', 'cancelled')
+    //   - createdAt: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        (request.auth.token.email == "jaroviskyariel@gmail.com" && request.auth.token.email_verified == true)
+      );
+    }
+    
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+    
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}$");
+    }
+    
+    function isValidTimeString(timeStr) {
+      return timeStr is string && timeStr.matches("^\\d{2}:\\d{2}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['name', 'email', 'points', 'role', 'phone']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.points is number && data.points >= 0 &&
+             data.role in ['client', 'admin'] &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20));
+    }
+    
+    function isValidReservation(data) {
+      return hasOnlyAllowedFields(['userId', 'serviceId', 'date', 'time', 'status', 'createdAt']) &&
+             data.userId is string && data.userId.size() > 0 &&
+             data.serviceId is string && data.serviceId.size() > 0 && data.serviceId.size() <= 50 &&
+             isValidDateString(data.date) &&
+             isValidTimeString(data.time) &&
+             data.status in ['pending', 'completed', 'cancelled'] &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      
+      allow create: if isAuthenticated() && 
+                       isOwner(userId) && 
+                       isValidUser(request.resource.data) && 
+                       request.resource.data.points == 0 && 
+                       (request.resource.data.role == 'client' || isAdmin());
+                       
+      allow update: if isAuthenticated() && 
+                       isValidUser(request.resource.data) && 
+                       (
+                         isAdmin() || 
+                         (isOwner(userId) && 
+                          request.resource.data.points == resource.data.points && 
+                          request.resource.data.role == resource.data.role &&
+                          request.resource.data.email == resource.data.email)
+                       );
+                       
+      allow delete: if isAdmin();
+    }
+
+    match /reservations/{reservationId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      
+      allow create: if isAuthenticated() && 
+                       isValidReservation(request.resource.data) && 
+                       request.resource.data.userId == request.auth.uid &&
+                       request.resource.data.status == 'pending';
+                       
+      allow update: if isAuthenticated() && 
+                       isValidReservation(request.resource.data) && 
+                       (
+                         isAdmin() || 
+                         (request.auth.uid == resource.data.userId && 
+                          request.resource.data.userId == resource.data.userId &&
+                          request.resource.data.serviceId == resource.data.serviceId &&
+                          request.resource.data.date == resource.data.date &&
+                          request.resource.data.time == resource.data.time &&
+                          request.resource.data.createdAt == resource.data.createdAt &&
+                          request.resource.data.status == 'cancelled')
+                       );
+                       
+      allow delete: if isAdmin();
+    }
+  }
+}
