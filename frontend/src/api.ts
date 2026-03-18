@@ -1,4 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '' : 'http://localhost:4000');
+// En producción definir VITE_API_URL en Vercel (ej: https://tu-backend.railway.app)
+const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '' : '');
 
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
