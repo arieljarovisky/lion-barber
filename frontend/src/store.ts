@@ -6,6 +6,6 @@ export async function getAppointments(params?: { date?: string; barberId?: strin
   return api.getAppointments(params ?? {});
 }
 
-export async function addAppointment(app: Omit<import('./api').Appointment, 'id'>) {
+export async function addAppointment(app: Omit<import('./api').Appointment, 'id'> & { userId?: number }) {
   return api.createAppointment(app);
 }

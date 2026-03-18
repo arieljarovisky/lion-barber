@@ -63,7 +63,9 @@ export const api = {
 
   getAppointment: (id: string) => fetchApi<Appointment>(`/api/appointments/${id}`),
 
-  createAppointment: (data: Omit<Appointment, 'id'>) =>
+  getMyAppointments: () => fetchApi<Appointment[]>('/api/appointments/mine'),
+
+  createAppointment: (data: Omit<Appointment, 'id'> & { userId?: number }) =>
     fetchApi<Appointment>('/api/appointments', { method: 'POST', body: JSON.stringify(data) }),
 
   updateAppointment: (id: string, data: Partial<Appointment>) =>
@@ -87,11 +89,11 @@ export const api = {
 
   auth: {
     postGoogle: (idToken: string) =>
-      fetchApi<{ token: string; user: { id: number; email: string; name: string; role: string } }>(
+      fetchApi<{ token: string; user: { id: number; email: string; name: string; role: string; points: number } }>(
         '/api/auth/google',
         { method: 'POST', body: JSON.stringify({ idToken }) }
       ),
     getMe: () =>
-      fetchApi<{ id: number; email: string; name: string; role: string }>('/api/auth/me'),
+      fetchApi<{ id: number; email: string; name: string; role: string; points: number }>('/api/auth/me'),
   },
 };

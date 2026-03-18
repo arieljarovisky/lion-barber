@@ -4,6 +4,7 @@ import { getBarberById } from './barbers.js';
 
 interface DbAppointment {
   id: number;
+  user_id: number | null;
   name: string;
   phone: string;
   service: string;
@@ -16,6 +17,7 @@ interface DbAppointment {
 function rowToAppointment(row: DbAppointment): Appointment {
   return {
     id: String(row.id),
+    userId: row.user_id ?? undefined,
     name: row.name,
     phone: row.phone,
     service: row.service,
@@ -35,6 +37,14 @@ export async function getAppointmentsByDate(date: string): Promise<Appointment[]
   const rows = await query<DbAppointment[]>(
     'SELECT * FROM appointments WHERE date = ? ORDER BY time',
     [date]
+  );
+  return rows.map(rowToAppointment);
+}
+
+export async function getAppointmentsByUserId(userId: number): Promise<Appointment[]> {
+  const rows = await query<DbAppointment[]>(
+    'SELECT * FROM appointments WHERE user_id = ? ORDER BY date DESC, time DESC',
+    [userId]
   );
   return rows.map(rowToAppointment);
 }
@@ -64,9 +74,10 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
     barberName = barber?.name ?? null;
   }
   const [res] = await pool.execute(
-    `INSERT INTO appointments (name, phone, service, barber, barber_id, date, time)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO appointments (user_id, name, phone, service, barber, barber_id, date, time)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
+      data.userId ?? null,
       data.name,
       data.phone,
       data.service,

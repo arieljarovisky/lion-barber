@@ -309,14 +309,14 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto p-4 md:p-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-          <div className="flex items-center gap-4">
-            <div>
-              <h2 className="text-3xl font-black tracking-tight">Agenda de Turnos</h2>
-              <p className="text-zinc-500 mt-1">Calendario por peluquero y gestión de reservas.</p>
+      <main className="max-w-7xl mx-auto p-3 sm:p-4 md:p-8 w-full min-w-0">
+        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 w-full min-w-0">
+            <div className="min-w-0">
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight truncate">Agenda de Turnos</h2>
+              <p className="text-zinc-500 mt-1 text-sm sm:text-base">Calendario por peluquero y gestión de reservas.</p>
             </div>
-            <div className="flex rounded-xl border border-zinc-200 bg-white p-1 shadow-sm">
+            <div className="flex rounded-xl border border-zinc-200 bg-white p-1 shadow-sm flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setView('agenda')}
@@ -337,18 +337,18 @@ export default function Dashboard() {
           </div>
 
           {view === 'agenda' && (
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="bg-white border border-zinc-200 shadow-sm rounded-2xl p-2 flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
+              <div className="bg-white border border-zinc-200 shadow-sm rounded-xl sm:rounded-2xl p-1.5 sm:p-2 flex items-center gap-1 sm:gap-2 min-w-0 flex-1 sm:flex-initial">
                 <button
                   type="button"
                   onClick={isWeekView ? handlePrevWeek : handlePrevDay}
-                  className="p-3 hover:bg-zinc-100 rounded-xl transition-colors text-zinc-600"
+                  className="p-2 sm:p-3 hover:bg-zinc-100 rounded-lg sm:rounded-xl transition-colors text-zinc-600 flex-shrink-0"
                 >
-                  <ChevronLeft size={20} />
+                  <ChevronLeft size={18} className="sm:w-5 sm:h-5" />
                 </button>
-                <div className="flex items-center gap-2 px-4 min-w-[200px]">
-                  <CalendarIcon className="text-[#e5c185]" size={20} />
-                  <span className="font-bold capitalize text-zinc-800">
+                <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 min-w-0 flex-1">
+                  <CalendarIcon className="text-[#e5c185] flex-shrink-0" size={18} />
+                  <span className="font-bold capitalize text-zinc-800 text-xs sm:text-sm truncate">
                     {isWeekView
                       ? `Semana ${format(weekStart, 'd')}–${format(weekEnd, 'd')} ${format(weekStart, 'MMM', { locale: es })}`
                       : format(selectedDate, "EEEE, d 'de' MMMM", { locale: es })}
@@ -357,14 +357,14 @@ export default function Dashboard() {
                 <button
                   type="button"
                   onClick={isWeekView ? handleNextWeek : handleNextDay}
-                  className="p-3 hover:bg-zinc-100 rounded-xl transition-colors text-zinc-600"
+                  className="p-2 sm:p-3 hover:bg-zinc-100 rounded-lg sm:rounded-xl transition-colors text-zinc-600 flex-shrink-0"
                 >
-                  <ChevronRight size={20} />
+                  <ChevronRight size={18} className="sm:w-5 sm:h-5" />
                 </button>
                 <button
                   type="button"
                   onClick={handleThisWeek}
-                  className="ml-2 px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-sm font-bold transition-colors"
+                  className="px-3 sm:px-4 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-colors flex-shrink-0"
                 >
                   {isWeekView ? 'Esta semana' : 'Hoy'}
                 </button>
@@ -373,7 +373,7 @@ export default function Dashboard() {
               <select
                 value={selectedBarberId}
                 onChange={(e) => setSelectedBarberId(e.target.value as 'all' | string)}
-                className="bg-white border border-zinc-200 rounded-xl px-4 py-2.5 font-medium text-zinc-800 shadow-sm"
+                className="bg-white border border-zinc-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 font-medium text-zinc-800 shadow-sm text-sm w-full sm:w-auto min-w-0"
               >
                 <option value="all">Todos los barberos</option>
                 {barbers.map((b) => (
@@ -462,8 +462,8 @@ export default function Dashboard() {
             {loading ? (
               <div className="p-12 text-center text-zinc-400">Cargando...</div>
             ) : (
-              <div className="overflow-auto max-h-[calc(100vh-320px)]">
-                <table className="w-full min-w-[720px] border-collapse table-fixed">
+              <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)] sm:max-h-[calc(100vh-320px)] -mx-2 sm:mx-0">
+                <table className="w-full min-w-[640px] sm:min-w-[720px] border-collapse table-fixed">
                   <tbody>
                     {TIME_SLOTS.map((slot) => (
                       <tr key={slot} className="border-b border-zinc-100 hover:bg-zinc-50/70 transition-colors">
@@ -664,9 +664,9 @@ export default function Dashboard() {
         )}
 
         {view === 'servicios' && (
-          <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center">
-              <h3 className="font-bold text-lg text-zinc-800">Servicios</h3>
+          <div className="bg-white border border-zinc-200 rounded-2xl sm:rounded-3xl shadow-sm overflow-hidden min-w-0">
+            <div className="p-4 sm:p-6 border-b border-zinc-100 bg-zinc-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <h3 className="font-bold text-base sm:text-lg text-zinc-800">Servicios</h3>
               <span className="text-zinc-500 text-sm">{services.length} servicios</span>
             </div>
             <div className="overflow-x-auto">
@@ -731,8 +731,8 @@ export default function Dashboard() {
 
       {/* Modal crear/editar cita */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={closeModal}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto" onClick={closeModal}>
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto my-4" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-zinc-200 flex justify-between items-center">
               <h3 className="text-xl font-black text-zinc-900">
                 {editingAppointment ? 'Editar cita' : 'Nueva cita'}
@@ -836,8 +836,8 @@ export default function Dashboard() {
 
       {/* Modal crear/editar servicio */}
       {serviceModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={closeServiceModal}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto" onClick={closeServiceModal}>
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto my-4" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b border-zinc-200 flex justify-between items-center">
               <h3 className="text-xl font-black text-zinc-900">
                 {editingService ? 'Editar servicio' : 'Nuevo servicio'}

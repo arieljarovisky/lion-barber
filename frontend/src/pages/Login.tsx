@@ -10,7 +10,7 @@ export default function Login() {
   const location = useLocation();
   const [error, setError] = useState('');
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/dashboard';
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/perfil';
 
   React.useEffect(() => {
     if (!loading && user) {
@@ -41,10 +41,10 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        <div className="flex justify-center mb-8">
-          <div className="w-16 h-16 rounded-full border-4 border-[#e5c185] flex items-center justify-center overflow-hidden bg-zinc-900">
+    <div className="min-h-screen min-h-[100dvh] bg-zinc-950 text-zinc-50 font-sans flex flex-col items-center justify-center p-4 sm:p-6 w-full min-w-0 box-border">
+      <div className="w-full max-w-md min-w-0 px-1">
+        <div className="flex justify-center mb-6 sm:mb-8">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 sm:border-4 border-[#e5c185] flex items-center justify-center overflow-hidden bg-zinc-900 flex-shrink-0">
             <img
               src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s"
               alt="Lion Barber"
@@ -52,15 +52,15 @@ export default function Login() {
             />
           </div>
         </div>
-        <h1 className="text-3xl font-serif font-black text-white text-center uppercase tracking-tight mb-2">
+        <h1 className="text-2xl sm:text-3xl font-serif font-black text-white text-center uppercase tracking-tight mb-2">
           Lion Barber
         </h1>
-        <p className="text-zinc-400 text-center text-sm mb-10">
+        <p className="text-zinc-400 text-center text-xs sm:text-sm mb-8 sm:mb-10 px-2">
           Iniciá sesión o registrate con tu cuenta de Google para continuar.
         </p>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-950/50 border border-red-500/30 rounded-xl text-red-400 text-sm text-center">
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-950/50 border border-red-500/30 rounded-xl text-red-400 text-xs sm:text-sm text-center break-words">
             {error}
           </div>
         )}
@@ -70,7 +70,7 @@ export default function Login() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
-          <div className="flex justify-center">
+          <div className="flex justify-center min-w-0 overflow-hidden">
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
               onError={() => setError('Error al conectar con Google')}
@@ -79,7 +79,7 @@ export default function Login() {
               size="large"
               text="continue_with"
               shape="rectangular"
-              width="320"
+              width="280"
               locale="es"
             />
           </div>

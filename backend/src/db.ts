@@ -24,9 +24,15 @@ export async function initDb(): Promise<void> {
       email VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
       role ENUM('client', 'admin') NOT NULL DEFAULT 'client',
+      points INT NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  try {
+    await pool.execute('ALTER TABLE users ADD COLUMN points INT NOT NULL DEFAULT 0');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS services (
       id VARCHAR(50) PRIMARY KEY,
@@ -54,6 +60,7 @@ export async function initDb(): Promise<void> {
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS appointments (
       id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NULL,
       name VARCHAR(255) NOT NULL,
       phone VARCHAR(50) NOT NULL,
       service VARCHAR(255) NOT NULL,
@@ -64,6 +71,11 @@ export async function initDb(): Promise<void> {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN user_id INT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
 
   const serviceCountRows = await query<{ count: number }[]>('SELECT COUNT(*) as count FROM services');
   if (serviceCountRows[0].count === 0) {

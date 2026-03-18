@@ -3,6 +3,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import ClientView from './pages/ClientView';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
+import Perfil from './pages/Perfil';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 
@@ -21,6 +22,14 @@ export default function App() {
             element={
               <ProtectedRoute adminOnly>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/perfil"
+            element={
+              <ProtectedRoute>
+                <Perfil />
               </ProtectedRoute>
             }
           />

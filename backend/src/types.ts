@@ -1,5 +1,6 @@
 export interface Appointment {
   id: string;
+  userId?: number;
   name: string;
   phone: string;
   service: string;

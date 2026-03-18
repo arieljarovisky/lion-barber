@@ -4,6 +4,7 @@ import { api, setAuthToken } from '../api';
 const TOKEN_KEY = 'lion_barber_token';
 
 export interface UserProfile {
+  id: number;
   name: string;
   email: string;
   points: number;
@@ -31,11 +32,12 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-function profileFromBackend(u: { id: number; email: string; name: string; role: string }): UserProfile {
+function profileFromBackend(u: { id: number; email: string; name: string; role: string; points?: number }): UserProfile {
   return {
+    id: u.id,
     name: u.name,
     email: u.email,
-    points: 0,
+    points: u.points ?? 0,
     role: u.role === 'admin' ? 'admin' : 'client',
   };
 }

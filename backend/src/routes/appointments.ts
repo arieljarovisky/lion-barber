@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as repo from '../repositories/appointments.js';
+import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -31,6 +32,17 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/mine', requireAuth, async (req, res) => {
+  const authReq = req as import('../middleware/auth.js').AuthRequest;
+  try {
+    const list = await repo.getAppointmentsByUserId(authReq.user!.id);
+    res.json(list);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener mis citas' });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   const app = await repo.getAppointmentById(req.params.id);
   if (!app) return res.status(404).json({ error: 'Cita no encontrada' });
@@ -38,12 +50,21 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { name, phone, service, barber, barberId, date, time } = req.body;
+  const { name, phone, service, barber, barberId, date, time, userId } = req.body;
   if (!name || !phone || !service || !date || !time) {
     return res.status(400).json({ error: 'Faltan campos: name, phone, service, date, time' });
   }
   try {
-    const created = await repo.createAppointment({ name, phone, service, barber, barberId, date, time });
+    const created = await repo.createAppointment({
+      name,
+      phone,
+      service,
+      barber,
+      barberId,
+      date,
+      time,
+      userId: userId != null ? Number(userId) : undefined,
+    });
     res.status(201).json(created);
   } catch (err) {
     console.error(err);

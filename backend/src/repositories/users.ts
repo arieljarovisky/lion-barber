@@ -6,6 +6,7 @@ export interface DbUser {
   email: string;
   name: string;
   role: string;
+  points: number;
   created_at: Date;
 }
 

@@ -50,6 +50,7 @@ router.post('/google', async (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        points: user.points ?? 0,
       },
     });
   } catch (err) {
@@ -60,12 +61,14 @@ router.post('/google', async (req, res) => {
 
 router.get('/me', requireAuth, async (req, res) => {
   const authReq = req as import('../middleware/auth.js').AuthRequest;
-  const user = authReq.user!;
+  const user = await userRepo.findUserById(authReq.user!.id);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
   res.json({
     id: user.id,
     email: user.email,
     name: user.name,
     role: user.role,
+    points: user.points ?? 0,
   });
 });
 

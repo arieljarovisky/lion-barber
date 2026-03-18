@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X } from 'lucide-react';
 import { addAppointment, api } from '../store';
 import type { Service, Barber } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import { format, addDays, startOfToday, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion } from 'motion/react';
@@ -30,6 +32,7 @@ const Logo = ({ className = "w-32 h-32" }) => (
 );
 
 export default function ClientView() {
+  const { profile } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   useEffect(() => {
@@ -134,6 +137,7 @@ export default function ClientView() {
         barberId: selectedBarber,
         date: selectedDate,
         time: selectedTime,
+        ...(profile?.id && { userId: profile.id }),
       });
       setBookingSuccess(true);
       setTimeout(() => {
@@ -154,24 +158,33 @@ export default function ClientView() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
       {/* Navbar */}
-      <nav className="fixed top-0 w-full z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-zinc-900 rounded-full flex items-center justify-center overflow-hidden border border-zinc-800">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50">
+        <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 h-16 sm:h-20 flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-shrink-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-zinc-900 rounded-full flex items-center justify-center overflow-hidden border border-zinc-800 flex-shrink-0">
               <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="w-full h-full object-cover" />
             </div>
-            <span className="font-serif font-black tracking-widest uppercase text-base sm:text-lg text-white">Lion Barber</span>
+            <span className="font-serif font-black tracking-widest uppercase text-sm sm:text-base md:text-lg text-white truncate">Lion Barber</span>
           </div>
           
           {/* Desktop Menu */}
-          <div className="hidden md:flex items-center gap-8 text-sm font-sans font-medium text-zinc-400">
-            <a href="#servicios" className="hover:text-[#e5c185] transition-colors">Servicios</a>
-            <a href="#barberos" className="hover:text-[#e5c185] transition-colors">Barberos</a>
-            <a href="#reserva" className="hover:text-[#e5c185] transition-colors">Reservar</a>
-            <a href="#contacto" className="hover:text-[#e5c185] transition-colors">Contacto</a>
-            <a href="/login" className="text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-2 rounded-full transition-colors uppercase tracking-wider">
-              Iniciar Sesión
-            </a>
+          <div className="hidden md:flex items-center gap-4 lg:gap-8 text-sm font-sans font-medium text-zinc-400 flex-wrap justify-end">
+            <a href="#servicios" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Servicios</a>
+            <a href="#barberos" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Barberos</a>
+            <a href="#reserva" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Reservar</a>
+            <a href="#contacto" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Contacto</a>
+            {profile ? (
+              <>
+                <span className="text-zinc-500 text-xs uppercase tracking-wider hidden lg:inline">Ya estás logueado</span>
+                <Link to="/perfil" className="text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-2 rounded-full transition-colors uppercase tracking-wider whitespace-nowrap">
+                  Mi perfil
+                </Link>
+              </>
+            ) : (
+              <Link to="/login" className="text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-2 rounded-full transition-colors uppercase tracking-wider whitespace-nowrap">
+                Iniciar Sesión
+              </Link>
+            )}
           </div>
 
           {/* Mobile Menu Toggle */}
@@ -191,15 +204,24 @@ export default function ClientView() {
             <a href="#reserva" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Reservar</a>
             <a href="#contacto" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Contacto</a>
             <div className="h-px bg-zinc-800/50 my-2"></div>
-            <a href="/login" className="text-center text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-3 rounded-xl transition-colors uppercase tracking-wider">
-              Iniciar Sesión
-            </a>
+            {profile ? (
+              <>
+                <p className="text-zinc-500 text-xs uppercase tracking-wider text-center">Ya estás logueado</p>
+                <Link to="/perfil" onClick={() => setIsMobileMenuOpen(false)} className="text-center text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-3 rounded-xl transition-colors uppercase tracking-wider block">
+                  Mi perfil
+                </Link>
+              </>
+            ) : (
+              <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="text-center text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-3 rounded-xl transition-colors uppercase tracking-wider block">
+                Iniciar Sesión
+              </Link>
+            )}
           </div>
         )}
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-32 pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden">
+      <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
         <div className="absolute inset-0 z-0">
           <img 
             src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&q=80" 
@@ -210,35 +232,35 @@ export default function ClientView() {
           <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/50 via-zinc-950/80 to-zinc-950"></div>
         </div>
 
-        <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-10">
-          <p className="text-xs sm:text-sm md:text-base font-sans tracking-[0.4em] text-zinc-200 mb-4 sm:mb-6 uppercase">
+        <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
+          <p className="text-xs sm:text-sm md:text-base font-sans tracking-[0.3em] sm:tracking-[0.4em] text-zinc-200 mb-3 sm:mb-6 uppercase">
             De 10 a 20 hs
           </p>
           
-          <div className="relative flex flex-col items-center justify-center w-full">
-            <h1 className="text-6xl sm:text-7xl md:text-[140px] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
+          <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-hidden">
+            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[6rem] xl:text-[140px] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
               Agenda
             </h1>
-            <span className="text-7xl sm:text-8xl md:text-[160px] font-script text-[#e5c185] drop-shadow-lg absolute top-1/2 -translate-y-1/2 mt-6 sm:mt-8 md:mt-16 leading-none">
+            <span className="text-6xl sm:text-7xl md:text-8xl lg:text-[7rem] xl:text-[160px] font-script text-[#e5c185] drop-shadow-lg absolute top-1/2 -translate-y-1/2 mt-4 sm:mt-6 md:mt-8 lg:mt-16 leading-none select-none">
               abierta
             </span>
           </div>
 
           {/* Hanging OPEN Sign / Booking Button */}
-          <a href="#reserva" className="relative mt-20 sm:mt-28 md:mt-40 flex flex-col items-center group cursor-pointer hover:scale-105 transition-transform">
+          <a href="#reserva" className="relative mt-14 sm:mt-20 md:mt-28 lg:mt-40 flex flex-col items-center group cursor-pointer hover:scale-105 transition-transform w-full max-w-[90vw] sm:max-w-none">
             {/* Strings */}
-            <div className="flex justify-between w-40 md:w-56 absolute -top-20 sm:-top-24 md:-top-32 h-24 sm:h-28 md:h-36 z-0">
+            <div className="flex justify-between w-32 sm:w-40 md:w-56 absolute -top-16 sm:-top-20 md:-top-32 h-20 sm:h-24 md:h-36 z-0">
               <div className="w-1 bg-[#e5c185] h-full shadow-sm"></div>
               <div className="w-1 bg-[#e5c185] h-full shadow-sm"></div>
             </div>
             {/* Sign */}
-            <div className="relative z-10 bg-[#e5c185] border-4 border-black rounded-[2rem] md:rounded-[2.5rem] w-56 sm:w-64 md:w-80 py-4 md:py-5 shadow-2xl flex items-center justify-center">
+            <div className="relative z-10 bg-[#e5c185] border-2 sm:border-4 border-black rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[2.5rem] w-full max-w-[240px] sm:w-56 sm:max-w-none md:w-64 lg:w-80 py-3 sm:py-4 md:py-5 shadow-2xl flex items-center justify-center">
               {/* Little holes for strings */}
-              <div className="absolute top-3 left-8 md:left-12 w-3 h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
-              <div className="absolute top-3 right-8 md:right-12 w-3 h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
+              <div className="absolute top-2 left-6 sm:left-8 md:left-12 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
+              <div className="absolute top-2 right-6 sm:right-8 md:right-12 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
               {/* Inner border line */}
-              <div className="absolute inset-1.5 md:inset-2 border-2 border-black rounded-[1.5rem] md:rounded-[2rem] pointer-events-none"></div>
-              <span className="text-black font-sans font-black text-2xl sm:text-3xl md:text-4xl tracking-widest uppercase relative z-10">
+              <div className="absolute inset-1 sm:inset-1.5 md:inset-2 border-2 border-black rounded-[1.2rem] sm:rounded-[1.5rem] md:rounded-[2rem] pointer-events-none"></div>
+              <span className="text-black font-sans font-black text-lg sm:text-2xl md:text-3xl lg:text-4xl tracking-widest uppercase relative z-10 px-2">
                 Reservar
               </span>
             </div>
@@ -247,25 +269,25 @@ export default function ClientView() {
       </section>
 
       {/* Services Section */}
-      <section id="servicios" className="py-20 px-6 bg-zinc-950 border-y border-zinc-900">
+      <section id="servicios" className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 bg-zinc-950 border-y border-zinc-900">
         <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-serif font-black uppercase tracking-tight mb-4 text-white">Nuestros Servicios</h2>
-            <div className="w-24 h-1 bg-[#e5c185] mx-auto rounded-full"></div>
+          <div className="text-center mb-10 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-serif font-black uppercase tracking-tight mb-3 sm:mb-4 text-white px-2">Nuestros Servicios</h2>
+            <div className="w-20 sm:w-24 h-1 bg-[#e5c185] mx-auto rounded-full"></div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
             {services.map((service) => (
-              <div key={service.id} className="bg-zinc-900/50 border border-zinc-800 p-8 rounded-2xl hover:border-[#e5c185]/50 transition-colors group">
-                <div className="w-14 h-14 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-center text-[#e5c185] mb-6 group-hover:scale-110 transition-transform text-3xl">
-                  {service.emoji ? <span>{service.emoji}</span> : <Scissors size={28} />}
+              <div key={service.id} className="bg-zinc-900/50 border border-zinc-800 p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl hover:border-[#e5c185]/50 transition-colors group min-w-0">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-zinc-950 border border-zinc-800 rounded-lg sm:rounded-xl flex items-center justify-center text-[#e5c185] mb-4 sm:mb-6 group-hover:scale-110 transition-transform text-2xl sm:text-3xl">
+                  {service.emoji ? <span>{service.emoji}</span> : <Scissors size={28} className="w-7 h-7 sm:w-7 sm:h-7" />}
                 </div>
-                <h3 className="text-2xl font-serif font-bold mb-2 text-white">{service.name}</h3>
-                <p className="text-zinc-400 mb-6 min-h-[48px] font-sans font-light">{service.desc}</p>
-                <div className="flex items-end justify-between mt-auto">
-                  <span className="text-3xl font-sans font-black text-[#e5c185]">{service.price}</span>
-                  <span className="text-sm text-zinc-500 font-medium flex items-center gap-1">
-                    <Clock size={14} /> {service.duration} min
+                <h3 className="text-xl sm:text-2xl font-serif font-bold mb-2 text-white break-words">{service.name}</h3>
+                <p className="text-zinc-400 mb-4 sm:mb-6 min-h-[3rem] sm:min-h-[48px] font-sans font-light text-sm sm:text-base line-clamp-3">{service.desc}</p>
+                <div className="flex flex-wrap items-end justify-between gap-2 mt-auto">
+                  <span className="text-2xl sm:text-3xl font-sans font-black text-[#e5c185]">{service.price}</span>
+                  <span className="text-xs sm:text-sm text-zinc-500 font-medium flex items-center gap-1">
+                    <Clock size={14} className="flex-shrink-0" /> {service.duration} min
                   </span>
                 </div>
               </div>
@@ -275,20 +297,20 @@ export default function ClientView() {
       </section>
 
       {/* Barbers Section */}
-      <section id="barberos" className="py-20 px-6 bg-zinc-950 border-y border-zinc-900">
+      <section id="barberos" className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 bg-zinc-950 border-y border-zinc-900">
         <div className="max-w-6xl mx-auto">
           <motion.div 
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="text-center mb-16"
+            className="text-center mb-10 sm:mb-16"
           >
-            <h2 className="text-4xl md:text-5xl font-serif font-black uppercase tracking-tight mb-4 text-white">Nuestros Barberos</h2>
-            <div className="w-24 h-1 bg-[#e5c185] mx-auto rounded-full"></div>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-serif font-black uppercase tracking-tight mb-3 sm:mb-4 text-white px-2">Nuestros Barberos</h2>
+            <div className="w-20 sm:w-24 h-1 bg-[#e5c185] mx-auto rounded-full"></div>
           </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
             {barbers.map((barber, index) => (
               <motion.div 
                 key={barber.id} 
@@ -296,9 +318,9 @@ export default function ClientView() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-50px" }}
                 transition={{ duration: 0.6, delay: index * 0.2 }}
-                className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden hover:border-[#e5c185]/50 transition-colors group"
+                className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl overflow-hidden hover:border-[#e5c185]/50 transition-colors group min-w-0"
               >
-                <div className="aspect-[4/5] overflow-hidden relative">
+                <div className="aspect-[4/5] min-h-[280px] sm:min-h-0 overflow-hidden relative">
                   <img 
                     src={barber.photo} 
                     alt={barber.name} 
@@ -306,13 +328,13 @@ export default function ClientView() {
                     referrerPolicy="no-referrer"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80"></div>
-                  <div className="absolute bottom-0 left-0 w-full p-6">
-                    <h3 className="text-3xl font-serif font-black text-white mb-1">{barber.name}</h3>
-                    <p className="text-[#e5c185] font-sans font-bold text-sm uppercase tracking-widest">{barber.role}</p>
+                  <div className="absolute bottom-0 left-0 w-full p-4 sm:p-6">
+                    <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-1">{barber.name}</h3>
+                    <p className="text-[#e5c185] font-sans font-bold text-xs sm:text-sm uppercase tracking-widest">{barber.role}</p>
                   </div>
                 </div>
-                <div className="p-6">
-                  <p className="text-zinc-400 font-sans font-light leading-relaxed">{barber.desc}</p>
+                <div className="p-4 sm:p-6">
+                  <p className="text-zinc-400 font-sans font-light leading-relaxed text-sm sm:text-base">{barber.desc}</p>
                 </div>
               </motion.div>
             ))}
@@ -321,9 +343,9 @@ export default function ClientView() {
       </section>
 
       {/* Booking Section */}
-      <section id="reserva" className="py-20 sm:py-24 px-4 sm:px-6 relative bg-zinc-900/30">
-        <div className="max-w-4xl mx-auto">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl sm:rounded-3xl p-5 sm:p-8 md:p-12 shadow-2xl relative overflow-hidden">
+      <section id="reserva" className="py-12 sm:py-20 md:py-24 px-3 sm:px-4 md:px-6 relative bg-zinc-900/30">
+        <div className="max-w-4xl mx-auto w-full min-w-0">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 sm:p-6 md:p-8 lg:p-12 shadow-2xl relative overflow-hidden">
             {/* Decorative background element */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-[#e5c185]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
             
@@ -336,12 +358,12 @@ export default function ClientView() {
               )}
 
               {bookingSuccess ? (
-                <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-2xl p-12 text-center animate-in fade-in zoom-in duration-500">
-                  <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-400">
-                    <CheckCircle2 size={40} />
+                <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl sm:rounded-2xl p-8 sm:p-12 text-center animate-in fade-in zoom-in duration-500">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 text-emerald-400">
+                    <CheckCircle2 size={32} className="sm:w-10 sm:h-10" />
                   </div>
-                  <h3 className="text-3xl font-serif font-black text-white mb-2">¡Turno Confirmado!</h3>
-                  <p className="text-emerald-400/80 text-lg font-sans">Te esperamos en Lion Barber.</p>
+                  <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-2">¡Turno Confirmado!</h3>
+                  <p className="text-emerald-400/80 text-base sm:text-lg font-sans">Te esperamos en Lion Barber.</p>
                 </div>
               ) : (
                 <form onSubmit={handleBook} className="space-y-6 font-sans">
@@ -369,13 +391,13 @@ export default function ClientView() {
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                         <User size={14} /> Barbero
                       </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
                         {barbers.map(b => (
                           <button
                             key={b.id}
                             type="button"
                             onClick={() => setSelectedBarber(b.id)}
-                            className={`flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
+                            className={`flex items-center gap-2 sm:gap-3 p-3 rounded-xl border transition-all text-left min-w-0 ${
                               selectedBarber === b.id 
                                 ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.2)]' 
                                 : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
@@ -430,7 +452,7 @@ export default function ClientView() {
                                   }
                                   setSelectedDate(dateStr);
                                 }}
-                                className={`flex-shrink-0 w-20 py-3 rounded-2xl border flex flex-col items-center justify-center transition-all snap-start ${
+                                className={`flex-shrink-0 w-16 sm:w-20 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border flex flex-col items-center justify-center transition-all snap-start min-w-0 ${
                                   isSelected 
                                     ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.3)]' 
                                     : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
@@ -452,7 +474,7 @@ export default function ClientView() {
                           {/* Botón de Más Fechas */}
                           <button 
                             type="button"
-                            className="relative flex-shrink-0 w-20 py-3 rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 text-zinc-400 hover:border-[#e5c185] hover:bg-zinc-900 hover:text-[#e5c185] flex flex-col items-center justify-center transition-all snap-start cursor-pointer group/calendar overflow-hidden"
+                            className="relative flex-shrink-0 w-16 sm:w-20 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 text-zinc-400 hover:border-[#e5c185] hover:bg-zinc-900 hover:text-[#e5c185] flex flex-col items-center justify-center transition-all snap-start cursor-pointer group/calendar overflow-hidden min-w-0"
                             onClick={(e) => {
                               if (dragged) {
                                 e.preventDefault();
@@ -557,25 +579,25 @@ export default function ClientView() {
       </section>
 
       {/* Footer */}
-      <footer id="contacto" className="bg-zinc-950 border-t border-zinc-900 py-12 px-6">
-        <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-8 items-center text-center md:text-left">
-          <div className="flex flex-col items-center md:items-start gap-4">
+      <footer id="contacto" className="bg-zinc-950 border-t border-zinc-900 py-8 sm:py-12 px-4 sm:px-6">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 items-center text-center md:text-left">
+          <div className="flex flex-col items-center md:items-start gap-3 sm:gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-zinc-900 rounded-full flex items-center justify-center overflow-hidden border border-zinc-800">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-zinc-900 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden border border-zinc-800">
                 <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="w-full h-full object-cover" />
               </div>
-              <span className="font-serif font-black tracking-widest uppercase text-white">Lion Barber</span>
+              <span className="font-serif font-black tracking-widest uppercase text-white text-sm sm:text-base">Lion Barber</span>
             </div>
-            <p className="text-zinc-500 text-sm font-sans">Estilo y precisión en cada corte.</p>
+            <p className="text-zinc-500 text-xs sm:text-sm font-sans">Estilo y precisión en cada corte.</p>
           </div>
           
-          <div className="flex flex-col items-center md:items-start gap-2 text-zinc-400 text-sm font-sans">
-            <p className="flex items-center gap-2"><MapPin size={16} className="text-[#e5c185]" /> Dr. Nicolas Repeto 1602, CABA</p>
-            <p className="flex items-center gap-2"><Clock size={16} className="text-[#e5c185]" /> Lun a Vie: 10-20hs | Sáb: 10-18hs</p>
+          <div className="flex flex-col items-center md:items-start gap-2 text-zinc-400 text-xs sm:text-sm font-sans">
+            <p className="flex items-center gap-2 flex-wrap justify-center md:justify-start"><MapPin size={16} className="text-[#e5c185] flex-shrink-0" /> <span className="break-words">Dr. Nicolas Repeto 1602, CABA</span></p>
+            <p className="flex items-center gap-2 flex-wrap justify-center md:justify-start"><Clock size={16} className="text-[#e5c185] flex-shrink-0" /> <span>Lun a Vie: 10-20hs | Sáb: 10-18hs</span></p>
           </div>
 
           <div className="flex justify-center md:justify-end gap-4">
-            <a href="https://wa.link/xxyvs9" target="_blank" rel="noreferrer" className="w-10 h-10 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-[#e5c185] hover:text-zinc-950 transition-colors">
+            <a href="https://wa.link/xxyvs9" target="_blank" rel="noreferrer" className="w-10 h-10 sm:w-11 sm:h-11 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-[#e5c185] hover:text-zinc-950 transition-colors flex-shrink-0">
               <Phone size={18} />
             </a>
           </div>
@@ -584,8 +606,8 @@ export default function ClientView() {
 
       {/* Custom Calendar Modal */}
       {showCalendarModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setShowCalendarModal(false)}>
-          <div className="bg-zinc-950 border border-zinc-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto" onClick={() => setShowCalendarModal(false)}>
+          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 w-full max-w-sm my-auto shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <button 
                 type="button"
