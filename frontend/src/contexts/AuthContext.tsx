@@ -1,78 +1,93 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../firebase';
+import { api, setAuthToken } from '../api';
 
-interface UserProfile {
+const TOKEN_KEY = 'lion_barber_token';
+
+export interface UserProfile {
   name: string;
   email: string;
   points: number;
-  role: string;
+  role: 'client' | 'admin';
   phone?: string;
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: UserProfile | null;
   profile: UserProfile | null;
   loading: boolean;
+  loginWithGoogle: (idToken: string) => Promise<void>;
+  logout: () => Promise<void>;
+  isAdmin: boolean;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, profile: null, loading: true });
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  profile: null,
+  loading: true,
+  loginWithGoogle: async () => {},
+  logout: async () => {},
+  isAdmin: false,
+});
 
 export const useAuth = () => useContext(AuthContext);
 
+function profileFromBackend(u: { id: number; email: string; name: string; role: string }): UserProfile {
+  return {
+    name: u.name,
+    email: u.email,
+    points: 0,
+    role: u.role === 'admin' ? 'admin' : 'client',
+  };
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      
-      if (currentUser) {
-        // Check if user profile exists, if not create it
-        const userRef = doc(db, 'users', currentUser.uid);
-        
-        try {
-          const docSnap = await getDoc(userRef);
-          if (!docSnap.exists()) {
-            const newProfile: UserProfile = {
-              name: currentUser.displayName || 'Usuario',
-              email: currentUser.email || '',
-              points: 0,
-              role: 'client'
-            };
-            await setDoc(userRef, newProfile);
-            setProfile(newProfile);
-          } else {
-            setProfile(docSnap.data() as UserProfile);
-          }
-          
-          // Listen for profile changes (e.g., points updates)
-          const unsubscribeProfile = onSnapshot(userRef, (doc) => {
-            if (doc.exists()) {
-              setProfile(doc.data() as UserProfile);
-            }
-          });
-          
-          setLoading(false);
-          return () => unsubscribeProfile();
-        } catch (error) {
-          console.error("Error fetching/creating user profile:", error);
-          setLoading(false);
-        }
-      } else {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
+  const loginWithGoogle = async (idToken: string) => {
+    const { token, user } = await api.auth.postGoogle(idToken);
+    localStorage.setItem(TOKEN_KEY, token);
+    setAuthToken(token);
+    setProfile(profileFromBackend(user));
+  };
 
-    return () => unsubscribeAuth();
+  const logout = async () => {
+    localStorage.removeItem(TOKEN_KEY);
+    setAuthToken(null);
+    setProfile(null);
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      setAuthToken(token);
+      api.auth
+        .getMe()
+        .then((user) => setProfile(profileFromBackend(user)))
+        .catch(() => {
+          localStorage.removeItem(TOKEN_KEY);
+          setAuthToken(null);
+          setProfile(null);
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
   }, []);
 
+  const isAdmin = profile?.role === 'admin';
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading }}>
+    <AuthContext.Provider
+      value={{
+        user: profile,
+        profile,
+        loading,
+        loginWithGoogle,
+        logout,
+        isAdmin,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

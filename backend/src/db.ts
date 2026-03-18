@@ -1,0 +1,104 @@
+import mysql from 'mysql2/promise';
+
+const pool = mysql.createPool({
+  host: process.env.MYSQL_HOST ?? 'localhost',
+  port: Number(process.env.MYSQL_PORT) || 3306,
+  user: process.env.MYSQL_USER ?? 'root',
+  password: process.env.MYSQL_PASSWORD ?? '',
+  database: process.env.MYSQL_DATABASE ?? 'lion_barber',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
+
+export async function query<T = unknown>(sql: string, params?: unknown[]): Promise<T> {
+  const [rows] = await pool.execute(sql, params);
+  return rows as T;
+}
+
+export async function initDb(): Promise<void> {
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      google_uid VARCHAR(128) NOT NULL UNIQUE,
+      email VARCHAR(255) NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      role ENUM('client', 'admin') NOT NULL DEFAULT 'client',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS services (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      price VARCHAR(50) NOT NULL,
+      duration INT NOT NULL,
+      \`desc\` TEXT,
+      emoji VARCHAR(20) DEFAULT ''
+    )
+  `);
+  try {
+    await pool.execute('ALTER TABLE services ADD COLUMN emoji VARCHAR(20) DEFAULT ""');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS barbers (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      role VARCHAR(100) NOT NULL,
+      photo VARCHAR(500),
+      \`desc\` TEXT
+    )
+  `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS appointments (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      phone VARCHAR(50) NOT NULL,
+      service VARCHAR(255) NOT NULL,
+      barber VARCHAR(255),
+      barber_id VARCHAR(50),
+      date DATE NOT NULL,
+      time VARCHAR(10) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const serviceCountRows = await query<{ count: number }[]>('SELECT COUNT(*) as count FROM services');
+  if (serviceCountRows[0].count === 0) {
+    const services = [
+      ['corte', 'Corte de cabello', '$20.000', 30, 'Corte clásico o degradado con terminaciones a navaja.'],
+      ['corte_ninos', 'Corte de niños 0 a 6', '$22.000', 30, 'Corte especial para los más pequeños.'],
+      ['cabellos_largos', 'Cabellos largos 10cm', '$22.000', 45, 'Corte y estilizado para cabellos largos.'],
+      ['arreglo_barba', 'Arreglo de barba', '$10.000', 30, 'Perfilado, rebaje y toallas calientes.'],
+      ['perfilado_cejas', 'Perfilado de cejas', '$1.000', 15, 'Diseño y perfilado de cejas.'],
+      ['rapado', 'Rapado', '$10.000', 20, 'Rapado completo a máquina.'],
+      ['afeitado_tradicional', 'Afeitado tradicional', '$8.000', 30, 'Afeitado clásico con navaja y toallas calientes.'],
+    ];
+    for (const [id, name, price, duration, desc] of services) {
+      await pool.execute(
+        'INSERT INTO services (id, name, price, duration, `desc`, emoji) VALUES (?, ?, ?, ?, ?, ?)',
+        [id, name, price, duration, desc, '✂️']
+      );
+    }
+  }
+
+  const [barberRows] = await pool.execute('SELECT COUNT(*) as count FROM barbers');
+  const barberCount = (barberRows as { count: number }[])[0].count;
+  if (barberCount === 0) {
+    const barbers = [
+      ['barber_1', 'Agus', 'Master Barber', 'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?q=80&w=500&auto=format&fit=crop', 'Especialista en cortes clásicos y perfilado de barba.'],
+      ['barber_2', 'Valen', 'Senior Barber', 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=500&auto=format&fit=crop', 'Experto en degradados y estilos urbanos modernos.'],
+      ['barber_3', 'Toni', 'Barber', 'https://images.unsplash.com/photo-1605406575497-015ab0d21b9b?q=80&w=500&auto=format&fit=crop', 'Detallista y perfeccionista. Especialista en tijera.'],
+    ];
+    for (const [id, name, role, photo, desc] of barbers) {
+      await pool.execute(
+        'INSERT INTO barbers (id, name, role, photo, `desc`) VALUES (?, ?, ?, ?, ?)',
+        [id, name, role, photo, desc]
+      );
+    }
+  }
+}
+
+export default pool;

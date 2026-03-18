@@ -1,19 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X } from 'lucide-react';
-import { addAppointment } from '../store';
+import { addAppointment, api } from '../store';
+import type { Service, Barber } from '../api';
 import { format, addDays, startOfToday, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion } from 'motion/react';
-
-const SERVICES = [
-  { id: 'corte', name: 'Corte de cabello', price: '$20.000', duration: 30, desc: 'Corte clásico o degradado con terminaciones a navaja.' },
-  { id: 'corte_ninos', name: 'Corte de niños 0 a 6', price: '$22.000', duration: 30, desc: 'Corte especial para los más pequeños.' },
-  { id: 'cabellos_largos', name: 'Cabellos largos 10cm', price: '$22.000', duration: 45, desc: 'Corte y estilizado para cabellos largos.' },
-  { id: 'arreglo_barba', name: 'Arreglo de barba', price: '$10.000', duration: 30, desc: 'Perfilado, rebaje y toallas calientes.' },
-  { id: 'perfilado_cejas', name: 'Perfilado de cejas', price: '$1.000', duration: 15, desc: 'Diseño y perfilado de cejas.' },
-  { id: 'rapado', name: 'Rapado', price: '$10.000', duration: 20, desc: 'Rapado completo a máquina.' },
-  { id: 'afeitado_tradicional', name: 'Afeitado tradicional', price: '$8.000', duration: 30, desc: 'Afeitado clásico con navaja y toallas calientes.' },
-];
 
 const TIME_SLOTS = [
   '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
@@ -38,31 +29,14 @@ const Logo = ({ className = "w-32 h-32" }) => (
   </div>
 );
 
-const BARBERS = [
-  {
-    id: 'barber_1',
-    name: 'Agus',
-    role: 'Master Barber',
-    photo: 'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?q=80&w=500&auto=format&fit=crop',
-    desc: 'Especialista en cortes clásicos y perfilado de barba.'
-  },
-  {
-    id: 'barber_2',
-    name: 'Valen',
-    role: 'Senior Barber',
-    photo: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=500&auto=format&fit=crop',
-    desc: 'Experto en degradados y estilos urbanos modernos.'
-  },
-  {
-    id: 'barber_3',
-    name: 'Toni',
-    role: 'Barber',
-    photo: 'https://images.unsplash.com/photo-1605406575497-015ab0d21b9b?q=80&w=500&auto=format&fit=crop',
-    desc: 'Detallista y perfeccionista. Especialista en tijera.'
-  }
-];
-
 export default function ClientView() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [barbers, setBarbers] = useState<Barber[]>([]);
+  useEffect(() => {
+    api.getServices().then(setServices).catch(() => setServices([]));
+    api.getBarbers().then(setBarbers).catch(() => setBarbers([]));
+  }, []);
+
   // Booking state
   const [selectedService, setSelectedService] = useState('');
   const [selectedBarber, setSelectedBarber] = useState('');
@@ -71,6 +45,7 @@ export default function ClientView() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingError, setBookingError] = useState('');
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(startOfToday());
@@ -81,6 +56,17 @@ export default function ClientView() {
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [dragged, setDragged] = useState(false);
+
+  const [availableSlots, setAvailableSlots] = useState<string[]>(TIME_SLOTS);
+  useEffect(() => {
+    if (!selectedDate || !selectedBarber) {
+      setAvailableSlots(TIME_SLOTS);
+      return;
+    }
+    api.getAvailability(selectedDate, selectedBarber)
+      .then((r) => setAvailableSlots(r.slots))
+      .catch(() => setAvailableSlots(TIME_SLOTS));
+  }, [selectedDate, selectedBarber]);
 
   const today = startOfToday();
   const baseDays = Array.from({ length: 30 }).map((_, i) => addDays(today, i));
@@ -132,33 +118,37 @@ export default function ClientView() {
     scrollContainerRef.current.scrollLeft = scrollLeft - walk;
   };
 
-  const handleBook = (e: React.FormEvent) => {
+  const handleBook = async (e: React.FormEvent) => {
     e.preventDefault();
+    setBookingError('');
     if (!selectedService || !selectedBarber || !selectedDate || !selectedTime || !name || !phone) {
-      alert('Por favor completa todos los campos');
+      setBookingError('Por favor completa todos los campos');
       return;
     }
 
-    addAppointment({
-      name,
-      phone,
-      service: SERVICES.find(s => s.id === selectedService)?.name || 'Servicio',
-      barber: BARBERS.find(b => b.id === selectedBarber)?.name || 'Barbero',
-      date: selectedDate,
-      time: selectedTime,
-    });
-
-    setBookingSuccess(true);
-    setTimeout(() => {
-      setBookingSuccess(false);
-      setSelectedService('');
-      setSelectedBarber('');
-      setSelectedDate('');
-      setSelectedTime('');
-      setName('');
-      setPhone('');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 3000);
+    try {
+      await addAppointment({
+        name,
+        phone,
+        service: services.find(s => s.id === selectedService)?.name ?? selectedService,
+        barberId: selectedBarber,
+        date: selectedDate,
+        time: selectedTime,
+      });
+      setBookingSuccess(true);
+      setTimeout(() => {
+        setBookingSuccess(false);
+        setSelectedService('');
+        setSelectedBarber('');
+        setSelectedDate('');
+        setSelectedTime('');
+        setName('');
+        setPhone('');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 3000);
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : 'Error al reservar. ¿Está el backend en marcha?');
+    }
   };
 
   return (
@@ -179,7 +169,7 @@ export default function ClientView() {
             <a href="#barberos" className="hover:text-[#e5c185] transition-colors">Barberos</a>
             <a href="#reserva" className="hover:text-[#e5c185] transition-colors">Reservar</a>
             <a href="#contacto" className="hover:text-[#e5c185] transition-colors">Contacto</a>
-            <a href="/dashboard" className="text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-2 rounded-full transition-colors uppercase tracking-wider">
+            <a href="/login" className="text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-2 rounded-full transition-colors uppercase tracking-wider">
               Iniciar Sesión
             </a>
           </div>
@@ -201,7 +191,7 @@ export default function ClientView() {
             <a href="#reserva" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Reservar</a>
             <a href="#contacto" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Contacto</a>
             <div className="h-px bg-zinc-800/50 my-2"></div>
-            <a href="/dashboard" className="text-center text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-3 rounded-xl transition-colors uppercase tracking-wider">
+            <a href="/login" className="text-center text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-3 rounded-xl transition-colors uppercase tracking-wider">
               Iniciar Sesión
             </a>
           </div>
@@ -265,10 +255,10 @@ export default function ClientView() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
-            {SERVICES.map((service) => (
+            {services.map((service) => (
               <div key={service.id} className="bg-zinc-900/50 border border-zinc-800 p-8 rounded-2xl hover:border-[#e5c185]/50 transition-colors group">
-                <div className="w-14 h-14 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-center text-[#e5c185] mb-6 group-hover:scale-110 transition-transform">
-                  <Scissors size={28} />
+                <div className="w-14 h-14 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-center text-[#e5c185] mb-6 group-hover:scale-110 transition-transform text-3xl">
+                  {service.emoji ? <span>{service.emoji}</span> : <Scissors size={28} />}
                 </div>
                 <h3 className="text-2xl font-serif font-bold mb-2 text-white">{service.name}</h3>
                 <p className="text-zinc-400 mb-6 min-h-[48px] font-sans font-light">{service.desc}</p>
@@ -299,7 +289,7 @@ export default function ClientView() {
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-8">
-            {BARBERS.map((barber, index) => (
+            {barbers.map((barber, index) => (
               <motion.div 
                 key={barber.id} 
                 initial={{ opacity: 0, y: 50 }}
@@ -341,6 +331,10 @@ export default function ClientView() {
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black uppercase tracking-tight mb-2 text-white">Reserva tu lugar</h2>
               <p className="text-sm sm:text-base text-zinc-400 mb-8 sm:mb-10 font-sans font-light">Completa los datos para agendar tu próximo corte.</p>
 
+              {bookingError && (
+                <div className="mb-6 p-4 bg-red-950/30 border border-red-500/30 rounded-xl text-red-400 text-sm">{bookingError}</div>
+              )}
+
               {bookingSuccess ? (
                 <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-2xl p-12 text-center animate-in fade-in zoom-in duration-500">
                   <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-400">
@@ -364,7 +358,7 @@ export default function ClientView() {
                         required
                       >
                         <option value="" disabled>Selecciona un servicio</option>
-                        {SERVICES.map(s => (
+                        {services.map(s => (
                           <option key={s.id} value={s.id}>{s.name} - {s.price}</option>
                         ))}
                       </select>
@@ -376,7 +370,7 @@ export default function ClientView() {
                         <User size={14} /> Barbero
                       </label>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {BARBERS.map(b => (
+                        {barbers.map(b => (
                           <button
                             key={b.id}
                             type="button"
@@ -498,7 +492,7 @@ export default function ClientView() {
                         <Clock size={14} /> Hora
                       </label>
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
-                        {TIME_SLOTS.map(time => {
+                        {availableSlots.map(time => {
                           const isSelected = selectedTime === time;
                           return (
                             <button
