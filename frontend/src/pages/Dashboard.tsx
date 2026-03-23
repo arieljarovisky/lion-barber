@@ -451,6 +451,26 @@ export default function Dashboard() {
     }
   };
 
+  const handleIconFileUpload = (file: File | null) => {
+    if (!file) return;
+    const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+    if (!isSvg) {
+      setServiceError('Solo se permiten archivos SVG para el icono.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setServiceForm((f) => ({ ...f, emoji: reader.result as string }));
+        setServiceError('');
+      }
+    };
+    reader.onerror = () => {
+      setServiceError('No se pudo leer el archivo SVG.');
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleDeleteService = async (id: string) => {
     if (!confirm('¿Eliminar este servicio?')) return;
     try {
@@ -1361,6 +1381,39 @@ export default function Dashboard() {
                   placeholder="✂️ o https://tu-cdn/icono.svg"
                 />
                 <p className="text-xs text-zinc-400 mt-1">Acepta emoji, URL terminada en .svg o data:image/svg+xml</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <label className="inline-flex items-center px-3 py-2 rounded-lg border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-xs font-bold text-zinc-700 cursor-pointer">
+                    Subir SVG
+                    <input
+                      type="file"
+                      accept=".svg,image/svg+xml"
+                      className="hidden"
+                      onChange={(e) => handleIconFileUpload(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  {serviceForm.emoji && (
+                    <button
+                      type="button"
+                      onClick={() => setServiceForm((f) => ({ ...f, emoji: '' }))}
+                      className="text-xs font-bold text-zinc-500 hover:text-zinc-800"
+                    >
+                      Limpiar icono
+                    </button>
+                  )}
+                </div>
+                {serviceForm.emoji && (
+                  <div className="mt-3 p-3 rounded-lg border border-zinc-200 bg-zinc-50 flex items-center gap-3">
+                    <span className="text-xs text-zinc-500 font-bold uppercase">Preview</span>
+                    {(() => {
+                      const icon = getServiceIconSource(serviceForm.emoji);
+                      if (icon.kind === 'svg') {
+                        return <img src={icon.value} alt="Preview icono" className="w-8 h-8 object-contain" />;
+                      }
+                      if (icon.kind === 'emoji') return <span className="text-2xl">{icon.value}</span>;
+                      return null;
+                    })()}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Nombre</label>
