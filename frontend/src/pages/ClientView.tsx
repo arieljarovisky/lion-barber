@@ -172,7 +172,7 @@ export default function ClientView() {
 
   useEffect(() => {
     if (!selectedDate || !selectedService || !selectedBarber) {
-      setAvailableSlots(TIME_SLOTS);
+      setAvailableSlots([]);
       setEarliestAny(null);
       return;
     }
@@ -788,39 +788,47 @@ export default function ClientView() {
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                         <Clock size={14} /> Hora
                       </label>
-                      {selectedBarber === ANY_BARBER_ID && earliestAny && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedTime(earliestAny.time)}
-                          className="mb-2 text-left text-xs font-bold uppercase tracking-wider text-[#e5c185] hover:text-[#d4b074] underline-offset-4 hover:underline"
-                        >
-                          Usar el próximo libre: {earliestAny.time}
-                        </button>
-                      )}
-                      {availableSlots.length === 0 && selectedService && selectedBarber && (
-                        <p className="text-amber-500/90 text-sm mb-2">
-                          No hay horarios disponibles para esa fecha y duración. Probá otro día u otro barbero.
+                      {!selectedBarber ? (
+                        <p className="text-zinc-500 text-sm">
+                          Elegí un barbero para ver los horarios disponibles.
                         </p>
-                      )}
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
-                        {availableSlots.map(time => {
-                          const isSelected = selectedTime === time;
-                          return (
+                      ) : (
+                        <>
+                          {selectedBarber === ANY_BARBER_ID && earliestAny && (
                             <button
-                              key={time}
                               type="button"
-                              onClick={() => setSelectedTime(time)}
-                              className={`py-3 rounded-xl border text-sm font-bold transition-all flex items-center justify-center ${
-                                isSelected
-                                  ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.3)]'
-                                  : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
-                              }`}
+                              onClick={() => setSelectedTime(earliestAny.time)}
+                              className="mb-2 text-left text-xs font-bold uppercase tracking-wider text-[#e5c185] hover:text-[#d4b074] underline-offset-4 hover:underline"
                             >
-                              {time}
+                              Usar el próximo libre: {earliestAny.time}
                             </button>
-                          );
-                        })}
-                      </div>
+                          )}
+                          {availableSlots.length === 0 && selectedService && selectedBarber && (
+                            <p className="text-amber-500/90 text-sm mb-2">
+                              No hay horarios disponibles para esa fecha y duración. Probá otro día u otro barbero.
+                            </p>
+                          )}
+                          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
+                            {availableSlots.map(time => {
+                              const isSelected = selectedTime === time;
+                              return (
+                                <button
+                                  key={time}
+                                  type="button"
+                                  onClick={() => setSelectedTime(time)}
+                                  className={`py-3 rounded-xl border text-sm font-bold transition-all flex items-center justify-center ${
+                                    isSelected
+                                      ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.3)]'
+                                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
+                                  }`}
+                                >
+                                  {time}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     {/* Name Input */}
