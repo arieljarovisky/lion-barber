@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { format, addDays, subDays, addWeeks, subWeeks, startOfDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import { format, parseISO, addDays, subDays, addWeeks, subWeeks, startOfDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   Calendar as CalendarIcon,
@@ -15,11 +15,12 @@ import {
   Trash2,
   X,
   Package,
+  Ban,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
-import type { Appointment, Barber, Service } from '../api';
+import type { Appointment, Barber, Service, BarberFrancoRow, BarberTimeBlockRow } from '../api';
 
 const TIME_SLOTS = [
   '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
@@ -42,6 +43,16 @@ function getPrice(service: string): number {
   return SERVICE_PRICES[service] ?? 0;
 }
 
+const WEEKDAY_SHORT: { value: number; label: string }[] = [
+  { value: 1, label: 'Lun' },
+  { value: 2, label: 'Mar' },
+  { value: 3, label: 'Mié' },
+  { value: 4, label: 'Jue' },
+  { value: 5, label: 'Vie' },
+  { value: 6, label: 'Sáb' },
+  { value: 7, label: 'Dom' },
+];
+
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedBarberId, setSelectedBarberId] = useState<string | 'all'>('all');
@@ -54,12 +65,25 @@ export default function Dashboard() {
   const [form, setForm] = useState({ name: '', phone: '', service: '', barberId: '', date: '', time: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [view, setView] = useState<'agenda' | 'servicios'>('agenda');
+  const [view, setView] = useState<'agenda' | 'servicios' | 'horarios'>('agenda');
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [serviceForm, setServiceForm] = useState({ name: '', price: '', duration: 30, desc: '', emoji: '' });
   const [savingService, setSavingService] = useState(false);
   const [serviceError, setServiceError] = useState('');
+  const [scheduleBarberId, setScheduleBarberId] = useState('');
+  const [francos, setFrancos] = useState<BarberFrancoRow[]>([]);
+  const [timeBlocks, setTimeBlocks] = useState<BarberTimeBlockRow[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState('');
+  const [blockMode, setBlockMode] = useState<'once' | 'weekly'>('once');
+  const [blockDate, setBlockDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [blockWeekday, setBlockWeekday] = useState(1);
+  const [blockTimeStart, setBlockTimeStart] = useState('13:00');
+  const [blockTimeEnd, setBlockTimeEnd] = useState('14:00');
+  const [savingSchedule, setSavingSchedule] = useState(false);
+
+  const { profile, logout, isAdmin } = useAuth();
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -92,6 +116,92 @@ export default function Dashboard() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (view === 'horarios' && barbers.length && !scheduleBarberId) {
+      setScheduleBarberId(barbers[0].id);
+    }
+  }, [view, barbers, scheduleBarberId]);
+
+  const loadSchedule = useCallback(async () => {
+    if (!scheduleBarberId) return;
+    setScheduleLoading(true);
+    setScheduleError('');
+    try {
+      const data = await api.getBarberSchedule(scheduleBarberId);
+      setFrancos(data.francos);
+      setTimeBlocks(data.blocks);
+    } catch {
+      setFrancos([]);
+      setTimeBlocks([]);
+      setScheduleError('No se pudo cargar la disponibilidad del barbero.');
+    } finally {
+      setScheduleLoading(false);
+    }
+  }, [scheduleBarberId]);
+
+  useEffect(() => {
+    if (view === 'horarios' && scheduleBarberId) {
+      loadSchedule();
+    }
+  }, [view, scheduleBarberId, loadSchedule]);
+
+  const toggleFranco = async (weekday: number) => {
+    if (!scheduleBarberId || !isAdmin) return;
+    const existing = francos.find((f) => f.weekday === weekday);
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      if (existing) {
+        await api.deleteBarberFranco(scheduleBarberId, existing.id);
+      } else {
+        await api.addBarberFranco(scheduleBarberId, weekday);
+      }
+      await loadSchedule();
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Error al actualizar franco');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const handleAddTimeBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scheduleBarberId || !isAdmin) return;
+    if (TIME_SLOTS.indexOf(blockTimeEnd) <= TIME_SLOTS.indexOf(blockTimeStart)) {
+      setScheduleError('La hora "hasta" debe ser posterior a "desde".');
+      return;
+    }
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      await api.addBarberTimeBlock(scheduleBarberId, {
+        blockDate: blockMode === 'once' ? blockDate : null,
+        weekday: blockMode === 'weekly' ? blockWeekday : null,
+        timeStart: blockTimeStart,
+        timeEnd: blockTimeEnd,
+      });
+      await loadSchedule();
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Error al crear bloqueo');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const deleteBlock = async (id: number) => {
+    if (!scheduleBarberId || !confirm('¿Quitar este bloqueo de horario?')) return;
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      await api.deleteBarberTimeBlock(scheduleBarberId, id);
+      await loadSchedule();
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Error al eliminar');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
 
   const handlePrevDay = () => setSelectedDate((d) => subDays(d, 1));
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1));
@@ -167,6 +277,7 @@ export default function Dashboard() {
           name: form.name,
           phone: form.phone,
           service: serviceName,
+          serviceId: form.service,
           barberId: form.barberId,
           date: form.date,
           time: form.time,
@@ -176,6 +287,7 @@ export default function Dashboard() {
           name: form.name,
           phone: form.phone,
           service: serviceName,
+          serviceId: form.service,
           barberId: form.barberId,
           barber: barber?.name,
           date: form.date,
@@ -269,7 +381,6 @@ export default function Dashboard() {
   };
 
   const totalIncome = dayAppointments.reduce((acc, curr) => acc + getPrice(curr.service), 0);
-  const { profile, logout } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = async () => {
@@ -332,6 +443,14 @@ export default function Dashboard() {
               >
                 <Package size={18} />
                 Servicios
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('horarios')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${view === 'horarios' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}
+              >
+                <Ban size={18} />
+                Horarios
               </button>
             </div>
           </div>
@@ -400,6 +519,22 @@ export default function Dashboard() {
               <Plus size={20} />
               Nuevo servicio
             </button>
+          )}
+          {view === 'horarios' && (
+            <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+              <label className="text-sm font-bold text-zinc-600 sr-only sm:not-sr-only sm:inline">Barbero</label>
+              <select
+                value={scheduleBarberId}
+                onChange={(e) => setScheduleBarberId(e.target.value)}
+                className="bg-white border border-zinc-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 font-medium text-zinc-800 shadow-sm text-sm min-w-[180px]"
+              >
+                {barbers.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
         </div>
 
@@ -725,6 +860,182 @@ export default function Dashboard() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {view === 'horarios' && (
+          <div className="space-y-6 max-w-4xl">
+            {scheduleError && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{scheduleError}</div>
+            )}
+            <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="font-black text-lg text-zinc-900 flex items-center gap-2">
+                <Ban className="text-[#b39055]" size={22} />
+                Francos fijos (semanal)
+              </h3>
+              <p className="text-sm text-zinc-500 mt-1">
+                Días en que el barbero no atiende (se repite cada semana). Afecta la web y la agenda.
+              </p>
+              {scheduleLoading ? (
+                <p className="text-zinc-400 mt-4">Cargando...</p>
+              ) : (
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {WEEKDAY_SHORT.map(({ value, label }) => {
+                    const on = francos.some((f) => f.weekday === value);
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={!isAdmin || savingSchedule}
+                        onClick={() => toggleFranco(value)}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors ${
+                          on
+                            ? 'bg-red-100 border-red-300 text-red-900'
+                            : 'bg-zinc-50 border-zinc-200 text-zinc-600 hover:border-zinc-300'
+                        } ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      >
+                        {label}
+                        {on ? ' · no trabaja' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="font-black text-lg text-zinc-900">Bloqueos de horario</h3>
+              <p className="text-sm text-zinc-500 mt-1">
+                Rangos no disponibles (almuerzo, cierre puntual, etc.): por una fecha o cada semana ese día.
+              </p>
+
+              <form onSubmit={handleAddTimeBlock} className="mt-6 space-y-4 border border-zinc-100 rounded-xl p-4 bg-zinc-50/50">
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="blockMode"
+                      checked={blockMode === 'once'}
+                      onChange={() => setBlockMode('once')}
+                      disabled={!isAdmin}
+                    />
+                    <span className="text-sm font-medium text-zinc-800">Una fecha</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="blockMode"
+                      checked={blockMode === 'weekly'}
+                      onChange={() => setBlockMode('weekly')}
+                      disabled={!isAdmin}
+                    />
+                    <span className="text-sm font-medium text-zinc-800">Cada semana</span>
+                  </label>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {blockMode === 'once' ? (
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Fecha</label>
+                      <input
+                        type="date"
+                        required
+                        value={blockDate}
+                        onChange={(e) => setBlockDate(e.target.value)}
+                        className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                        disabled={!isAdmin}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Día</label>
+                      <select
+                        value={blockWeekday}
+                        onChange={(e) => setBlockWeekday(Number(e.target.value))}
+                        className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                        disabled={!isAdmin}
+                      >
+                        {WEEKDAY_SHORT.map(({ value, label }) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Desde</label>
+                      <select
+                        value={blockTimeStart}
+                        onChange={(e) => setBlockTimeStart(e.target.value)}
+                        className="w-full border border-zinc-200 rounded-xl px-3 py-3 text-zinc-900 text-sm"
+                        disabled={!isAdmin}
+                      >
+                        {TIME_SLOTS.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Hasta</label>
+                      <select
+                        value={blockTimeEnd}
+                        onChange={(e) => setBlockTimeEnd(e.target.value)}
+                        className="w-full border border-zinc-200 rounded-xl px-3 py-3 text-zinc-900 text-sm"
+                        disabled={!isAdmin}
+                      >
+                        {TIME_SLOTS.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  disabled={!isAdmin || savingSchedule}
+                  className="px-5 py-2.5 bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 font-bold rounded-xl disabled:opacity-50"
+                >
+                  {savingSchedule ? 'Guardando...' : 'Agregar bloqueo'}
+                </button>
+              </form>
+
+              {timeBlocks.length > 0 && (
+                <ul className="mt-6 divide-y divide-zinc-100 border border-zinc-100 rounded-xl overflow-hidden">
+                  {timeBlocks.map((b) => (
+                    <li
+                      key={b.id}
+                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white text-sm"
+                    >
+                      <span className="text-zinc-800">
+                        {b.blockDate
+                          ? `${format(parseISO(b.blockDate), "d MMM yyyy", { locale: es })}`
+                          : `Cada ${WEEKDAY_SHORT.find((w) => w.value === b.weekday)?.label ?? '—'}`}
+                        {' · '}
+                        <span className="font-mono font-bold">
+                          {b.timeStart} – {b.timeEnd}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!isAdmin || savingSchedule}
+                        onClick={() => deleteBlock(b.id)}
+                        className="text-red-600 hover:text-red-800 font-bold text-xs uppercase tracking-wider disabled:opacity-50"
+                      >
+                        Quitar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {!scheduleLoading && timeBlocks.length === 0 && (
+                <p className="text-zinc-400 text-sm mt-4">No hay bloqueos por hora para este barbero.</p>
+              )}
+            </div>
           </div>
         )}
       </main>

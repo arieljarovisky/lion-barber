@@ -76,6 +76,47 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN duration_minutes INT NOT NULL DEFAULT 30');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN service_id VARCHAR(50) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN deposit_paid TINYINT(1) NOT NULL DEFAULT 0');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE appointments ADD COLUMN mercadopago_payment_id VARCHAR(64) NULL UNIQUE'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS barber_francos (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      barber_id VARCHAR(50) NOT NULL,
+      weekday TINYINT NOT NULL COMMENT '1=Lun ... 7=Dom',
+      UNIQUE KEY uq_barber_franco (barber_id, weekday)
+    )
+  `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS barber_time_blocks (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      barber_id VARCHAR(50) NOT NULL,
+      block_date DATE NULL,
+      weekday TINYINT NULL COMMENT '1=Lun ... 7=Dom, repetición semanal si block_date NULL',
+      time_start VARCHAR(5) NOT NULL,
+      time_end VARCHAR(5) NOT NULL
+    )
+  `);
 
   const serviceCountRows = await query<{ count: number }[]>('SELECT COUNT(*) as count FROM services');
   if (serviceCountRows[0].count === 0) {

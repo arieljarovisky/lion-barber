@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users } from 'lucide-react';
 import { addAppointment, api } from '../store';
+import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { format, addDays, startOfToday, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay } from 'date-fns';
@@ -33,6 +34,7 @@ const Logo = ({ className = "w-32 h-32" }) => (
 
 export default function ClientView() {
   const { profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   useEffect(() => {
@@ -48,6 +50,7 @@ export default function ClientView() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [bookingSuccessPaidSena, setBookingSuccessPaidSena] = useState(false);
   const [bookingError, setBookingError] = useState('');
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -61,15 +64,75 @@ export default function ClientView() {
   const [dragged, setDragged] = useState(false);
 
   const [availableSlots, setAvailableSlots] = useState<string[]>(TIME_SLOTS);
+  const [earliestAny, setEarliestAny] = useState<{ barberId: string; time: string } | null>(null);
+
+  const selectedServiceDuration = services.find((s) => s.id === selectedService)?.duration ?? 30;
+
   useEffect(() => {
-    if (!selectedDate || !selectedBarber) {
+    const checkout = searchParams.get('checkout');
+    if (checkout === 'success') {
+      setBookingSuccessPaidSena(true);
+      setBookingSuccess(true);
+      setSearchParams({}, { replace: true });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (checkout === 'cancel' || checkout === 'failure') {
+      setBookingError('Pago cancelado o rechazado. Podés intentar de nuevo o confirmar sin seña online.');
+      setSearchParams({}, { replace: true });
+    } else if (checkout === 'pending') {
+      setBookingError(
+        'Pago pendiente (ej. efectivo). Cuando Mercado Pago lo acredite, el turno se registrará automáticamente.'
+      );
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!selectedDate || !selectedService || !selectedBarber) {
       setAvailableSlots(TIME_SLOTS);
+      setEarliestAny(null);
       return;
     }
-    api.getAvailability(selectedDate, selectedBarber)
-      .then((r) => setAvailableSlots(r.slots))
+    if (selectedBarber === ANY_BARBER_ID) {
+      api
+        .getAvailabilityAny(selectedDate, selectedServiceDuration)
+        .then((r) => {
+          setAvailableSlots(r.slots.length ? r.slots : []);
+          setEarliestAny(r.earliest);
+        })
+        .catch(() => {
+          setAvailableSlots(TIME_SLOTS);
+          setEarliestAny(null);
+        });
+      return;
+    }
+    api
+      .getAvailability(selectedDate, selectedBarber, selectedServiceDuration)
+      .then((r) => setAvailableSlots(r.slots.length ? r.slots : []))
       .catch(() => setAvailableSlots(TIME_SLOTS));
-  }, [selectedDate, selectedBarber]);
+    setEarliestAny(null);
+  }, [selectedDate, selectedBarber, selectedService, selectedServiceDuration, services]);
+
+  useEffect(() => {
+    if (selectedTime && availableSlots.length > 0 && !availableSlots.includes(selectedTime)) {
+      setSelectedTime('');
+    }
+  }, [availableSlots, selectedTime]);
+
+  useEffect(() => {
+    if (!bookingSuccess) return;
+    const t = window.setTimeout(() => {
+      setBookingSuccess(false);
+      setBookingSuccessPaidSena(false);
+      setSelectedService('');
+      setSelectedBarber('');
+      setSelectedDate(format(startOfToday(), 'yyyy-MM-dd'));
+      setSelectedTime('');
+      setName('');
+      setPhone('');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [bookingSuccess]);
 
   const today = startOfToday();
   const baseDays = Array.from({ length: 30 }).map((_, i) => addDays(today, i));
@@ -121,6 +184,30 @@ export default function ClientView() {
     scrollContainerRef.current.scrollLeft = scrollLeft - walk;
   };
 
+  const handlePaySena = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    setBookingError('');
+    if (!selectedService || !selectedBarber || !selectedDate || !selectedTime || !name || !phone) {
+      setBookingError('Por favor completa todos los campos');
+      return;
+    }
+    try {
+      const { url } = await api.createCheckoutSena({
+        name,
+        phone,
+        service: services.find((s) => s.id === selectedService)?.name ?? selectedService,
+        serviceId: selectedService,
+        barberId: selectedBarber,
+        date: selectedDate,
+        time: selectedTime,
+        ...(profile?.id && { userId: profile.id }),
+      });
+      window.location.href = url;
+    } catch (err) {
+      setBookingError(err instanceof Error ? err.message : 'No se pudo iniciar el pago de la seña');
+    }
+  };
+
   const handleBook = async (e: React.FormEvent) => {
     e.preventDefault();
     setBookingError('');
@@ -134,22 +221,13 @@ export default function ClientView() {
         name,
         phone,
         service: services.find(s => s.id === selectedService)?.name ?? selectedService,
+        serviceId: selectedService,
         barberId: selectedBarber,
         date: selectedDate,
         time: selectedTime,
         ...(profile?.id && { userId: profile.id }),
       });
       setBookingSuccess(true);
-      setTimeout(() => {
-        setBookingSuccess(false);
-        setSelectedService('');
-        setSelectedBarber('');
-        setSelectedDate('');
-        setSelectedTime('');
-        setName('');
-        setPhone('');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }, 3000);
     } catch (err) {
       setBookingError(err instanceof Error ? err.message : 'Error al reservar. ¿Está el backend en marcha?');
     }
@@ -363,7 +441,10 @@ export default function ClientView() {
                     <CheckCircle2 size={32} className="sm:w-10 sm:h-10" />
                   </div>
                   <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-2">¡Turno Confirmado!</h3>
-                  <p className="text-emerald-400/80 text-base sm:text-lg font-sans">Te esperamos en Lion Barber.</p>
+                  <p className="text-emerald-400/80 text-base sm:text-lg font-sans">
+                    {bookingSuccessPaidSena ? 'Seña abonada por la web. ' : ''}
+                    Te esperamos en Lion Barber.
+                  </p>
                 </div>
               ) : (
                 <form onSubmit={handleBook} className="space-y-6 font-sans">
@@ -391,15 +472,40 @@ export default function ClientView() {
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                         <User size={14} /> Barbero
                       </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-                        {barbers.map(b => (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedBarber(ANY_BARBER_ID)}
+                          className={`flex items-center gap-2 sm:gap-3 p-3 rounded-xl border transition-all text-left min-w-0 ${
+                            selectedBarber === ANY_BARBER_ID
+                              ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.2)]'
+                              : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
+                          }`}
+                        >
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                              selectedBarber === ANY_BARBER_ID ? 'bg-black/10 text-black' : 'bg-zinc-800 text-[#e5c185]'
+                            }`}
+                          >
+                            <Users size={22} />
+                          </div>
+                          <div>
+                            <div className={`font-bold ${selectedBarber === ANY_BARBER_ID ? 'text-black' : 'text-white'}`}>
+                              Cualquier barbero
+                            </div>
+                            <div className={`text-xs ${selectedBarber === ANY_BARBER_ID ? 'text-black/70' : 'text-zinc-500'}`}>
+                              El turno más próximo
+                            </div>
+                          </div>
+                        </button>
+                        {barbers.map((b) => (
                           <button
                             key={b.id}
                             type="button"
                             onClick={() => setSelectedBarber(b.id)}
                             className={`flex items-center gap-2 sm:gap-3 p-3 rounded-xl border transition-all text-left min-w-0 ${
-                              selectedBarber === b.id 
-                                ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.2)]' 
+                              selectedBarber === b.id
+                                ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.2)]'
                                 : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
                             }`}
                           >
@@ -411,6 +517,11 @@ export default function ClientView() {
                           </button>
                         ))}
                       </div>
+                      {selectedBarber === ANY_BARBER_ID && (
+                        <p className="text-xs text-zinc-500 mt-2">
+                          Asignamos automáticamente al barbero libre en el horario que elijas (según la duración del servicio).
+                        </p>
+                      )}
                     </div>
 
                     {/* Date Selection */}
@@ -513,6 +624,20 @@ export default function ClientView() {
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                         <Clock size={14} /> Hora
                       </label>
+                      {selectedBarber === ANY_BARBER_ID && earliestAny && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTime(earliestAny.time)}
+                          className="mb-2 text-left text-xs font-bold uppercase tracking-wider text-[#e5c185] hover:text-[#d4b074] underline-offset-4 hover:underline"
+                        >
+                          Usar el próximo libre: {earliestAny.time}
+                        </button>
+                      )}
+                      {availableSlots.length === 0 && selectedService && selectedBarber && (
+                        <p className="text-amber-500/90 text-sm mb-2">
+                          No hay horarios disponibles para esa fecha y duración. Probá otro día u otro barbero.
+                        </p>
+                      )}
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
                         {availableSlots.map(time => {
                           const isSelected = selectedTime === time;
@@ -565,12 +690,25 @@ export default function ClientView() {
                     </div>
                   </div>
 
-                  <button 
-                    type="submit" 
-                    className="w-full bg-[#e5c185] hover:bg-[#d4b074] text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] mt-4"
-                  >
-                    Confirmar Reserva
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                    <button
+                      type="submit"
+                      className="flex-1 bg-[#e5c185] hover:bg-[#d4b074] text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      Confirmar reserva
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePaySena}
+                      className="flex-1 bg-transparent border-2 border-[#e5c185]/80 hover:bg-[#e5c185]/10 text-[#e5c185] font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      Pagar seña y confirmar
+                    </button>
+                  </div>
+                  <p className="text-center text-[11px] text-zinc-500 mt-2">
+                    Al pagar la seña te abrimos Mercado Pago (checkout seguro); el turno se registra cuando el pago queda
+                    aprobado.
+                  </p>
                 </form>
               )}
             </div>

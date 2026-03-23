@@ -9,15 +9,20 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
+export const ANY_BARBER_ID = '__any__';
+
 export interface Appointment {
   id: string;
   name: string;
   phone: string;
   service: string;
+  serviceId?: string;
   barber?: string;
   barberId?: string;
   date: string;
   time: string;
+  durationMinutes?: number;
+  depositPaid?: boolean;
 }
 
 export interface Service {
@@ -35,6 +40,21 @@ export interface Barber {
   role: string;
   photo: string;
   desc: string;
+}
+
+export interface BarberFrancoRow {
+  id: number;
+  barberId: string;
+  weekday: number;
+}
+
+export interface BarberTimeBlockRow {
+  id: number;
+  barberId: string;
+  blockDate: string | null;
+  weekday: number | null;
+  timeStart: string;
+  timeEnd: string;
 }
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
@@ -68,14 +88,37 @@ export const api = {
   createAppointment: (data: Omit<Appointment, 'id'> & { userId?: number }) =>
     fetchApi<Appointment>('/api/appointments', { method: 'POST', body: JSON.stringify(data) }),
 
+  /** Abre Mercado Pago (Checkout Pro) para abonar la seña; el turno se crea al aprobar el pago (webhook). */
+  createCheckoutSena: (data: {
+    name: string;
+    phone: string;
+    service: string;
+    serviceId?: string;
+    barberId: string;
+    date: string;
+    time: string;
+    userId?: number;
+  }) => fetchApi<{ url: string }>('/api/checkout/sena', { method: 'POST', body: JSON.stringify(data) }),
+
   updateAppointment: (id: string, data: Partial<Appointment>) =>
     fetchApi<Appointment>(`/api/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   deleteAppointment: (id: string) =>
     fetchApi<void>(`/api/appointments/${id}`, { method: 'DELETE' }),
 
-  getAvailability: (date: string, barberId: string) =>
-    fetchApi<{ slots: string[] }>(`/api/appointments/availability?date=${encodeURIComponent(date)}&barberId=${encodeURIComponent(barberId)}`),
+  getAvailability: (date: string, barberId: string, durationMinutes?: number) => {
+    const q = new URLSearchParams({ date, barberId });
+    if (durationMinutes != null) q.set('durationMinutes', String(durationMinutes));
+    return fetchApi<{ slots: string[] }>(`/api/appointments/availability?${q}`);
+  },
+
+  getAvailabilityAny: (date: string, durationMinutes?: number) => {
+    const q = new URLSearchParams({ date });
+    if (durationMinutes != null) q.set('durationMinutes', String(durationMinutes));
+    return fetchApi<{ slots: string[]; earliest: { barberId: string; time: string } | null }>(
+      `/api/appointments/availability/any?${q}`
+    );
+  },
 
   getServices: () => fetchApi<Service[]>('/api/services'),
   getService: (id: string) => fetchApi<Service>(`/api/services/${id}`),
@@ -86,6 +129,48 @@ export const api = {
   deleteService: (id: string) =>
     fetchApi<void>(`/api/services/${id}`, { method: 'DELETE' }),
   getBarbers: () => fetchApi<Barber[]>('/api/barbers'),
+
+  getBarberSchedule: (barberId: string) =>
+    fetchApi<{ francos: BarberFrancoRow[]; blocks: BarberTimeBlockRow[] }>(
+      `/api/barber-schedule/${encodeURIComponent(barberId)}`
+    ),
+
+  addBarberFranco: (barberId: string, weekday: number) =>
+    fetchApi<BarberFrancoRow>(`/api/barber-schedule/${encodeURIComponent(barberId)}/francos`, {
+      method: 'POST',
+      body: JSON.stringify({ weekday }),
+    }),
+
+  deleteBarberFranco: (barberId: string, francoId: number) =>
+    fetchApi<void>(
+      `/api/barber-schedule/${encodeURIComponent(barberId)}/francos/${francoId}`,
+      { method: 'DELETE' }
+    ),
+
+  addBarberTimeBlock: (
+    barberId: string,
+    data: {
+      blockDate: string | null;
+      weekday: number | null;
+      timeStart: string;
+      timeEnd: string;
+    }
+  ) =>
+    fetchApi<BarberTimeBlockRow>(`/api/barber-schedule/${encodeURIComponent(barberId)}/blocks`, {
+      method: 'POST',
+      body: JSON.stringify({
+        blockDate: data.blockDate,
+        weekday: data.weekday,
+        timeStart: data.timeStart,
+        timeEnd: data.timeEnd,
+      }),
+    }),
+
+  deleteBarberTimeBlock: (barberId: string, blockId: number) =>
+    fetchApi<void>(
+      `/api/barber-schedule/${encodeURIComponent(barberId)}/blocks/${blockId}`,
+      { method: 'DELETE' }
+    ),
 
   auth: {
     postGoogle: (idToken: string) =>
