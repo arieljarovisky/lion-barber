@@ -1,11 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard } from 'lucide-react';
 import { addAppointment, api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
 import { useAuth } from '../contexts/AuthContext';
-import { format, addDays, startOfToday, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay } from 'date-fns';
+import { format, addDays, startOfToday, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay, getISODay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion } from 'motion/react';
 
@@ -48,9 +48,15 @@ export default function ClientView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
+  const [openWeekdays, setOpenWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+
   useEffect(() => {
     api.getServices().then(setServices).catch(() => setServices([]));
     api.getBarbers().then(setBarbers).catch(() => setBarbers([]));
+    api
+      .getShopSettings()
+      .then((s) => setOpenWeekdays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]))
+      .catch(() => {});
   }, []);
 
   // Booking state
@@ -145,16 +151,40 @@ export default function ClientView() {
     return () => clearTimeout(t);
   }, [bookingSuccess]);
 
+  const baseDays = useMemo(() => {
+    const today = startOfToday();
+    return Array.from({ length: 30 })
+      .map((_, i) => addDays(today, i))
+      .filter((d) => openWeekdays.includes(getISODay(d)));
+  }, [openWeekdays]);
+
+  useEffect(() => {
+    if (!openWeekdays.length) return;
+    setSelectedDate((current) => {
+      const d = new Date(`${current}T12:00:00`);
+      if (openWeekdays.includes(getISODay(d))) return current;
+      const t = startOfToday();
+      for (let i = 0; i < 60; i++) {
+        const cand = addDays(t, i);
+        if (openWeekdays.includes(getISODay(cand))) {
+          return format(cand, 'yyyy-MM-dd');
+        }
+      }
+      return current;
+    });
+  }, [openWeekdays]);
+
   const today = startOfToday();
-  const baseDays = Array.from({ length: 30 }).map((_, i) => addDays(today, i));
 
   let displayDays = [...baseDays];
   if (selectedDate) {
-    const isSelectedInBase = baseDays.some(d => format(d, 'yyyy-MM-dd') === selectedDate);
+    const isSelectedInBase = baseDays.some((d) => format(d, 'yyyy-MM-dd') === selectedDate);
     if (!isSelectedInBase) {
       const [year, month, day] = selectedDate.split('-').map(Number);
       const customDate = new Date(year, month - 1, day);
-      displayDays = [customDate, ...baseDays];
+      if (openWeekdays.includes(getISODay(customDate))) {
+        displayDays = [customDate, ...baseDays];
+      }
     }
   }
 
@@ -850,12 +880,13 @@ export default function ClientView() {
                 const isSelected = selectedDate === format(day, 'yyyy-MM-dd');
                 const isPast = isBefore(startOfDay(day), startOfDay(today));
                 const isCurrentMonth = isSameMonth(day, startOfMonth(currentMonth));
+                const isClosedDay = !openWeekdays.includes(getISODay(day));
                 
                 return (
                   <button
                     key={idx}
                     type="button"
-                    disabled={isPast}
+                    disabled={isPast || isClosedDay}
                     onClick={() => {
                       setSelectedDate(format(day, 'yyyy-MM-dd'));
                       setShowCalendarModal(false);
@@ -868,8 +899,8 @@ export default function ClientView() {
                     className={`
                       w-full aspect-square rounded-xl flex items-center justify-center text-sm font-medium transition-all
                       ${!isCurrentMonth ? 'text-zinc-700' : ''}
-                      ${isPast ? 'opacity-30 cursor-not-allowed' : 'hover:bg-zinc-900 hover:text-[#e5c185]'}
-                      ${isSelected ? 'bg-[#e5c185] text-black font-bold shadow-[0_0_15px_rgba(229,193,133,0.3)] hover:bg-[#d4b074] hover:text-black' : (isCurrentMonth && !isPast ? 'text-zinc-300' : '')}
+                      ${isPast || isClosedDay ? 'opacity-30 cursor-not-allowed' : 'hover:bg-zinc-900 hover:text-[#e5c185]'}
+                      ${isSelected ? 'bg-[#e5c185] text-black font-bold shadow-[0_0_15px_rgba(229,193,133,0.3)] hover:bg-[#d4b074] hover:text-black' : (isCurrentMonth && !isPast && !isClosedDay ? 'text-zinc-300' : '')}
                     `}
                   >
                     {format(day, 'd')}

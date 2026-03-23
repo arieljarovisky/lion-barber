@@ -119,6 +119,33 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute(
+      "ALTER TABLE appointments ADD COLUMN status ENUM('scheduled','cancelled') NOT NULL DEFAULT 'scheduled'"
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE barbers ADD COLUMN commission_percent DECIMAL(6,2) NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS shop_settings (
+      id INT PRIMARY KEY DEFAULT 1,
+      cutoff_hours INT NOT NULL DEFAULT 12,
+      open_weekdays VARCHAR(64) NOT NULL DEFAULT '1,2,3,4,5,6,7'
+    )
+  `);
+  try {
+    await pool.execute('INSERT IGNORE INTO shop_settings (id, cutoff_hours, open_weekdays) VALUES (1, 12, \'1,2,3,4,5,6,7\')');
+  } catch {
+    /* ya existe */
+  }
 
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS barber_francos (

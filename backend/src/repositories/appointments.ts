@@ -1,5 +1,5 @@
 import pool, { query } from '../db.js';
-import type { Appointment } from '../types.js';
+import type { Appointment, AppointmentStatus } from '../types.js';
 import { getBarberById, getAllBarbers } from './barbers.js';
 import { getServiceById } from './services.js';
 import {
@@ -9,6 +9,8 @@ import {
   intervalOverlapsExisting,
 } from '../slotUtils.js';
 import { getScheduleRestrictionIntervals } from './barberSchedule.js';
+import { getShopSettings } from './shopSettings.js';
+import { isDateOnOpenWeekday } from '../appointmentRules.js';
 
 export const ANY_BARBER_ID = '__any__';
 
@@ -26,9 +28,11 @@ interface DbAppointment {
   service_id: string | null;
   deposit_paid: number;
   mercadopago_payment_id?: string | null;
+  status?: string | null;
 }
 
 function rowToAppointment(row: DbAppointment): Appointment {
+  const st = (row.status as AppointmentStatus | undefined) ?? 'scheduled';
   return {
     id: String(row.id),
     userId: row.user_id ?? undefined,
@@ -43,6 +47,7 @@ function rowToAppointment(row: DbAppointment): Appointment {
     durationMinutes: row.duration_minutes ?? 30,
     depositPaid: Boolean(row.deposit_paid),
     mercadopagoPaymentId: row.mercadopago_payment_id ?? undefined,
+    status: st,
   };
 }
 
@@ -58,7 +63,9 @@ export async function getBlockedIntervalsForBarber(
   barberId: string,
   date: string
 ): Promise<{ startMin: number; endMin: number }[]> {
-  const apps = await getAppointmentsByBarber(barberId, date);
+  const apps = (await getAppointmentsByBarber(barberId, date)).filter(
+    (a) => (a.status ?? 'scheduled') !== 'cancelled'
+  );
   const fromApps = appointmentIntervalsForDay(apps);
   const fromSchedule = await getScheduleRestrictionIntervals(barberId, date);
   return [...fromApps, ...fromSchedule];
@@ -106,6 +113,8 @@ export async function resolveBarberForAny(
   time: string,
   durationMinutes: number
 ): Promise<string | null> {
+  const { openWeekdays } = await getShopSettings();
+  if (!isDateOnOpenWeekday(date, openWeekdays)) return null;
   const barbers = await getAllBarbers();
   const ordered = barbers.sort((a, b) => a.id.localeCompare(b.id));
   for (const b of ordered) {
@@ -184,12 +193,16 @@ export async function resolveDurationMinutes(
 }
 
 export async function getAvailableSlots(date: string, barberId: string, durationMinutes = 30): Promise<string[]> {
+  const { openWeekdays } = await getShopSettings();
+  if (!isDateOnOpenWeekday(date, openWeekdays)) return [];
   const blocked = await getBlockedIntervalsForBarber(barberId, date);
   return TIME_SLOTS.filter((t) => isSlotFreeForBarber(barberId, date, t, durationMinutes, blocked));
 }
 
 /** Horarios en los que al menos un barbero puede atender (misma duración). */
 export async function getAvailableSlotsAnyBarber(date: string, durationMinutes: number): Promise<string[]> {
+  const { openWeekdays } = await getShopSettings();
+  if (!isDateOnOpenWeekday(date, openWeekdays)) return [];
   const barbers = await getAllBarbers();
   const union = new Set<string>();
   for (const b of barbers) {
@@ -209,6 +222,8 @@ export async function getEarliestAvailableAnyBarber(
   date: string,
   durationMinutes: number
 ): Promise<EarliestSlot | null> {
+  const { openWeekdays } = await getShopSettings();
+  if (!isDateOnOpenWeekday(date, openWeekdays)) return null;
   const barbers = await getAllBarbers();
   const orderedBarbers = [...barbers].sort((a, b) => a.id.localeCompare(b.id));
   for (const t of TIME_SLOTS) {
@@ -305,6 +320,15 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       id,
     ]
   );
+  return getAppointmentById(id);
+}
+
+/** Cancelación por el cliente (soft). */
+export async function cancelAppointmentByUser(id: string, userId: number): Promise<Appointment | null> {
+  const app = await getAppointmentById(id);
+  if (!app || app.userId !== userId) return null;
+  if (app.status === 'cancelled') return app;
+  await pool.execute(`UPDATE appointments SET status = 'cancelled' WHERE id = ? AND user_id = ?`, [id, userId]);
   return getAppointmentById(id);
 }
 

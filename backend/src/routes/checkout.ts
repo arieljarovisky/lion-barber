@@ -2,6 +2,8 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import * as repo from '../repositories/appointments.js';
+import { getShopSettings } from '../repositories/shopSettings.js';
+import { isDateOnOpenWeekday } from '../appointmentRules.js';
 
 const router = Router();
 
@@ -145,6 +147,11 @@ router.post('/sena', async (req, res) => {
 
   if (!name || !phone || !service || !barberId || !date || !time) {
     return res.status(400).json({ error: 'Faltan datos para la reserva con seña' });
+  }
+
+  const shop = await getShopSettings();
+  if (!isDateOnOpenWeekday(date, shop.openWeekdays)) {
+    return res.status(400).json({ error: 'El local no atiende ese día. Elegí otra fecha.' });
   }
 
   let durationMinutes: number;

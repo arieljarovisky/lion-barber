@@ -7,6 +7,7 @@ import services from './routes/services.js';
 import barbers from './routes/barbers.js';
 import barberSchedule from './routes/barberSchedule.js';
 import staffInvites from './routes/staffInvites.js';
+import shopSettings from './routes/shopSettings.js';
 import auth from './routes/auth.js';
 import checkout, { mercadopagoWebhook } from './routes/checkout.js';
 
@@ -30,6 +31,7 @@ app.use('/api/services', services);
 app.use('/api/barbers', barbers);
 app.use('/api/barber-schedule', barberSchedule);
 app.use('/api/staff-invites', staffInvites);
+app.use('/api/shop-settings', shopSettings);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });

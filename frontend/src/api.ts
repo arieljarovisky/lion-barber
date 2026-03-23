@@ -11,6 +11,8 @@ export function getAuthToken(): string | null {
 
 export const ANY_BARBER_ID = '__any__';
 
+export type AppointmentStatus = 'scheduled' | 'cancelled';
+
 export interface Appointment {
   id: string;
   name: string;
@@ -23,6 +25,9 @@ export interface Appointment {
   time: string;
   durationMinutes?: number;
   depositPaid?: boolean;
+  status?: AppointmentStatus;
+  /** Solo en GET /api/appointments/mine */
+  canRescheduleOrCancel?: boolean;
 }
 
 export interface Service {
@@ -40,6 +45,12 @@ export interface Barber {
   role: string;
   photo: string;
   desc: string;
+  commissionPercent?: number;
+}
+
+export interface ShopSettings {
+  cutoffHours: number;
+  openWeekdays: number[];
 }
 
 export interface BarberFrancoRow {
@@ -112,6 +123,26 @@ export const api = {
 
   deleteAppointment: (id: string) =>
     fetchApi<void>(`/api/appointments/${id}`, { method: 'DELETE' }),
+
+  cancelMyAppointment: (id: string) =>
+    fetchApi<Appointment>(`/api/appointments/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+
+  rescheduleMyAppointment: (id: string, data: { date: string; time: string }) =>
+    fetchApi<Appointment>(`/api/appointments/${encodeURIComponent(id)}/reschedule`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getShopSettings: () => fetchApi<ShopSettings>('/api/shop-settings'),
+
+  updateShopSettings: (data: Partial<Pick<ShopSettings, 'cutoffHours' | 'openWeekdays'>>) =>
+    fetchApi<ShopSettings>('/api/shop-settings', { method: 'PATCH', body: JSON.stringify(data) }),
+
+  updateBarberCommission: (barberId: string, commissionPercent: number) =>
+    fetchApi<Barber>(`/api/barbers/${encodeURIComponent(barberId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ commissionPercent }),
+    }),
 
   getAvailability: (date: string, barberId: string, durationMinutes?: number) => {
     const q = new URLSearchParams({ date, barberId });

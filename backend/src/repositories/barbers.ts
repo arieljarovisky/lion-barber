@@ -1,4 +1,4 @@
-import { query } from '../db.js';
+import pool, { query } from '../db.js';
 import type { Barber } from '../types.js';
 
 interface DbBarber {
@@ -7,23 +7,34 @@ interface DbBarber {
   role: string;
   photo: string | null;
   desc: string | null;
+  commission_percent?: string | number | null;
 }
 
-export async function getAllBarbers(): Promise<Barber[]> {
-  const rows = await query<DbBarber[]>('SELECT * FROM barbers');
-  return rows.map((r) => ({
+function rowToBarber(r: DbBarber): Barber {
+  const pct = r.commission_percent != null ? Number(r.commission_percent) : 0;
+  return {
     id: r.id,
     name: r.name,
     role: r.role,
     photo: r.photo ?? '',
     desc: r.desc ?? '',
-  }));
+    commissionPercent: Number.isFinite(pct) ? pct : 0,
+  };
+}
+
+export async function getAllBarbers(): Promise<Barber[]> {
+  const rows = await query<DbBarber[]>('SELECT * FROM barbers');
+  return rows.map(rowToBarber);
 }
 
 export async function getBarberById(id: string): Promise<Barber | null> {
   const rows = await query<DbBarber[]>('SELECT * FROM barbers WHERE id = ? LIMIT 1', [id]);
   const r = rows[0];
-  return r
-    ? { id: r.id, name: r.name, role: r.role, photo: r.photo ?? '', desc: r.desc ?? '' }
-    : null;
+  return r ? rowToBarber(r) : null;
+}
+
+export async function updateBarberCommission(id: string, commissionPercent: number): Promise<Barber | null> {
+  const p = Math.min(100, Math.max(0, commissionPercent));
+  await pool.execute('UPDATE barbers SET commission_percent = ? WHERE id = ?', [p, id]);
+  return getBarberById(id);
 }

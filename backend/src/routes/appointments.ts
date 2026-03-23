@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import * as repo from '../repositories/appointments.js';
-import { requireAuth } from '../middleware/auth.js';
+import { getShopSettings } from '../repositories/shopSettings.js';
+import { requireAuth, requireStaffOrAdmin, type AuthRequest } from '../middleware/auth.js';
+import { canClientModifyAppointment, isDateOnOpenWeekday } from '../appointmentRules.js';
 
 const router = Router();
 
@@ -60,13 +62,78 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/mine', requireAuth, async (req, res) => {
-  const authReq = req as import('../middleware/auth.js').AuthRequest;
+  const authReq = req as AuthRequest;
   try {
+    const settings = await getShopSettings();
     const list = await repo.getAppointmentsByUserId(authReq.user!.id);
-    res.json(list);
+    const enriched = list.map((a) => ({
+      ...a,
+      canRescheduleOrCancel: canClientModifyAppointment(a, settings.cutoffHours).ok,
+    }));
+    res.json(enriched);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al obtener mis citas' });
+  }
+});
+
+router.post('/:id/cancel', requireAuth, async (req, res) => {
+  const authReq = req as AuthRequest;
+  const id = req.params.id;
+  try {
+    const app = await repo.getAppointmentById(id);
+    if (!app || app.userId !== authReq.user!.id) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    const settings = await getShopSettings();
+    const check = canClientModifyAppointment(app, settings.cutoffHours);
+    if (!check.ok) {
+      return res.status(403).json({ error: check.reason ?? 'No podés cancelar este turno' });
+    }
+    const updated = await repo.cancelAppointmentByUser(id, authReq.user!.id);
+    if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al cancelar' });
+  }
+});
+
+router.post('/:id/reschedule', requireAuth, async (req, res) => {
+  const authReq = req as AuthRequest;
+  const id = req.params.id;
+  const { date, time } = req.body as { date?: string; time?: string };
+  if (!date || !time) {
+    return res.status(400).json({ error: 'Se requiere date y time' });
+  }
+  try {
+    const app = await repo.getAppointmentById(id);
+    if (!app || app.userId !== authReq.user!.id) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    const settings = await getShopSettings();
+    const check = canClientModifyAppointment(app, settings.cutoffHours);
+    if (!check.ok) {
+      return res.status(403).json({ error: check.reason ?? 'No podés reprogramar este turno' });
+    }
+    if (!isDateOnOpenWeekday(date, settings.openWeekdays)) {
+      return res.status(400).json({ error: 'El local no atiende ese día. Elegí otra fecha.' });
+    }
+    const barberId = app.barberId;
+    if (!barberId) {
+      return res.status(400).json({ error: 'Turno sin barbero asignado' });
+    }
+    const durationMinutes =
+      app.durationMinutes ?? (await repo.resolveDurationMinutes(app.serviceId, app.service));
+    await repo.assertNoOverlap(barberId, date, time, durationMinutes, id);
+    const updated = await repo.updateAppointment(id, { date, time });
+    if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
+    res.json(updated);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Error al reprogramar';
+    const code = /ocupado|solapa/i.test(msg) ? 409 : 500;
+    if (code === 500) console.error(err);
+    res.status(code).json({ error: msg });
   }
 });
 
@@ -86,6 +153,10 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Falta barberId (o elige "Cualquier barbero")' });
   }
   try {
+    const shop = await getShopSettings();
+    if (!isDateOnOpenWeekday(date, shop.openWeekdays)) {
+      return res.status(400).json({ error: 'El local no atiende ese día.' });
+    }
     const created = await repo.createAppointment({
       name,
       phone,
@@ -108,7 +179,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   try {
     const updated = await repo.updateAppointment(req.params.id, req.body);
     if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
@@ -121,7 +192,7 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   const ok = await repo.deleteAppointment(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Cita no encontrada' });
   res.status(204).send();

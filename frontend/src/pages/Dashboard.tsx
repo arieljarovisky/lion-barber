@@ -18,6 +18,7 @@ import {
   Ban,
   UserPlus,
   Menu,
+  Settings,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -84,7 +85,7 @@ export default function Dashboard() {
   const [form, setForm] = useState({ name: '', phone: '', service: '', barberId: '', date: '', time: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [view, setView] = useState<'agenda' | 'servicios' | 'horarios' | 'equipo'>('agenda');
+  const [view, setView] = useState<'agenda' | 'servicios' | 'horarios' | 'equipo' | 'configuracion'>('agenda');
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [serviceForm, setServiceForm] = useState({ name: '', price: '', duration: 30, desc: '', emoji: '' });
@@ -108,6 +109,11 @@ export default function Dashboard() {
   const [inviteName, setInviteName] = useState('');
   const [savingInvite, setSavingInvite] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [shopCutoff, setShopCutoff] = useState(12);
+  const [shopDays, setShopDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [shopLoading, setShopLoading] = useState(false);
+  const [shopSaving, setShopSaving] = useState(false);
+  const [shopError, setShopError] = useState('');
 
   const { profile, logout, isAdmin, canAccessDashboard } = useAuth();
 
@@ -173,10 +179,34 @@ export default function Dashboard() {
   }, [view, scheduleBarberId, loadSchedule]);
 
   useEffect(() => {
-    if (!isAdmin && (view === 'servicios' || view === 'equipo')) {
+    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion')) {
       setView('agenda');
     }
   }, [isAdmin, view]);
+
+  useEffect(() => {
+    if (view !== 'configuracion' || !isAdmin) return;
+    let cancelled = false;
+    setShopLoading(true);
+    setShopError('');
+    api
+      .getShopSettings()
+      .then((s) => {
+        if (!cancelled) {
+          setShopCutoff(s.cutoffHours);
+          setShopDays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setShopError('No se pudo cargar la configuración.');
+      })
+      .finally(() => {
+        if (!cancelled) setShopLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, isAdmin]);
 
   const loadStaffInvites = useCallback(async () => {
     setTeamLoading(true);
@@ -294,7 +324,7 @@ export default function Dashboard() {
   const handleThisWeek = () => setSelectedDate(startOfDay(new Date()));
 
   const dayAppointments = appointments
-    .filter((app) => app.date === dateStr)
+    .filter((app) => app.date === dateStr && app.status !== 'cancelled')
     .sort((a, b) => a.time.localeCompare(b.time));
 
   const appointmentsByBarber = barbers.map((barber) => ({
@@ -309,7 +339,7 @@ export default function Dashboard() {
     date: day,
     dateStr: format(day, 'yyyy-MM-dd'),
     appointments: appointments
-      .filter((a) => a.date === format(day, 'yyyy-MM-dd'))
+      .filter((a) => a.date === format(day, 'yyyy-MM-dd') && a.status !== 'cancelled')
       .sort((a, b) => a.time.localeCompare(b.time)),
   }));
 
@@ -496,6 +526,30 @@ export default function Dashboard() {
     setMobileNavOpen(false);
   };
 
+  const toggleShopDay = (day: number) => {
+    setShopDays((prev) => {
+      const next = prev.includes(day) ? prev.filter((x) => x !== day) : [...prev, day].sort((a, b) => a - b);
+      return next.length === 0 ? prev : next;
+    });
+  };
+
+  const handleSaveShopSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (shopDays.length === 0) {
+      setShopError('Elegí al menos un día abierto.');
+      return;
+    }
+    setShopSaving(true);
+    setShopError('');
+    try {
+      await api.updateShopSettings({ cutoffHours: shopCutoff, openWeekdays: shopDays });
+    } catch (err) {
+      setShopError(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setShopSaving(false);
+    }
+  };
+
   const viewHeading =
     view === 'agenda'
       ? { title: 'Agenda de Turnos', subtitle: 'Calendario por peluquero y gestión de reservas.' }
@@ -503,7 +557,12 @@ export default function Dashboard() {
         ? { title: 'Servicios', subtitle: 'Precios, duración e iconos mostrados en la web.' }
         : view === 'horarios'
           ? { title: 'Horarios y disponibilidad', subtitle: 'Francos semanales y bloqueos por barbero.' }
-          : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
+          : view === 'configuracion'
+            ? {
+                title: 'Configuración del local',
+                subtitle: 'Plazo para cancelar/reprogramar turnos, días abiertos y comisiones por barbero.',
+              }
+            : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
@@ -586,6 +645,18 @@ export default function Dashboard() {
             >
               <UserPlus size={18} className="flex-shrink-0" />
               Equipo
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => selectView('configuracion')}
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+                view === 'configuracion' ? 'bg-[#e5c185] text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              <Settings size={18} className="flex-shrink-0" />
+              Configuración
             </button>
           )}
         </nav>
@@ -1316,6 +1387,96 @@ export default function Dashboard() {
                       >
                         Quitar
                       </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === 'configuracion' && isAdmin && (
+          <div className="max-w-3xl space-y-6">
+            {shopError && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{shopError}</div>
+            )}
+            <form
+              onSubmit={handleSaveShopSettings}
+              className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm space-y-6"
+            >
+              <div>
+                <h3 className="font-black text-lg text-zinc-900">Cancelar y reprogramar (clientes)</h3>
+                <p className="text-sm text-zinc-500 mt-1">
+                  Con menos de este margen de horas previas al turno, no se podrá cancelar ni reprogramar desde la web; la
+                  seña abonada no se reembolsa en ese caso.
+                </p>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mt-4 mb-1">
+                  Horas mínimas de anticipación
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={168}
+                  value={shopCutoff}
+                  onChange={(e) => setShopCutoff(Number(e.target.value))}
+                  className="w-32 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                />
+              </div>
+              <div>
+                <h3 className="font-black text-lg text-zinc-900">Días abiertos</h3>
+                <p className="text-sm text-zinc-500 mt-1">Solo los días marcados permiten reservar en la web.</p>
+                <div className="flex flex-wrap gap-2 mt-4">
+                  {WEEKDAY_SHORT.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => toggleShopDay(value)}
+                      className={`px-4 py-2.5 rounded-xl text-sm font-bold border ${
+                        shopDays.includes(value)
+                          ? 'bg-[#e5c185] border-[#e5c185] text-zinc-950'
+                          : 'bg-zinc-50 border-zinc-200 text-zinc-500'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={shopSaving || shopLoading}
+                className="px-5 py-2.5 bg-zinc-900 text-white font-bold rounded-xl disabled:opacity-50"
+              >
+                {shopSaving ? 'Guardando...' : 'Guardar configuración'}
+              </button>
+            </form>
+            <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="font-black text-lg text-zinc-900">Comisiones por barbero</h3>
+              <p className="text-sm text-zinc-500 mt-1">Porcentaje de referencia para el dueño (uso interno).</p>
+              {shopLoading ? (
+                <p className="text-zinc-400 mt-4">Cargando...</p>
+              ) : (
+                <ul className="mt-4 divide-y divide-zinc-100">
+                  {barbers.map((b) => (
+                    <li key={b.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                      <span className="font-medium text-zinc-900">{b.name}</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          defaultValue={b.commissionPercent ?? 0}
+                          key={`${b.id}-${String(b.commissionPercent ?? 0)}`}
+                          onBlur={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!Number.isFinite(v)) return;
+                            void api.updateBarberCommission(b.id, v).then(() => loadData());
+                          }}
+                          className="w-24 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
+                        />
+                        <span className="text-zinc-500 text-sm">%</span>
+                      </div>
                     </li>
                   ))}
                 </ul>

@@ -1,3 +1,5 @@
+export type AppointmentStatus = 'scheduled' | 'cancelled';
+
 export interface Appointment {
   id: string;
   userId?: number;
@@ -15,6 +17,7 @@ export interface Appointment {
   depositPaid?: boolean;
   /** Id. de pago de Mercado Pago (evita duplicar turnos en webhooks). */
   mercadopagoPaymentId?: string;
+  status?: AppointmentStatus;
 }
 
 export interface Service {
@@ -32,4 +35,6 @@ export interface Barber {
   role: string;
   photo: string;
   desc: string;
+  /** Comisión % para el dueño (gestión interna). */
+  commissionPercent?: number;
 }
