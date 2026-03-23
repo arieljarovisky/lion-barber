@@ -16,6 +16,16 @@ const TIME_SLOTS = [
   '19:00', '19:30'
 ];
 
+function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
+  const raw = (icon ?? '').trim();
+  if (!raw) return { kind: 'none', value: '' };
+  const lower = raw.toLowerCase();
+  if (lower.endsWith('.svg') || lower.startsWith('data:image/svg+xml')) {
+    return { kind: 'svg', value: raw };
+  }
+  return { kind: 'emoji', value: raw };
+}
+
 const Logo = ({ className = "w-32 h-32" }) => (
   <div className={`bg-white rounded-full border-4 border-zinc-900 flex flex-col items-center justify-center relative shadow-2xl ${className}`}>
     <div className="absolute inset-1.5 border-2 border-zinc-800 rounded-full"></div>
@@ -402,7 +412,21 @@ export default function ClientView() {
             {services.map((service) => (
               <div key={service.id} className="bg-zinc-900/50 border border-zinc-800 p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl hover:border-[#e5c185]/50 transition-colors group min-w-0">
                 <div className="w-12 h-12 sm:w-14 sm:h-14 bg-zinc-950 border border-zinc-800 rounded-lg sm:rounded-xl flex items-center justify-center text-[#e5c185] mb-4 sm:mb-6 group-hover:scale-110 transition-transform text-2xl sm:text-3xl">
-                  {service.emoji ? <span>{service.emoji}</span> : <Scissors size={28} className="w-7 h-7 sm:w-7 sm:h-7" />}
+                  {(() => {
+                    const icon = getServiceIconSource(service.emoji);
+                    if (icon.kind === 'svg') {
+                      return (
+                        <img
+                          src={icon.value}
+                          alt={service.name}
+                          className="w-7 h-7 sm:w-8 sm:h-8 object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      );
+                    }
+                    if (icon.kind === 'emoji') return <span>{icon.value}</span>;
+                    return <Scissors size={28} className="w-7 h-7 sm:w-7 sm:h-7" />;
+                  })()}
                 </div>
                 <h3 className="text-xl sm:text-2xl font-serif font-bold mb-2 text-white break-words">{service.name}</h3>
                 <p className="text-zinc-400 mb-4 sm:mb-6 min-h-[3rem] sm:min-h-[48px] font-sans font-light text-sm sm:text-base line-clamp-3">{service.desc}</p>

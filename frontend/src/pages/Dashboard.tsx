@@ -51,6 +51,16 @@ function getPrice(service: string): number {
   return SERVICE_PRICES[service] ?? 0;
 }
 
+function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
+  const raw = (icon ?? '').trim();
+  if (!raw) return { kind: 'none', value: '' };
+  const lower = raw.toLowerCase();
+  if (lower.endsWith('.svg') || lower.startsWith('data:image/svg+xml')) {
+    return { kind: 'svg', value: raw };
+  }
+  return { kind: 'emoji', value: raw };
+}
+
 const WEEKDAY_SHORT: { value: number; label: string }[] = [
   { value: 1, label: 'Lun' },
   { value: 2, label: 'Mar' },
@@ -893,7 +903,7 @@ export default function Dashboard() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-zinc-200 bg-zinc-50/50">
-                    <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider w-14">Emoji</th>
+                    <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider w-14">Icono</th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Nombre</th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Precio</th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Duración</th>
@@ -904,7 +914,21 @@ export default function Dashboard() {
                 <tbody>
                   {services.map((s) => (
                     <tr key={s.id} className="border-b border-zinc-100 hover:bg-zinc-50/50">
-                      <td className="py-4 px-4 text-2xl">{s.emoji || '—'}</td>
+                      <td className="py-4 px-4">{(() => {
+                        const icon = getServiceIconSource(s.emoji);
+                        if (icon.kind === 'svg') {
+                          return (
+                            <img
+                              src={icon.value}
+                              alt={s.name}
+                              className="w-8 h-8 object-contain"
+                              referrerPolicy="no-referrer"
+                            />
+                          );
+                        }
+                        if (icon.kind === 'emoji') return <span className="text-2xl">{icon.value}</span>;
+                        return <span className="text-zinc-400">—</span>;
+                      })()}</td>
                       <td className="py-4 px-4 font-medium text-zinc-900">{s.name}</td>
                       <td className="py-4 px-4 text-zinc-700">{s.price}</td>
                       <td className="py-4 px-4 text-zinc-700">{s.duration} min</td>
@@ -1328,16 +1352,15 @@ export default function Dashboard() {
             <form onSubmit={handleSaveService} className="p-6 space-y-4">
               {serviceError && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{serviceError}</div>}
               <div>
-                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Emoji</label>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Icono</label>
                 <input
                   type="text"
                   value={serviceForm.emoji}
                   onChange={(e) => setServiceForm((f) => ({ ...f, emoji: e.target.value }))}
-                  className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-2xl text-center"
-                  placeholder="✂️"
-                  maxLength={10}
+                  className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900"
+                  placeholder="✂️ o https://tu-cdn/icono.svg"
                 />
-                <p className="text-xs text-zinc-400 mt-1">Pega un emoji (ej. ✂️ 💈 🧔)</p>
+                <p className="text-xs text-zinc-400 mt-1">Acepta emoji, URL terminada en .svg o data:image/svg+xml</p>
               </div>
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Nombre</label>

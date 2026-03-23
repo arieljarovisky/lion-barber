@@ -56,13 +56,18 @@ export async function initDb(): Promise<void> {
       price VARCHAR(50) NOT NULL,
       duration INT NOT NULL,
       \`desc\` TEXT,
-      emoji VARCHAR(20) DEFAULT ''
+      emoji TEXT
     )
   `);
   try {
-    await pool.execute('ALTER TABLE services ADD COLUMN emoji VARCHAR(20) DEFAULT ""');
+    await pool.execute('ALTER TABLE services ADD COLUMN emoji TEXT');
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE services MODIFY COLUMN emoji TEXT');
+  } catch {
+    /* migración no crítica */
   }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS barbers (
