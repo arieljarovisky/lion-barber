@@ -82,8 +82,75 @@ export default function ClientView() {
 
   const [availableSlots, setAvailableSlots] = useState<string[]>(TIME_SLOTS);
   const [earliestAny, setEarliestAny] = useState<{ barberId: string; time: string } | null>(null);
+  const [availableBarberIds, setAvailableBarberIds] = useState<string[]>([]);
 
   const selectedServiceDuration = services.find((s) => s.id === selectedService)?.duration ?? 30;
+  const visibleBarbers = useMemo(() => {
+    if (!selectedDate || !selectedService) return barbers;
+    const set = new Set(availableBarberIds);
+    return barbers.filter((b) => set.has(b.id));
+  }, [barbers, selectedDate, selectedService, availableBarberIds]);
+
+  const validateBookingForm = (): boolean => {
+    if (!selectedService || !selectedBarber || !selectedDate || !selectedTime || !name || !phone) {
+      setBookingError('Por favor completa todos los campos');
+      return false;
+    }
+    if (isBefore(startOfDay(new Date(selectedDate)), startOfDay(new Date()))) {
+      setBookingError('No podés reservar en una fecha pasada.');
+      return false;
+    }
+    const cleanName = name.trim();
+    if (cleanName.length < 3) {
+      setBookingError('Ingresá un nombre válido (mínimo 3 caracteres).');
+      return false;
+    }
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 8 || digits.length > 15) {
+      setBookingError('Ingresá un teléfono válido.');
+      return false;
+    }
+    if (selectedBarber !== ANY_BARBER_ID && !visibleBarbers.some((b) => b.id === selectedBarber)) {
+      setBookingError('Ese barbero no está disponible para la fecha elegida.');
+      return false;
+    }
+    if (!availableSlots.includes(selectedTime)) {
+      setBookingError('La hora elegida ya no está disponible. Elegí otra.');
+      return false;
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    if (!selectedDate || !selectedService || barbers.length === 0) {
+      setAvailableBarberIds(barbers.map((b) => b.id));
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      barbers.map(async (b) => {
+        try {
+          const r = await api.getAvailability(selectedDate, b.id, selectedServiceDuration);
+          return r.slots.length > 0 ? b.id : null;
+        } catch {
+          return b.id;
+        }
+      })
+    ).then((ids) => {
+      if (cancelled) return;
+      setAvailableBarberIds(ids.filter((x): x is string => Boolean(x)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedDate, selectedService, selectedServiceDuration, barbers]);
+
+  useEffect(() => {
+    if (!selectedBarber || selectedBarber === ANY_BARBER_ID) return;
+    if (!visibleBarbers.some((b) => b.id === selectedBarber)) {
+      setSelectedBarber('');
+    }
+  }, [selectedBarber, visibleBarbers]);
 
   useEffect(() => {
     const checkout = searchParams.get('checkout');
@@ -228,14 +295,11 @@ export default function ClientView() {
   const handlePaySena = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setBookingError('');
-    if (!selectedService || !selectedBarber || !selectedDate || !selectedTime || !name || !phone) {
-      setBookingError('Por favor completa todos los campos');
-      return;
-    }
+    if (!validateBookingForm()) return;
     try {
       const { url } = await api.createCheckoutSena({
-        name,
-        phone,
+        name: name.trim(),
+        phone: phone.trim(),
         service: services.find((s) => s.id === selectedService)?.name ?? selectedService,
         serviceId: selectedService,
         barberId: selectedBarber,
@@ -257,15 +321,12 @@ export default function ClientView() {
   const handleBook = async (e: React.FormEvent) => {
     e.preventDefault();
     setBookingError('');
-    if (!selectedService || !selectedBarber || !selectedDate || !selectedTime || !name || !phone) {
-      setBookingError('Por favor completa todos los campos');
-      return;
-    }
+    if (!validateBookingForm()) return;
 
     try {
       await addAppointment({
-        name,
-        phone,
+        name: name.trim(),
+        phone: phone.trim(),
         service: services.find(s => s.id === selectedService)?.name ?? selectedService,
         serviceId: selectedService,
         barberId: selectedBarber,
@@ -589,14 +650,14 @@ export default function ClientView() {
                           </div>
                           <div>
                             <div className={`font-bold ${selectedBarber === ANY_BARBER_ID ? 'text-black' : 'text-white'}`}>
-                              Cualquier barbero
+                              Sin preferencia
                             </div>
                             <div className={`text-xs ${selectedBarber === ANY_BARBER_ID ? 'text-black/70' : 'text-zinc-500'}`}>
                               El turno más próximo
                             </div>
                           </div>
                         </button>
-                        {barbers.map((b) => (
+                        {visibleBarbers.map((b) => (
                           <button
                             key={b.id}
                             type="button"
@@ -615,6 +676,11 @@ export default function ClientView() {
                           </button>
                         ))}
                       </div>
+                      {selectedDate && selectedService && visibleBarbers.length === 0 && (
+                        <p className="text-amber-500/90 text-sm mt-2">
+                          No hay barberos disponibles ese día para este servicio (puede ser por franco u ocupación).
+                        </p>
+                      )}
                       {selectedBarber === ANY_BARBER_ID && (
                         <p className="text-xs text-zinc-500 mt-2">
                           Asignamos automáticamente al barbero libre en el horario que elijas (según la duración del servicio).
