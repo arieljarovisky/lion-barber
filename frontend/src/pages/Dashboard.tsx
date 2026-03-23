@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { format, parseISO, addDays, subDays, addWeeks, subWeeks, startOfDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -19,6 +19,8 @@ import {
   UserPlus,
   Menu,
   Settings,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -114,6 +116,23 @@ export default function Dashboard() {
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState('');
+  const [toast, setToast] = useState<{ message: string; kind: 'ok' | 'err' } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string, kind: 'ok' | 'err' = 'ok') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, kind });
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 3200);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   const { profile, logout, isAdmin, canAccessDashboard } = useAuth();
 
@@ -543,8 +562,10 @@ export default function Dashboard() {
     setShopError('');
     try {
       await api.updateShopSettings({ cutoffHours: shopCutoff, openWeekdays: shopDays });
+      showToast('Configuración guardada correctamente');
     } catch (err) {
       setShopError(err instanceof Error ? err.message : 'Error al guardar');
+      showToast(err instanceof Error ? err.message : 'Error al guardar', 'err');
     } finally {
       setShopSaving(false);
     }
@@ -566,6 +587,28 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
+      {toast && (
+        <div
+          className="fixed bottom-6 right-6 z-[200] max-w-[min(100vw-2rem,22rem)] pointer-events-none"
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className={`pointer-events-auto flex items-start gap-3 rounded-xl border px-4 py-3 shadow-lg ${
+              toast.kind === 'ok'
+                ? 'border-zinc-800 bg-zinc-950 text-white'
+                : 'border-red-800 bg-red-950 text-red-50'
+            }`}
+          >
+            {toast.kind === 'ok' ? (
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" aria-hidden />
+            ) : (
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" aria-hidden />
+            )}
+            <p className="text-sm font-medium leading-snug">{toast.message}</p>
+          </div>
+        </div>
+      )}
       {mobileNavOpen && (
         <button
           type="button"
@@ -1471,7 +1514,13 @@ export default function Dashboard() {
                           onBlur={(e) => {
                             const v = parseFloat(e.target.value);
                             if (!Number.isFinite(v)) return;
-                            void api.updateBarberCommission(b.id, v).then(() => loadData());
+                            void api
+                              .updateBarberCommission(b.id, v)
+                              .then(() => {
+                                loadData();
+                                showToast(`Comisión de ${b.name} guardada`);
+                              })
+                              .catch(() => showToast('No se pudo guardar la comisión', 'err'));
                           }}
                           className="w-24 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
                         />
