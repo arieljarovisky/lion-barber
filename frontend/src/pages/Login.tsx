@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { motion } from 'motion/react';
 
 export default function Login() {
-  const { loginWithGoogle, user, loading } = useAuth();
+  const { loginWithGoogle, user, loading, canAccessDashboard } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [error, setError] = useState('');
@@ -14,9 +14,10 @@ export default function Login() {
 
   React.useEffect(() => {
     if (!loading && user) {
-      navigate(from, { replace: true });
+      const target = canAccessDashboard ? '/dashboard' : from;
+      navigate(target, { replace: true });
     }
-  }, [user, loading, navigate, from]);
+  }, [user, loading, navigate, from, canAccessDashboard]);
 
   const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
     const idToken = credentialResponse.credential;
@@ -80,7 +81,6 @@ export default function Login() {
               text="continue_with"
               shape="rectangular"
               width="280"
-              locale="es"
             />
           </div>
 

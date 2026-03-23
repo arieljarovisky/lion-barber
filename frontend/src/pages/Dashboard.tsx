@@ -16,11 +16,19 @@ import {
   X,
   Package,
   Ban,
+  UserPlus,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
-import type { Appointment, Barber, Service, BarberFrancoRow, BarberTimeBlockRow } from '../api';
+import type {
+  Appointment,
+  Barber,
+  Service,
+  BarberFrancoRow,
+  BarberTimeBlockRow,
+  StaffInviteRow,
+} from '../api';
 
 const TIME_SLOTS = [
   '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
@@ -65,7 +73,7 @@ export default function Dashboard() {
   const [form, setForm] = useState({ name: '', phone: '', service: '', barberId: '', date: '', time: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [view, setView] = useState<'agenda' | 'servicios' | 'horarios'>('agenda');
+  const [view, setView] = useState<'agenda' | 'servicios' | 'horarios' | 'equipo'>('agenda');
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [serviceForm, setServiceForm] = useState({ name: '', price: '', duration: 30, desc: '', emoji: '' });
@@ -82,8 +90,14 @@ export default function Dashboard() {
   const [blockTimeStart, setBlockTimeStart] = useState('13:00');
   const [blockTimeEnd, setBlockTimeEnd] = useState('14:00');
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [staffInvites, setStaffInvites] = useState<StaffInviteRow[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamError, setTeamError] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [savingInvite, setSavingInvite] = useState(false);
 
-  const { profile, logout, isAdmin } = useAuth();
+  const { profile, logout, isAdmin, canAccessDashboard } = useAuth();
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -146,8 +160,34 @@ export default function Dashboard() {
     }
   }, [view, scheduleBarberId, loadSchedule]);
 
+  useEffect(() => {
+    if (!isAdmin && (view === 'servicios' || view === 'equipo')) {
+      setView('agenda');
+    }
+  }, [isAdmin, view]);
+
+  const loadStaffInvites = useCallback(async () => {
+    setTeamLoading(true);
+    setTeamError('');
+    try {
+      const list = await api.getStaffInvites();
+      setStaffInvites(list);
+    } catch {
+      setStaffInvites([]);
+      setTeamError('No se pudo cargar el equipo.');
+    } finally {
+      setTeamLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === 'equipo' && isAdmin) {
+      loadStaffInvites();
+    }
+  }, [view, isAdmin, loadStaffInvites]);
+
   const toggleFranco = async (weekday: number) => {
-    if (!scheduleBarberId || !isAdmin) return;
+    if (!scheduleBarberId || !canAccessDashboard) return;
     const existing = francos.find((f) => f.weekday === weekday);
     setSavingSchedule(true);
     setScheduleError('');
@@ -167,7 +207,7 @@ export default function Dashboard() {
 
   const handleAddTimeBlock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!scheduleBarberId || !isAdmin) return;
+    if (!scheduleBarberId || !canAccessDashboard) return;
     if (TIME_SLOTS.indexOf(blockTimeEnd) <= TIME_SLOTS.indexOf(blockTimeStart)) {
       setScheduleError('La hora "hasta" debe ser posterior a "desde".');
       return;
@@ -189,8 +229,39 @@ export default function Dashboard() {
     }
   };
 
+  const handleAddStaffInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setSavingInvite(true);
+    setTeamError('');
+    try {
+      await api.createStaffInvite({
+        email: inviteEmail.trim(),
+        name: inviteName.trim() || undefined,
+      });
+      setInviteEmail('');
+      setInviteName('');
+      await loadStaffInvites();
+    } catch (err) {
+      setTeamError(err instanceof Error ? err.message : 'Error al invitar');
+    } finally {
+      setSavingInvite(false);
+    }
+  };
+
+  const handleDeleteStaffInvite = async (id: number) => {
+    if (!confirm('¿Eliminar esta invitación pendiente?')) return;
+    setTeamError('');
+    try {
+      await api.deleteStaffInvite(id);
+      await loadStaffInvites();
+    } catch (err) {
+      setTeamError(err instanceof Error ? err.message : 'Error al eliminar');
+    }
+  };
+
   const deleteBlock = async (id: number) => {
-    if (!scheduleBarberId || !confirm('¿Quitar este bloqueo de horario?')) return;
+    if (!scheduleBarberId || !canAccessDashboard || !confirm('¿Quitar este bloqueo de horario?')) return;
     setSavingSchedule(true);
     setScheduleError('');
     try {
@@ -403,7 +474,9 @@ export default function Dashboard() {
         <div className="flex items-center gap-4">
           {profile && (
             <span className="text-zinc-400 text-sm hidden sm:inline">
-              {profile.name} {profile.role === 'admin' && <span className="text-[#e5c185]">(Admin)</span>}
+              {profile.name}{' '}
+              {profile.role === 'admin' && <span className="text-[#e5c185]">(Admin)</span>}
+              {profile.role === 'staff' && <span className="text-[#e5c185]">(Empleado)</span>}
             </span>
           )}
           <a href="/" className="text-zinc-400 hover:text-white flex items-center gap-2 text-sm font-medium transition-colors px-3 py-2">
@@ -436,14 +509,16 @@ export default function Dashboard() {
                 <CalendarIcon size={18} />
                 Agenda
               </button>
-              <button
-                type="button"
-                onClick={() => setView('servicios')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${view === 'servicios' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}
-              >
-                <Package size={18} />
-                Servicios
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setView('servicios')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${view === 'servicios' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}
+                >
+                  <Package size={18} />
+                  Servicios
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setView('horarios')}
@@ -452,6 +527,16 @@ export default function Dashboard() {
                 <Ban size={18} />
                 Horarios
               </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setView('equipo')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors ${view === 'equipo' ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'}`}
+                >
+                  <UserPlus size={18} />
+                  Equipo
+                </button>
+              )}
             </div>
           </div>
 
@@ -886,13 +971,13 @@ export default function Dashboard() {
                       <button
                         key={value}
                         type="button"
-                        disabled={!isAdmin || savingSchedule}
+                        disabled={!canAccessDashboard || savingSchedule}
                         onClick={() => toggleFranco(value)}
                         className={`px-4 py-2.5 rounded-xl text-sm font-bold border transition-colors ${
                           on
                             ? 'bg-red-100 border-red-300 text-red-900'
                             : 'bg-zinc-50 border-zinc-200 text-zinc-600 hover:border-zinc-300'
-                        } ${!isAdmin ? 'opacity-60 cursor-not-allowed' : ''}`}
+                        } ${!canAccessDashboard ? 'opacity-60 cursor-not-allowed' : ''}`}
                       >
                         {label}
                         {on ? ' · no trabaja' : ''}
@@ -917,7 +1002,7 @@ export default function Dashboard() {
                       name="blockMode"
                       checked={blockMode === 'once'}
                       onChange={() => setBlockMode('once')}
-                      disabled={!isAdmin}
+                      disabled={!canAccessDashboard}
                     />
                     <span className="text-sm font-medium text-zinc-800">Una fecha</span>
                   </label>
@@ -927,7 +1012,7 @@ export default function Dashboard() {
                       name="blockMode"
                       checked={blockMode === 'weekly'}
                       onChange={() => setBlockMode('weekly')}
-                      disabled={!isAdmin}
+                      disabled={!canAccessDashboard}
                     />
                     <span className="text-sm font-medium text-zinc-800">Cada semana</span>
                   </label>
@@ -942,7 +1027,7 @@ export default function Dashboard() {
                         value={blockDate}
                         onChange={(e) => setBlockDate(e.target.value)}
                         className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
-                        disabled={!isAdmin}
+                        disabled={!canAccessDashboard}
                       />
                     </div>
                   ) : (
@@ -952,7 +1037,7 @@ export default function Dashboard() {
                         value={blockWeekday}
                         onChange={(e) => setBlockWeekday(Number(e.target.value))}
                         className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
-                        disabled={!isAdmin}
+                        disabled={!canAccessDashboard}
                       >
                         {WEEKDAY_SHORT.map(({ value, label }) => (
                           <option key={value} value={value}>
@@ -969,7 +1054,7 @@ export default function Dashboard() {
                         value={blockTimeStart}
                         onChange={(e) => setBlockTimeStart(e.target.value)}
                         className="w-full border border-zinc-200 rounded-xl px-3 py-3 text-zinc-900 text-sm"
-                        disabled={!isAdmin}
+                        disabled={!canAccessDashboard}
                       >
                         {TIME_SLOTS.map((t) => (
                           <option key={t} value={t}>
@@ -984,7 +1069,7 @@ export default function Dashboard() {
                         value={blockTimeEnd}
                         onChange={(e) => setBlockTimeEnd(e.target.value)}
                         className="w-full border border-zinc-200 rounded-xl px-3 py-3 text-zinc-900 text-sm"
-                        disabled={!isAdmin}
+                        disabled={!canAccessDashboard}
                       >
                         {TIME_SLOTS.map((t) => (
                           <option key={t} value={t}>
@@ -997,7 +1082,7 @@ export default function Dashboard() {
                 </div>
                 <button
                   type="submit"
-                  disabled={!isAdmin || savingSchedule}
+                  disabled={!canAccessDashboard || savingSchedule}
                   className="px-5 py-2.5 bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 font-bold rounded-xl disabled:opacity-50"
                 >
                   {savingSchedule ? 'Guardando...' : 'Agregar bloqueo'}
@@ -1022,7 +1107,7 @@ export default function Dashboard() {
                       </span>
                       <button
                         type="button"
-                        disabled={!isAdmin || savingSchedule}
+                        disabled={!canAccessDashboard || savingSchedule}
                         onClick={() => deleteBlock(b.id)}
                         className="text-red-600 hover:text-red-800 font-bold text-xs uppercase tracking-wider disabled:opacity-50"
                       >
@@ -1034,6 +1119,89 @@ export default function Dashboard() {
               )}
               {!scheduleLoading && timeBlocks.length === 0 && (
                 <p className="text-zinc-400 text-sm mt-4">No hay bloqueos por hora para este barbero.</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {view === 'equipo' && isAdmin && (
+          <div className="max-w-2xl space-y-6">
+            {teamError && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{teamError}</div>
+            )}
+            <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="font-black text-lg text-zinc-900 flex items-center gap-2">
+                <UserPlus className="text-[#b39055]" size={22} />
+                Invitar empleado
+              </h3>
+              <p className="text-sm text-zinc-500 mt-2">
+                Ingresá el correo de Google del empleado. Cuando inicie sesión por primera vez con esa cuenta, recibirá
+                acceso al panel (agenda y horarios). No hace falta contraseña: usa el mismo botón de Google en la web.
+              </p>
+              <form onSubmit={handleAddStaffInvite} className="mt-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Email</label>
+                  <input
+                    type="email"
+                    required
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                    placeholder="empleado@gmail.com"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                    Nombre (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={inviteName}
+                    onChange={(e) => setInviteName(e.target.value)}
+                    className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                    placeholder="Para identificar en la lista"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={savingInvite}
+                  className="px-5 py-2.5 bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 font-bold rounded-xl disabled:opacity-50"
+                >
+                  {savingInvite ? 'Guardando...' : 'Agregar invitación'}
+                </button>
+              </form>
+            </div>
+
+            <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-zinc-100 bg-zinc-50/50">
+                <h4 className="font-bold text-zinc-800">Pendientes de primer acceso</h4>
+                <p className="text-xs text-zinc-500 mt-1">{staffInvites.length} invitación(es)</p>
+              </div>
+              {teamLoading ? (
+                <p className="p-6 text-zinc-400">Cargando...</p>
+              ) : staffInvites.length === 0 ? (
+                <p className="p-6 text-zinc-500 text-sm">No hay invitaciones pendientes.</p>
+              ) : (
+                <ul className="divide-y divide-zinc-100">
+                  {staffInvites.map((inv) => (
+                    <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+                      <div>
+                        <p className="font-medium text-zinc-900">{inv.email}</p>
+                        {inv.name && <p className="text-zinc-500 text-xs">{inv.name}</p>}
+                        <p className="text-zinc-400 text-xs mt-1">
+                          Invitado {format(parseISO(inv.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteStaffInvite(inv.id)}
+                        className="text-red-600 hover:text-red-800 font-bold text-xs uppercase tracking-wider"
+                      >
+                        Quitar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           </div>

@@ -40,3 +40,13 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
   }
   next();
 }
+
+/** Panel interno: administrador o empleado (staff). */
+export function requireStaffOrAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
+  const r = req.user?.role;
+  if (r !== 'admin' && r !== 'staff') {
+    res.status(403).json({ error: 'Acceso al panel denegado' });
+    return;
+  }
+  next();
+}

@@ -57,6 +57,13 @@ export interface BarberTimeBlockRow {
   timeEnd: string;
 }
 
+export interface StaffInviteRow {
+  id: number;
+  email: string;
+  name: string | null;
+  createdAt: string;
+}
+
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options?.headers as Record<string, string>) };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
@@ -171,6 +178,17 @@ export const api = {
       `/api/barber-schedule/${encodeURIComponent(barberId)}/blocks/${blockId}`,
       { method: 'DELETE' }
     ),
+
+  getStaffInvites: () => fetchApi<StaffInviteRow[]>('/api/staff-invites'),
+
+  createStaffInvite: (data: { email: string; name?: string }) =>
+    fetchApi<StaffInviteRow>('/api/staff-invites', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteStaffInvite: (id: number) =>
+    fetchApi<void>(`/api/staff-invites/${id}`, { method: 'DELETE' }),
 
   auth: {
     postGoogle: (idToken: string) =>

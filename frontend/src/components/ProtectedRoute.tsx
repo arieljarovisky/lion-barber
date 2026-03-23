@@ -1,12 +1,19 @@
+import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 type ProtectedRouteProps = {
-  children: React.ReactNode;
+  children: ReactNode;
   adminOnly?: boolean;
+  /** Admin o empleado (staff) — panel /dashboard */
+  dashboardAccess?: boolean;
 };
 
-export default function ProtectedRoute({ children, adminOnly = false }: ProtectedRouteProps) {
+export default function ProtectedRoute({
+  children,
+  adminOnly = false,
+  dashboardAccess = false,
+}: ProtectedRouteProps) {
   const { user, profile, loading } = useAuth();
   const location = useLocation();
 
@@ -23,6 +30,14 @@ export default function ProtectedRoute({ children, adminOnly = false }: Protecte
   }
 
   if (adminOnly && profile?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  if (
+    dashboardAccess &&
+    profile?.role !== 'admin' &&
+    profile?.role !== 'staff'
+  ) {
     return <Navigate to="/" replace />;
   }
 

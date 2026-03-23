@@ -8,7 +8,7 @@ export interface UserProfile {
   name: string;
   email: string;
   points: number;
-  role: 'client' | 'admin';
+  role: 'client' | 'admin' | 'staff';
   phone?: string;
 }
 
@@ -19,6 +19,8 @@ interface AuthContextType {
   loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: boolean;
+  /** Admin o empleado: puede entrar al panel /dashboard */
+  canAccessDashboard: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -28,17 +30,20 @@ const AuthContext = createContext<AuthContextType>({
   loginWithGoogle: async () => {},
   logout: async () => {},
   isAdmin: false,
+  canAccessDashboard: false,
 });
 
 export const useAuth = () => useContext(AuthContext);
 
 function profileFromBackend(u: { id: number; email: string; name: string; role: string; points?: number }): UserProfile {
+  const role =
+    u.role === 'admin' ? 'admin' : u.role === 'staff' ? 'staff' : 'client';
   return {
     id: u.id,
     name: u.name,
     email: u.email,
     points: u.points ?? 0,
-    role: u.role === 'admin' ? 'admin' : 'client',
+    role,
   };
 }
 
@@ -78,6 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const isAdmin = profile?.role === 'admin';
+  const canAccessDashboard = profile?.role === 'admin' || profile?.role === 'staff';
 
   return (
     <AuthContext.Provider
@@ -88,6 +94,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithGoogle,
         logout,
         isAdmin,
+        canAccessDashboard,
       }}
     >
       {children}

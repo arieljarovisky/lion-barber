@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users } from 'lucide-react';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard } from 'lucide-react';
 import { addAppointment, api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
@@ -33,7 +33,8 @@ const Logo = ({ className = "w-32 h-32" }) => (
 );
 
 export default function ClientView() {
-  const { profile } = useAuth();
+  const { profile, logout, canAccessDashboard } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -208,6 +209,11 @@ export default function ClientView() {
     }
   };
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/', { replace: true });
+  };
+
   const handleBook = async (e: React.FormEvent) => {
     e.preventDefault();
     setBookingError('');
@@ -253,10 +259,27 @@ export default function ClientView() {
             <a href="#contacto" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Contacto</a>
             {profile ? (
               <>
-                <span className="text-zinc-500 text-xs uppercase tracking-wider hidden lg:inline">Ya estás logueado</span>
+                <span className="text-zinc-500 text-xs uppercase tracking-wider hidden lg:inline">Hola, {profile.name.split(' ')[0]}</span>
+                {canAccessDashboard && (
+                  <Link
+                    to="/dashboard"
+                    className="hidden lg:inline-flex items-center gap-1.5 text-xs font-bold text-[#e5c185] hover:text-[#d4b074] uppercase tracking-wider whitespace-nowrap"
+                  >
+                    <LayoutDashboard size={16} />
+                    Panel
+                  </Link>
+                )}
                 <Link to="/perfil" className="text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-2 rounded-full transition-colors uppercase tracking-wider whitespace-nowrap">
                   Mi perfil
                 </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="text-xs font-sans font-bold text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-2 rounded-full transition-colors uppercase tracking-wider whitespace-nowrap inline-flex items-center gap-1.5"
+                >
+                  <LogOut size={14} />
+                  Salir
+                </button>
               </>
             ) : (
               <Link to="/login" className="text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-2 rounded-full transition-colors uppercase tracking-wider whitespace-nowrap">
@@ -284,10 +307,31 @@ export default function ClientView() {
             <div className="h-px bg-zinc-800/50 my-2"></div>
             {profile ? (
               <>
-                <p className="text-zinc-500 text-xs uppercase tracking-wider text-center">Ya estás logueado</p>
+                <p className="text-zinc-500 text-xs uppercase tracking-wider text-center">Hola, {profile.name.split(' ')[0]}</p>
+                {canAccessDashboard && (
+                  <Link
+                    to="/dashboard"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="text-center text-xs font-bold text-[#e5c185] hover:text-[#d4b074] uppercase tracking-wider flex items-center justify-center gap-2 py-2"
+                  >
+                    <LayoutDashboard size={18} />
+                    Panel
+                  </Link>
+                )}
                 <Link to="/perfil" onClick={() => setIsMobileMenuOpen(false)} className="text-center text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-3 rounded-xl transition-colors uppercase tracking-wider block">
                   Mi perfil
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    void handleLogout();
+                  }}
+                  className="w-full text-center text-xs font-sans font-bold text-zinc-400 border border-zinc-700 px-4 py-3 rounded-xl uppercase tracking-wider inline-flex items-center justify-center gap-2"
+                >
+                  <LogOut size={18} />
+                  Cerrar sesión
+                </button>
               </>
             ) : (
               <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="text-center text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-3 rounded-xl transition-colors uppercase tracking-wider block">

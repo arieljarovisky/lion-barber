@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin, type AuthRequest } from '../middleware/auth.js';
+import { requireAuth, requireStaffOrAdmin, type AuthRequest } from '../middleware/auth.js';
 import * as scheduleRepo from '../repositories/barberSchedule.js';
 import { getBarberById } from '../repositories/barbers.js';
 import { timeToMinutes } from '../slotUtils.js';
@@ -21,7 +21,7 @@ router.get('/:barberId', async (req, res) => {
   res.json({ francos, blocks });
 });
 
-router.post('/:barberId/francos', requireAuth, requireAdmin, async (req: AuthRequest, res) => {
+router.post('/:barberId/francos', requireAuth, requireStaffOrAdmin, async (req: AuthRequest, res) => {
   const { barberId } = req.params;
   const barber = await getBarberById(barberId);
   if (!barber) return res.status(404).json({ error: 'Barbero no encontrado' });
@@ -42,7 +42,7 @@ router.post('/:barberId/francos', requireAuth, requireAdmin, async (req: AuthReq
   }
 });
 
-router.delete('/:barberId/francos/:francoId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/:barberId/francos/:francoId', requireAuth, requireStaffOrAdmin, async (req, res) => {
   const { barberId } = req.params;
   const francoId = parseInt(req.params.francoId, 10);
   if (!Number.isFinite(francoId)) return res.status(400).json({ error: 'ID inválido' });
@@ -51,7 +51,7 @@ router.delete('/:barberId/francos/:francoId', requireAuth, requireAdmin, async (
   res.status(204).send();
 });
 
-router.post('/:barberId/blocks', requireAuth, requireAdmin, async (req, res) => {
+router.post('/:barberId/blocks', requireAuth, requireStaffOrAdmin, async (req, res) => {
   const { barberId } = req.params;
   const barber = await getBarberById(barberId);
   if (!barber) return res.status(404).json({ error: 'Barbero no encontrado' });
@@ -91,7 +91,7 @@ router.post('/:barberId/blocks', requireAuth, requireAdmin, async (req, res) => 
   }
 });
 
-router.delete('/:barberId/blocks/:blockId', requireAuth, requireAdmin, async (req, res) => {
+router.delete('/:barberId/blocks/:blockId', requireAuth, requireStaffOrAdmin, async (req, res) => {
   const { barberId } = req.params;
   const blockId = parseInt(req.params.blockId, 10);
   if (!Number.isFinite(blockId)) return res.status(400).json({ error: 'ID inválido' });

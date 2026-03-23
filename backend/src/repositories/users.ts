@@ -39,6 +39,10 @@ export async function updateUserRole(id: number, role: string): Promise<void> {
   await query('UPDATE users SET role = ? WHERE id = ?', [role, id]);
 }
 
+export async function updateUserGoogleUid(id: number, googleUid: string): Promise<void> {
+  await query('UPDATE users SET google_uid = ? WHERE id = ?', [googleUid, id]);
+}
+
 export async function findUserById(id: number): Promise<DbUser | null> {
   const rows = await query<DbUser[]>('SELECT * FROM users WHERE id = ? LIMIT 1', [id]);
   return rows[0] ?? null;

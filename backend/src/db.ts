@@ -23,8 +23,24 @@ export async function initDb(): Promise<void> {
       google_uid VARCHAR(128) NOT NULL UNIQUE,
       email VARCHAR(255) NOT NULL,
       name VARCHAR(255) NOT NULL,
-      role ENUM('client', 'admin') NOT NULL DEFAULT 'client',
+      role ENUM('client', 'admin', 'staff') NOT NULL DEFAULT 'client',
       points INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  try {
+    await pool.execute(
+      "ALTER TABLE users MODIFY COLUMN role ENUM('client', 'admin', 'staff') NOT NULL DEFAULT 'client'"
+    );
+  } catch {
+    /* Base ya migrada o motor distinto */
+  }
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS staff_invites (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      name VARCHAR(255) NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);

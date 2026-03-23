@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { User, Clock, Calendar, Award, CreditCard, ChevronLeft } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { User, Clock, Calendar, Award, CreditCard, ChevronLeft, LogOut, LayoutDashboard } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import type { Appointment } from '../api';
@@ -8,7 +8,8 @@ import { format, isBefore, startOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export default function Perfil() {
-  const { profile } = useAuth();
+  const { profile, logout, canAccessDashboard } = useAuth();
+  const navigate = useNavigate();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,6 +31,11 @@ export default function Perfil() {
 
   if (!profile) return null;
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/', { replace: true });
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans min-w-0">
       <nav className="fixed top-0 left-0 right-0 z-50 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/50">
@@ -42,7 +48,25 @@ export default function Perfil() {
             <span className="font-medium text-sm sm:text-base truncate">Volver</span>
           </Link>
           <span className="font-serif font-black tracking-widest uppercase text-white text-sm sm:text-base truncate">Mi perfil</span>
-          <div className="w-14 sm:w-16 flex-shrink-0" aria-hidden />
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            {canAccessDashboard && (
+              <Link
+                to="/dashboard"
+                className="p-2 text-[#e5c185] hover:bg-zinc-800 rounded-lg transition-colors"
+                title="Panel"
+              >
+                <LayoutDashboard size={20} />
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+              title="Cerrar sesión"
+            >
+              <LogOut size={20} />
+            </button>
+          </div>
         </div>
       </nav>
 

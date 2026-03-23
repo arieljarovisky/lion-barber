@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { verifyGoogleToken, isAdminEmail, signJwt, verifyJwt } from '../auth.js';
+import { verifyGoogleToken, isAdminEmail, signJwt } from '../auth.js';
 import * as userRepo from '../repositories/users.js';
+import * as staffInvites from '../repositories/staffInvites.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
@@ -15,25 +16,40 @@ router.post('/google', async (req, res) => {
     const googleUid = payload.sub;
     const email = payload.email ?? '';
     const name = payload.name ?? payload.email ?? 'Usuario';
+    const emailLower = email.toLowerCase();
+
+    const invite = await staffInvites.findInviteByEmail(emailLower);
 
     let user = await userRepo.findUserByGoogleUid(googleUid);
     if (!user) {
-      user = await userRepo.findUserByEmail(email);
-      if (user) {
-        await userRepo.updateUserRole(user.id, isAdminEmail(email) ? 'admin' : user.role);
-        user = (await userRepo.findUserById(user.id))!;
+      const byEmail = await userRepo.findUserByEmail(email);
+      if (byEmail) {
+        if (byEmail.google_uid !== googleUid) {
+          await userRepo.updateUserGoogleUid(byEmail.id, googleUid);
+        }
+        user = (await userRepo.findUserById(byEmail.id))!;
       }
     }
+
     if (!user) {
-      const role = isAdminEmail(email) ? 'admin' : 'client';
+      let role = 'client';
+      if (isAdminEmail(email)) role = 'admin';
+      else if (invite) role = 'staff';
+
       user = await userRepo.createUser({
         google_uid: googleUid,
         email,
         name,
         role,
       });
-    } else if (isAdminEmail(email) && user.role !== 'admin') {
-      await userRepo.updateUserRole(user.id, 'admin');
+      if (invite) await staffInvites.deleteInviteByEmail(emailLower);
+    } else {
+      if (isAdminEmail(email) && user.role !== 'admin') {
+        await userRepo.updateUserRole(user.id, 'admin');
+      } else if (invite && user.role !== 'admin') {
+        await userRepo.updateUserRole(user.id, 'staff');
+      }
+      if (invite) await staffInvites.deleteInviteByEmail(emailLower);
       user = (await userRepo.findUserById(user.id))!;
     }
 
