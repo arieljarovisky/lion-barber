@@ -370,6 +370,30 @@ export default router;
 
 export async function mercadopagoWebhook(req: Request, res: Response): Promise<void> {
   const paymentId = extractPaymentId(req);
+
+  // Debug: ayuda a confirmar si estamos parseando bien el id que luego consultamos con el token.
+  // No logueamos datos sensibles; solo identificadores y campos de routing del webhook.
+  try {
+    const q = req.query as Record<string, unknown>;
+    const body = req.body as Record<string, unknown> | null | undefined;
+    const topic = q.topic;
+    const queryId = q.id;
+    const dataId = body && typeof body === 'object' ? (body as any).data?.id : undefined;
+    const resource = body && typeof body === 'object' ? (body as any).resource : undefined;
+    const eventId = (body as any)?.id;
+    const action = (body as any)?.action;
+
+    console.log(
+      `[Webhook MP] parse: topic=${String(topic)} queryId=${String(
+        queryId
+      )} dataId=${String(dataId)} resource=${typeof resource === 'string' ? resource.slice(0, 40) : typeof resource} action=${String(
+        action
+      )} eventId=${String(eventId)} extractedPaymentId=${paymentId}`
+    );
+  } catch {
+    /* ignore debug failures */
+  }
+
   if (!paymentId) {
     res.status(400).send('Sin id de pago');
     return;
