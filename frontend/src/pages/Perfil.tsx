@@ -28,6 +28,7 @@ export default function Perfil() {
   const [loading, setLoading] = useState(true);
   const [shopCutoffHours, setShopCutoffHours] = useState(12);
   const [actionError, setActionError] = useState('');
+  const [actionSuccess, setActionSuccess] = useState('');
   const [actionBusy, setActionBusy] = useState(false);
   const [rescheduleApp, setRescheduleApp] = useState<Appointment | null>(null);
   const [rsDate, setRsDate] = useState('');
@@ -84,6 +85,7 @@ export default function Perfil() {
 
   const openReschedule = (a: Appointment) => {
     setActionError('');
+    setActionSuccess('');
     setRescheduleApp(a);
     setRsDate(a.date);
     setRsTime(a.time);
@@ -113,15 +115,28 @@ export default function Perfil() {
   const handleCancel = async (a: Appointment) => {
     if (
       !confirm(
-        '¿Cancelar este turno? Solo podés hacerlo con la anticipación configurada por la barbería; si estás dentro del plazo mínimo, la operación no está permitida y la seña no se reembolsa si ya pagaste.'
+        '¿Cancelar este turno? Si falta menos de 2 horas para el horario, la seña abonada no se reembolsa. ' +
+          'Con al menos 2 horas de anticipación, el reembolso de la seña se procesa automáticamente en Mercado Pago.'
       )
     ) {
       return;
     }
     setActionBusy(true);
     setActionError('');
+    setActionSuccess('');
     try {
-      await api.cancelMyAppointment(a.id);
+      const res = await api.cancelMyAppointment(a.id);
+      if (res.cancelNotice === 'refund_processed') {
+        setActionSuccess(
+          'Turno cancelado. El reembolso de la seña se envió por Mercado Pago; el acreditado depende del banco o tarjeta.'
+        );
+      } else if (res.cancelNotice === 'deposit_retained_short_notice') {
+        setActionSuccess(
+          'Turno cancelado. La seña no se reembolsa por cancelar con menos de 2 horas de anticipación.'
+        );
+      } else {
+        setActionSuccess('Turno cancelado.');
+      }
       reload();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo cancelar');
@@ -170,6 +185,11 @@ export default function Perfil() {
         {actionError && (
           <div className="mb-4 p-3 rounded-xl border border-red-800 bg-red-950/50 text-red-200 text-sm">{actionError}</div>
         )}
+        {actionSuccess && (
+          <div className="mb-4 p-3 rounded-xl border border-emerald-800 bg-emerald-950/40 text-emerald-100 text-sm">
+            {actionSuccess}
+          </div>
+        )}
 
         <div className="flex flex-col items-center mb-8 sm:mb-10 text-center">
           <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-zinc-800 border-2 border-[#e5c185] flex items-center justify-center mb-3 sm:mb-4 flex-shrink-0">
@@ -198,8 +218,10 @@ export default function Perfil() {
             <h2 className="text-base sm:text-lg font-bold text-white">Turnos futuros</h2>
           </div>
           <p className="text-zinc-500 text-xs sm:text-sm mb-3">
-            Cancelar o reprogramar requiere al menos {shopCutoffHours} horas de anticipación (configurable por el dueño).
-            Dentro de ese margen no podés hacerlo desde la web y la seña abonada no se reembolsa.
+            Podés cancelar hasta el inicio del turno: si cancelás con al menos <strong className="text-zinc-300">2 horas</strong>{' '}
+            de anticipación, la seña se reembolsa por Mercado Pago; con menos tiempo, la seña no se devuelve. Para{' '}
+            <strong className="text-zinc-300">reprogramar</strong> hace falta al menos {shopCutoffHours} horas de anticipación
+            (configurable por el dueño).
           </p>
           {loading ? (
             <p className="text-zinc-500 text-sm">Cargando...</p>
@@ -221,28 +243,29 @@ export default function Perfil() {
                     {a.depositPaid && <p className="text-xs text-amber-400/90 mt-1">Seña abonada</p>}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
-                    {a.canRescheduleOrCancel && a.barberId ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={actionBusy}
-                          onClick={() => openReschedule(a)}
-                          className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold disabled:opacity-50"
-                        >
-                          Reprogramar
-                        </button>
-                        <button
-                          type="button"
-                          disabled={actionBusy}
-                          onClick={() => void handleCancel(a)}
-                          className="px-3 py-2 rounded-lg bg-red-950/80 hover:bg-red-900 text-red-200 text-xs font-bold border border-red-900 disabled:opacity-50"
-                        >
-                          Cancelar
-                        </button>
-                      </>
-                    ) : (
+                    {a.canReschedule && a.barberId ? (
+                      <button
+                        type="button"
+                        disabled={actionBusy}
+                        onClick={() => openReschedule(a)}
+                        className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold disabled:opacity-50"
+                      >
+                        Reprogramar
+                      </button>
+                    ) : null}
+                    {a.canCancel ? (
+                      <button
+                        type="button"
+                        disabled={actionBusy}
+                        onClick={() => void handleCancel(a)}
+                        className="px-3 py-2 rounded-lg bg-red-950/80 hover:bg-red-900 text-red-200 text-xs font-bold border border-red-900 disabled:opacity-50"
+                      >
+                        Cancelar
+                      </button>
+                    ) : null}
+                    {!a.canReschedule && !a.canCancel && (
                       <p className="text-xs text-zinc-500 max-w-[220px]">
-                        Ya no podés modificar este turno (plazo mínimo o turno no vinculado a tu cuenta).
+                        Ya no podés modificar este turno (por ejemplo, el horario ya pasó).
                       </p>
                     )}
                   </div>

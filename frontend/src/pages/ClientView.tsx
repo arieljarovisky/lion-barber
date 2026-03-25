@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { format, addDays, startOfToday, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay, getISODay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion } from 'motion/react';
+import { Wallet } from '@mercadopago/sdk-react';
 import heroPortada from '../assets/hero-portada.png';
 
 const TIME_SLOTS = [
@@ -100,6 +101,8 @@ export default function ClientView() {
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [pendingCheckoutSuccess, setPendingCheckoutSuccess] = useState(false);
   const [bookingError, setBookingError] = useState('');
+  const [senaCheckoutPreferenceId, setSenaCheckoutPreferenceId] = useState<string | null>(null);
+  const [senaCheckoutLoading, setSenaCheckoutLoading] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(startOfToday());
@@ -225,6 +228,10 @@ export default function ClientView() {
   }, [searchParams, setSearchParams]);
 
   useEffect(() => {
+    setSenaCheckoutPreferenceId(null);
+  }, [selectedService, selectedBarber, selectedDate, selectedTime]);
+
+  useEffect(() => {
     if (!pendingCheckoutSuccess || authLoading) return;
     setBookingSuccess(true);
     setPendingCheckoutSuccess(false);
@@ -275,6 +282,7 @@ export default function ClientView() {
       setSelectedTime('');
       setName('');
       setPhone('');
+      setSenaCheckoutPreferenceId(null);
     }, 12000);
     return () => clearTimeout(t);
   }, [bookingSuccess]);
@@ -353,6 +361,8 @@ export default function ClientView() {
     scrollContainerRef.current.scrollLeft = scrollLeft - walk;
   };
 
+  const mpPublicKey = import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY as string | undefined;
+
   const handlePaySena = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setBookingError('');
@@ -361,8 +371,16 @@ export default function ClientView() {
       return;
     }
     if (!validateBookingForm()) return;
+    const key = mpPublicKey?.trim();
+    if (!key) {
+      setBookingError(
+        'Falta la clave pública de Mercado Pago en el sitio (VITE_MERCADOPAGO_PUBLIC_KEY). Pedile al administrador que la configure.'
+      );
+      return;
+    }
+    setSenaCheckoutLoading(true);
     try {
-      const { url } = await api.createCheckoutSena({
+      const data = await api.createCheckoutSena({
         name: name.trim(),
         phone: phone.trim(),
         service: services.find((s) => s.id === selectedService)?.name ?? selectedService,
@@ -372,9 +390,11 @@ export default function ClientView() {
         time: selectedTime,
         userId: profile.id,
       });
-      window.location.href = url;
+      setSenaCheckoutPreferenceId(data.preferenceId);
     } catch (err) {
       setBookingError(err instanceof Error ? err.message : 'No se pudo iniciar el pago de la seña');
+    } finally {
+      setSenaCheckoutLoading(false);
     }
   };
 
@@ -926,14 +946,37 @@ export default function ClientView() {
                     <button
                       type="button"
                       onClick={handlePaySena}
-                      className="bg-[#e5c185] hover:bg-[#d4b074] text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+                      disabled={senaCheckoutLoading}
+                      className="bg-[#e5c185] hover:bg-[#d4b074] disabled:opacity-60 disabled:pointer-events-none text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      {profile ? 'Pagar seña y confirmar turno' : 'Iniciar sesión para confirmar'}
+                      {senaCheckoutLoading
+                        ? 'Preparando pago…'
+                        : profile
+                          ? senaCheckoutPreferenceId
+                            ? 'Preferencia lista — pagá abajo'
+                            : 'Pagar seña y confirmar turno'
+                          : 'Iniciar sesión para confirmar'}
                     </button>
+                    {senaCheckoutPreferenceId && (
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 min-h-[120px]">
+                        <p className="text-xs text-zinc-400 mb-3 text-center">
+                          Completá el pago con Mercado Pago. Si te redirige al checkout, al volver podés ver el estado del
+                          turno en tu perfil.
+                        </p>
+                        <Wallet
+                          initialization={{ preferenceId: senaCheckoutPreferenceId, redirectMode: 'self' }}
+                          locale="es-AR"
+                          customization={{ theme: 'dark' }}
+                          onError={(err) => {
+                            setBookingError(err.message || 'Error al cargar el botón de pago');
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                   <p className="text-center text-[11px] text-zinc-500 mt-2">
-                    Al pagar la seña te abrimos Mercado Pago (checkout seguro). Reservamos el horario por 30 minutos: si el
-                    pago no se aprueba en ese tiempo, la reserva se cancela automáticamente.
+                    Reservamos el horario por 30 minutos: si el pago no se aprueba en ese tiempo, la reserva se cancela
+                    automáticamente.
                   </p>
                 </form>
               )}

@@ -196,7 +196,7 @@ async function getPaymentForWebhook(paymentClient: Payment, paymentId: string) {
 }
 
 /**
- * Checkout Pro: preferencia de pago por la seña. El turno se crea al aprobar el pago (webhook / IPN).
+ * Preferencia de pago por la seña (Checkout Pro / Wallet Brick). El turno queda pending_payment hasta el webhook.
  */
 router.post('/sena', async (req, res) => {
   const config = getMpConfig();
@@ -346,12 +346,20 @@ router.post('/sena', async (req, res) => {
     });
   }
 
-  const url = result.init_point ?? result.sandbox_init_point;
-  if (!url) {
-    return res.status(500).json({ error: 'Mercado Pago no devolvió URL de pago' });
+  const preferenceId = result.id != null ? String(result.id) : '';
+  if (!preferenceId) {
+    await repo.updateAppointment(pending.id, { status: 'cancelled' });
+    return res.status(500).json({ error: 'Mercado Pago no devolvió el id de preferencia' });
   }
 
-  res.json({ url, appointmentId: pending.id, paymentDueAt });
+  const url = result.init_point ?? result.sandbox_init_point ?? undefined;
+
+  res.json({
+    preferenceId,
+    ...(url ? { url } : {}),
+    appointmentId: pending.id,
+    paymentDueAt,
+  });
 });
 
 export default router;

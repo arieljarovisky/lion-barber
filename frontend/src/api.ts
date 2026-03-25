@@ -49,8 +49,11 @@ export interface Appointment {
   paymentDueAt?: string;
   status?: AppointmentStatus;
   /** Solo en GET /api/appointments/mine */
-  canRescheduleOrCancel?: boolean;
+  canCancel?: boolean;
+  canReschedule?: boolean;
 }
+
+export type CancelAppointmentNotice = 'refund_processed' | 'deposit_retained_short_notice' | 'no_deposit';
 
 export interface Service {
   id: string;
@@ -130,7 +133,7 @@ export const api = {
   createAppointment: (data: Omit<Appointment, 'id'> & { userId?: number }) =>
     fetchApi<Appointment>('/api/appointments', { method: 'POST', body: JSON.stringify(data) }),
 
-  /** Abre Mercado Pago (Checkout Pro) para abonar la seña; el turno se crea al aprobar el pago (webhook). */
+  /** Crea preferencia de seña; el front usa `preferenceId` con Wallet Brick (y opcionalmente `url` para redirección). */
   createCheckoutSena: (data: {
     name: string;
     phone: string;
@@ -140,7 +143,11 @@ export const api = {
     date: string;
     time: string;
     userId?: number;
-  }) => fetchApi<{ url: string }>('/api/checkout/sena', { method: 'POST', body: JSON.stringify(data) }),
+  }) =>
+    fetchApi<{ preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }>(
+      '/api/checkout/sena',
+      { method: 'POST', body: JSON.stringify(data) }
+    ),
 
   updateAppointment: (id: string, data: Partial<Appointment>) =>
     fetchApi<Appointment>(`/api/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -149,7 +156,10 @@ export const api = {
     fetchApi<void>(`/api/appointments/${id}`, { method: 'DELETE' }),
 
   cancelMyAppointment: (id: string) =>
-    fetchApi<Appointment>(`/api/appointments/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+    fetchApi<Appointment & { cancelNotice?: CancelAppointmentNotice }>(
+      `/api/appointments/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST' }
+    ),
 
   rescheduleMyAppointment: (id: string, data: { date: string; time: string }) =>
     fetchApi<Appointment>(`/api/appointments/${encodeURIComponent(id)}/reschedule`, {
