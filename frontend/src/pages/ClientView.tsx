@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard } from 'lucide-react';
-import { addAppointment, api } from '../store';
+import { api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
 import { useAuth } from '../contexts/AuthContext';
@@ -68,7 +68,6 @@ export default function ClientView() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [bookingSuccessPaidSena, setBookingSuccessPaidSena] = useState(false);
   const [bookingError, setBookingError] = useState('');
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -156,7 +155,6 @@ export default function ClientView() {
   useEffect(() => {
     const checkout = searchParams.get('checkout');
     if (checkout === 'success') {
-      setBookingSuccessPaidSena(true);
       setBookingSuccess(true);
       setSearchParams({}, { replace: true });
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -207,7 +205,6 @@ export default function ClientView() {
     if (!bookingSuccess) return;
     const t = window.setTimeout(() => {
       setBookingSuccess(false);
-      setBookingSuccessPaidSena(false);
       setSelectedService('');
       setSelectedBarber('');
       setSelectedDate(format(startOfToday(), 'yyyy-MM-dd'));
@@ -317,28 +314,6 @@ export default function ClientView() {
   const handleLogout = async () => {
     await logout();
     navigate('/', { replace: true });
-  };
-
-  const handleBook = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBookingError('');
-    if (!validateBookingForm()) return;
-
-    try {
-      await addAppointment({
-        name: name.trim(),
-        phone: phone.trim(),
-        service: services.find(s => s.id === selectedService)?.name ?? selectedService,
-        serviceId: selectedService,
-        barberId: selectedBarber,
-        date: selectedDate,
-        time: selectedTime,
-        ...(profile?.id && { userId: profile.id }),
-      });
-      setBookingSuccess(true);
-    } catch (err) {
-      setBookingError(err instanceof Error ? err.message : 'Error al reservar. ¿Está el backend en marcha?');
-    }
   };
 
   return (
@@ -602,12 +577,14 @@ export default function ClientView() {
                   </div>
                   <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-2">¡Turno Confirmado!</h3>
                   <p className="text-emerald-400/80 text-base sm:text-lg font-sans">
-                    {bookingSuccessPaidSena ? 'Seña abonada por la web. ' : ''}
-                    Te esperamos en Lion Barber.
+                    Seña abonada por la web. Te esperamos en Lion Barber.
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleBook} className="space-y-6 font-sans">
+                <form
+                  onSubmit={(e) => e.preventDefault()}
+                  className="space-y-6 font-sans"
+                >
                   <div className="grid md:grid-cols-2 gap-6">
                     {/* Service Selection */}
                     <div className="space-y-2 md:col-span-2 min-w-0">
@@ -863,19 +840,13 @@ export default function ClientView() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-3 mt-4">
-                    <button
-                      type="submit"
-                      className="flex-1 bg-[#e5c185] hover:bg-[#d4b074] text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      Confirmar reserva
-                    </button>
+                  <div className="flex flex-col gap-3 mt-4">
                     <button
                       type="button"
                       onClick={handlePaySena}
-                      className="flex-1 bg-transparent border-2 border-[#e5c185]/80 hover:bg-[#e5c185]/10 text-[#e5c185] font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+                      className="bg-[#e5c185] hover:bg-[#d4b074] text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      Pagar seña y confirmar
+                      Pagar seña y confirmar turno
                     </button>
                   </div>
                   <p className="text-center text-[11px] text-zinc-500 mt-2">
