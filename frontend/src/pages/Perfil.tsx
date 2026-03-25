@@ -14,11 +14,19 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import type { Appointment } from '../api';
-import { format, isBefore } from 'date-fns';
+import { format, isBefore, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+/** `new Date('yyyy-MM-dd')` en JS es UTC → en AR muestra el día anterior. Usar calendario local. */
+function parseAppointmentDateOnly(dateStr: string): Date {
+  const clean = dateStr.slice(0, 10);
+  return parse(clean, 'yyyy-MM-dd', new Date());
+}
+
 function appointmentDateTime(a: Appointment): Date {
-  return new Date(`${a.date}T${a.time}:00`);
+  const d = String(a.date).slice(0, 10);
+  const t = (a.time || '00:00').slice(0, 5);
+  return parse(`${d} ${t}`, 'yyyy-MM-dd HH:mm', new Date());
 }
 
 export default function Perfil() {
@@ -237,7 +245,7 @@ export default function Perfil() {
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-white text-sm sm:text-base truncate">{a.service}</p>
                     <p className="text-xs sm:text-sm text-zinc-400 truncate">
-                      {format(new Date(a.date), "EEEE d 'de' MMMM", { locale: es })} · {a.time}
+                      {format(parseAppointmentDateOnly(a.date), "EEEE d 'de' MMMM", { locale: es })} · {a.time}
                     </p>
                     {a.barber && <p className="text-xs text-zinc-500 mt-1 truncate">Barbero: {a.barber}</p>}
                     {a.depositPaid && <p className="text-xs text-amber-400/90 mt-1">Seña abonada</p>}
@@ -296,7 +304,7 @@ export default function Perfil() {
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-white text-sm sm:text-base truncate">{a.service}</p>
                     <p className="text-xs sm:text-sm text-zinc-400">
-                      {format(new Date(a.date), "d/MM/yyyy", { locale: es })} · {a.time}
+                      {format(parseAppointmentDateOnly(a.date), "d/MM/yyyy", { locale: es })} · {a.time}
                     </p>
                     {a.status === 'cancelled' && (
                       <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider text-red-400">
@@ -331,7 +339,7 @@ export default function Perfil() {
                 >
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-white text-sm sm:text-base truncate">{a.service}</p>
-                    <p className="text-xs sm:text-sm text-zinc-400">{format(new Date(a.date), "d/MM/yyyy", { locale: es })}</p>
+                    <p className="text-xs sm:text-sm text-zinc-400">{format(parseAppointmentDateOnly(a.date), "d/MM/yyyy", { locale: es })}</p>
                   </div>
                   <span className="text-emerald-400 text-xs sm:text-sm font-medium flex-shrink-0">
                     {a.status === 'cancelled' ? '—' : 'Pagado'}

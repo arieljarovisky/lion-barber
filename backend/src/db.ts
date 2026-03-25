@@ -9,6 +9,8 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  /** Evita que DATE se convierta en Date de JS (medianoche UTC) y al serializar JSON se corra un día. */
+  dateStrings: true,
 });
 
 export async function query<T = unknown>(sql: string, params?: unknown[]): Promise<T> {

@@ -14,6 +14,28 @@ import { isDateOnOpenWeekday } from '../appointmentRules.js';
 
 export const ANY_BARBER_ID = '__any__';
 
+/** DATE/TIME desde MySQL: con dateStrings suelen ser string; sin dateStrings pueden ser Date. */
+function rowDateToYmd(v: unknown): string {
+  if (v == null || v === '') return '';
+  if (typeof v === 'string') return v.slice(0, 10);
+  if (v instanceof Date) {
+    const y = v.getUTCFullYear();
+    const m = String(v.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(v.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(v).slice(0, 10);
+}
+
+function rowTimeToHHmm(v: unknown): string {
+  if (v == null || v === '') return '';
+  if (typeof v === 'string') {
+    const s = v.trim();
+    return s.length >= 5 ? s.slice(0, 5) : s;
+  }
+  return String(v);
+}
+
 interface DbAppointment {
   id: number;
   user_id: number | null;
@@ -22,8 +44,8 @@ interface DbAppointment {
   service: string;
   barber: string | null;
   barber_id: string | null;
-  date: string;
-  time: string;
+  date: string | Date;
+  time: string | Date;
   duration_minutes: number;
   service_id: string | null;
   deposit_paid: number;
@@ -43,8 +65,8 @@ function rowToAppointment(row: DbAppointment): Appointment {
     serviceId: row.service_id ?? undefined,
     barber: row.barber ?? undefined,
     barberId: row.barber_id ?? undefined,
-    date: row.date,
-    time: row.time,
+    date: rowDateToYmd(row.date),
+    time: rowTimeToHHmm(row.time),
     durationMinutes: row.duration_minutes ?? 30,
     depositPaid: Boolean(row.deposit_paid),
     mercadopagoPaymentId: row.mercadopago_payment_id ?? undefined,
