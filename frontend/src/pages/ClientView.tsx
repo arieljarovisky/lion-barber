@@ -84,6 +84,16 @@ export default function ClientView() {
   const [earliestAny, setEarliestAny] = useState<{ barberId: string; time: string } | null>(null);
   const [availableBarberIds, setAvailableBarberIds] = useState<string[]>([]);
 
+  const getBarberPhotoClasses = (barberId: string) =>
+    barberId === 'barber_3'
+      ? 'w-full h-full object-cover object-top brightness-110 contrast-105 group-hover:scale-105 transition-transform duration-500'
+      : 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-500';
+
+  const getBarberOverlayClasses = (barberId: string) =>
+    barberId === 'barber_3'
+      ? 'absolute inset-0 bg-gradient-to-t from-zinc-950/65 via-zinc-950/15 to-transparent opacity-75'
+      : 'absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80';
+
   const selectedServiceDuration = services.find((s) => s.id === selectedService)?.duration ?? 30;
   const visibleBarbers = useMemo(() => {
     if (!selectedDate || !selectedService) return barbers;
@@ -537,10 +547,10 @@ export default function ClientView() {
                   <img 
                     src={barber.photo} 
                     alt={barber.name} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    className={getBarberPhotoClasses(barber.id)}
                     referrerPolicy="no-referrer"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80"></div>
+                  <div className={getBarberOverlayClasses(barber.id)}></div>
                   <div className="absolute bottom-0 left-0 w-full p-4 sm:p-6">
                     <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-1">{barber.name}</h3>
                     <p className="text-[#e5c185] font-sans font-bold text-xs sm:text-sm uppercase tracking-widest">{barber.role}</p>
