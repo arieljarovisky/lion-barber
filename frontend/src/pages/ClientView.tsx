@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { format, addDays, startOfToday, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay, getISODay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion } from 'motion/react';
+import heroPortada from '../assets/hero-portada.png';
 
 const TIME_SLOTS = [
   '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
@@ -447,12 +448,12 @@ export default function ClientView() {
       <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
         <div className="absolute inset-0 z-0">
           <img 
-            src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&q=80" 
+            src={heroPortada}
             alt="Barbershop interior" 
-            className="w-full h-full object-cover opacity-20"
+            className="w-full h-full object-cover object-center opacity-45 brightness-110 contrast-105"
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/50 via-zinc-950/80 to-zinc-950"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-zinc-950/55 to-zinc-950/85"></div>
         </div>
 
         <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
@@ -460,11 +461,11 @@ export default function ClientView() {
             De 10 a 20 hs
           </p>
           
-          <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-hidden">
+          <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-visible">
             <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[6rem] xl:text-[140px] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
               Agenda
             </h1>
-            <span className="text-6xl sm:text-7xl md:text-8xl lg:text-[7rem] xl:text-[160px] font-script text-[#e5c185] drop-shadow-lg absolute top-1/2 -translate-y-1/2 mt-4 sm:mt-6 md:mt-8 lg:mt-16 leading-none select-none">
+            <span className="text-5xl sm:text-7xl md:text-8xl lg:text-[7rem] xl:text-[160px] font-script text-[#e5c185] drop-shadow-lg absolute top-1/2 -translate-y-1/2 mt-4 sm:mt-6 md:mt-8 lg:mt-16 leading-none select-none whitespace-nowrap px-3">
               abierta
             </span>
           </div>
