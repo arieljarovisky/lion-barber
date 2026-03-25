@@ -17,23 +17,31 @@ const TIME_SLOTS = [
   '19:00', '19:30'
 ];
 
+/** Anticipación mínima para reservar “hoy” (no mostrar turnos que empiezan antes). */
+const BOOKING_LEAD_MINUTES = 15;
+
 function slotStartDate(dateStr: string, timeStr: string): Date {
   const [h, m] = timeStr.split(':').map(Number);
   return new Date(`${dateStr}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
 }
 
-/** Si la fecha es hoy, quita turnos cuyo horario de inicio ya pasó. */
-function filterPastSlotsForToday(slots: string[], dateStr: string): string[] {
+function minBookableTimestampForToday(dateStr: string): number | null {
   const todayStr = format(startOfToday(), 'yyyy-MM-dd');
-  if (dateStr !== todayStr) return slots;
-  const now = Date.now();
-  return slots.filter((slot) => slotStartDate(dateStr, slot).getTime() > now);
+  if (dateStr !== todayStr) return null;
+  return Date.now() + BOOKING_LEAD_MINUTES * 60 * 1000;
+}
+
+/** Si la fecha es hoy, quita turnos que ya pasaron o que empiezan en menos de BOOKING_LEAD_MINUTES minutos. */
+function filterPastSlotsForToday(slots: string[], dateStr: string): string[] {
+  const minTs = minBookableTimestampForToday(dateStr);
+  if (minTs == null) return slots;
+  return slots.filter((slot) => slotStartDate(dateStr, slot).getTime() > minTs);
 }
 
 function isSlotAlreadyPast(dateStr: string, timeStr: string): boolean {
-  const todayStr = format(startOfToday(), 'yyyy-MM-dd');
-  if (dateStr !== todayStr) return false;
-  return slotStartDate(dateStr, timeStr).getTime() <= Date.now();
+  const minTs = minBookableTimestampForToday(dateStr);
+  if (minTs == null) return false;
+  return slotStartDate(dateStr, timeStr).getTime() <= minTs;
 }
 
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
@@ -848,7 +856,7 @@ export default function ClientView() {
                           )}
                           {visibleTimeSlots.length === 0 && availableSlots.length > 0 && selectedDate === format(startOfToday(), 'yyyy-MM-dd') && (
                             <p className="text-amber-500/90 text-sm mb-2">
-                              Para hoy no quedan horarios a partir de este momento. Elegí otro día.
+                              Para hoy no quedan horarios con al menos {BOOKING_LEAD_MINUTES} minutos de anticipación. Elegí otro día.
                             </p>
                           )}
                           {availableSlots.length === 0 && selectedService && selectedBarber && (
