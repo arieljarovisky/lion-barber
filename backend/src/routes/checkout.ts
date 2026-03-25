@@ -145,18 +145,37 @@ function parseBookingRef(
 
 function extractPaymentId(req: Request): string | undefined {
   const q = req.query as Record<string, string | undefined>;
-  if (q.topic === 'payment' && q.id) return String(q.id);
   const body = req.body as Record<string, unknown> | null | undefined;
   if (!body || typeof body !== 'object') return undefined;
-  const data = body.data as { id?: string | number } | undefined;
-  if (data?.id != null) return String(data.id);
-  if (typeof (body as { id?: unknown }).id === 'string' || typeof (body as { id?: unknown }).id === 'number') {
-    return String((body as { id: string | number }).id);
+
+  const action = (body as { action?: unknown }).action;
+  const isPaymentEvent =
+    q.topic === 'payment' ||
+    (typeof action === 'string' && action.startsWith('payment.')) ||
+    (typeof (body as { type?: unknown }).type === 'string' && (body as any).type === 'payment');
+
+  // Para evitar consultar "Payment" con ids que pertenecen a otros topics (ej. merchant_order),
+  // solo usamos el id cuando parece ser un evento de pago.
+  if (isPaymentEvent && q.topic === 'payment' && q.id) return String(q.id);
+
+  const data = (body as { data?: unknown }).data as { id?: string | number; type?: string } | undefined;
+  if (data?.id != null) {
+    if (data.type && data.type !== 'payment' && !isPaymentEvent) return undefined;
+    return String(data.id);
   }
-  const resource = body.resource;
-  if (typeof resource === 'string') {
-    const match = resource.match(/(\d+)\s*$/);
-    if (match) return match[1];
+
+  const bodyId = (body as { id?: unknown }).id;
+  if (isPaymentEvent && (typeof bodyId === 'string' || typeof bodyId === 'number')) {
+    return String(bodyId);
+  }
+
+  const resource = (body as { resource?: unknown }).resource;
+  if (typeof resource === 'string' && isPaymentEvent) {
+    // Si viene tipo URL, intentamos extraer el id asociado a "payments/{id}".
+    const matchPayments = resource.match(/payments\/(\d+)\b/);
+    if (matchPayments) return matchPayments[1];
+    const matchTrailing = resource.match(/(\d+)\s*$/);
+    if (matchTrailing) return matchTrailing[1];
   }
   return undefined;
 }
@@ -370,6 +389,14 @@ export default router;
 
 export async function mercadopagoWebhook(req: Request, res: Response): Promise<void> {
   const paymentId = extractPaymentId(req);
+  const q = req.query as Record<string, unknown>;
+  const body = req.body as Record<string, unknown> | null | undefined;
+  const action = body && typeof body === 'object' ? (body as any).action : undefined;
+  const topic = q?.topic;
+  const isPaymentEvent =
+    topic === 'payment' ||
+    (typeof action === 'string' && action.startsWith('payment.')) ||
+    (typeof (body as any)?.type === 'string' && (body as any).type === 'payment');
 
   // Debug: ayuda a confirmar si estamos parseando bien el id que luego consultamos con el token.
   // No logueamos datos sensibles; solo identificadores y campos de routing del webhook.
@@ -379,6 +406,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     const topic = q.topic;
     const queryId = q.id;
     const dataId = body && typeof body === 'object' ? (body as any).data?.id : undefined;
+    const dataType = body && typeof body === 'object' ? (body as any).data?.type : undefined;
     const resource = body && typeof body === 'object' ? (body as any).resource : undefined;
     const eventId = (body as any)?.id;
     const action = (body as any)?.action;
@@ -386,7 +414,9 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     console.log(
       `[Webhook MP] parse: topic=${String(topic)} queryId=${String(
         queryId
-      )} dataId=${String(dataId)} resource=${typeof resource === 'string' ? resource.slice(0, 40) : typeof resource} action=${String(
+      )} dataType=${String(dataType)} dataId=${String(
+        dataId
+      )} resource=${typeof resource === 'string' ? resource.slice(0, 40) : typeof resource} action=${String(
         action
       )} eventId=${String(eventId)} extractedPaymentId=${paymentId}`
     );
@@ -395,6 +425,11 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
   }
 
   if (!paymentId) {
+    // Para topics que no son de pago (ej. merchant_order), ignoramos el evento sin provocar reintentos.
+    if (!isPaymentEvent) {
+      res.status(200).send('OK');
+      return;
+    }
     res.status(400).send('Sin id de pago');
     return;
   }
