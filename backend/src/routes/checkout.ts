@@ -207,6 +207,8 @@ router.post('/sena', async (req, res) => {
       .status(503)
       .json({ error: 'Mercado Pago no está configurado (MERCADOPAGO_ACCESS_TOKEN).' });
   }
+  const t = (process.env.MERCADOPAGO_ACCESS_TOKEN ?? '').trim();
+  console.log(`[MP] preference.create usando token last6: ${t.slice(-6)}`);
 
   const { name, phone, service, serviceId, barberId, date, time, userId } = req.body as {
     name?: string;
@@ -380,6 +382,8 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     console.error('Webhook MP: MERCADOPAGO_ACCESS_TOKEN no configurado');
     return;
   }
+  const t = (process.env.MERCADOPAGO_ACCESS_TOKEN ?? '').trim();
+  console.log(`[MP] webhook usando token last6: ${t.slice(-6)}`);
 
   const existing = await repo.getAppointmentByMercadopagoPaymentId(paymentId);
   if (existing) return;
