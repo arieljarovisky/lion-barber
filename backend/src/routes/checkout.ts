@@ -182,6 +182,11 @@ router.post('/sena', async (req, res) => {
     return res.status(400).json({ error: 'Faltan datos para la reserva con seña' });
   }
 
+  const uid = userId != null ? Number(userId) : NaN;
+  if (!Number.isFinite(uid) || uid <= 0) {
+    return res.status(401).json({ error: 'Tenés que iniciar sesión para confirmar el turno.' });
+  }
+
   const shop = await getShopSettings();
   if (!isDateOnOpenWeekday(date, shop.openWeekdays)) {
     return res.status(400).json({ error: 'El local no atiende ese día. Elegí otra fecha.' });
@@ -224,7 +229,7 @@ router.post('/sena', async (req, res) => {
       status: 'pending_payment',
       paymentDueAt,
       depositPaid: false,
-      ...(userId != null ? { userId: Number(userId) } : {}),
+      userId: uid,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'No se pudo reservar temporalmente el horario';
@@ -243,7 +248,7 @@ router.post('/sena', async (req, res) => {
       date,
       time,
       durationMinutes,
-      userId: userId != null ? String(userId) : '',
+      userId: String(uid),
     });
   } catch (e) {
     return res.status(400).json({ error: e instanceof Error ? e.message : 'Datos inválidos' });
@@ -280,7 +285,7 @@ router.post('/sena', async (req, res) => {
       lb_d: date,
       lb_t: time,
       lb_m: String(durationMinutes),
-      lb_u: userId != null ? String(userId) : '',
+      lb_u: String(uid),
     },
     back_urls: {
       success: `${base}/?checkout=success`,

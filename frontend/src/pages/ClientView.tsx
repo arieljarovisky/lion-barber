@@ -303,6 +303,10 @@ export default function ClientView() {
   const handlePaySena = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setBookingError('');
+    if (!profile) {
+      navigate('/login', { state: { from: { pathname: '/', hash: '#reserva' } } });
+      return;
+    }
     if (!validateBookingForm()) return;
     try {
       const { url } = await api.createCheckoutSena({
@@ -313,7 +317,7 @@ export default function ClientView() {
         barberId: selectedBarber,
         date: selectedDate,
         time: selectedTime,
-        ...(profile?.id && { userId: profile.id }),
+        userId: profile.id,
       });
       window.location.href = url;
     } catch (err) {
@@ -575,6 +579,16 @@ export default function ClientView() {
             <div className="relative z-10">
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black uppercase tracking-tight mb-2 text-white">Reserva tu lugar</h2>
               <p className="text-sm sm:text-base text-zinc-400 mb-8 sm:mb-10 font-sans font-light">Completa los datos para agendar tu próximo corte.</p>
+
+              {!profile && (
+                <div className="mb-6 p-4 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-100/90 text-sm">
+                  Para confirmar el turno con la seña online tenés que{' '}
+                  <Link to="/login" state={{ from: { pathname: '/', hash: '#reserva' } }} className="font-bold text-[#e5c185] underline underline-offset-2 hover:text-[#d4b074]">
+                    iniciar sesión con Google
+                  </Link>
+                  .
+                </div>
+              )}
 
               {bookingError && (
                 <div className="mb-6 p-4 bg-red-950/30 border border-red-500/30 rounded-xl text-red-400 text-sm">{bookingError}</div>
@@ -856,7 +870,7 @@ export default function ClientView() {
                       onClick={handlePaySena}
                       className="bg-[#e5c185] hover:bg-[#d4b074] text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      Pagar seña y confirmar turno
+                      {profile ? 'Pagar seña y confirmar turno' : 'Iniciar sesión para confirmar'}
                     </button>
                   </div>
                   <p className="text-center text-[11px] text-zinc-500 mt-2">
