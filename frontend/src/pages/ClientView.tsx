@@ -232,6 +232,13 @@ export default function ClientView() {
   }, [selectedService, selectedBarber, selectedDate, selectedTime]);
 
   useEffect(() => {
+    const todayStr = format(startOfToday(), 'yyyy-MM-dd');
+    if (selectedDate < todayStr) {
+      setSelectedDate(todayStr);
+    }
+  }, [selectedDate]);
+
+  useEffect(() => {
     if (!pendingCheckoutSuccess || authLoading) return;
     setBookingSuccess(true);
     setPendingCheckoutSuccess(false);
@@ -318,7 +325,8 @@ export default function ClientView() {
     if (!isSelectedInBase) {
       const [year, month, day] = selectedDate.split('-').map(Number);
       const customDate = new Date(year, month - 1, day);
-      if (openWeekdays.includes(getISODay(customDate))) {
+      const notPast = !isBefore(startOfDay(customDate), startOfToday());
+      if (openWeekdays.includes(getISODay(customDate)) && notPast) {
         displayDays = [customDate, ...baseDays];
       }
     }
@@ -790,20 +798,25 @@ export default function ClientView() {
                           {displayDays.map(date => {
                             const dateStr = format(date, 'yyyy-MM-dd');
                             const isSelected = selectedDate === dateStr;
+                            const isPastDay = isBefore(startOfDay(date), startOfToday());
                             return (
                               <button
                                 key={dateStr}
                                 type="button"
+                                disabled={isPastDay}
                                 onClick={(e) => {
                                   if (dragged) {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     return;
                                   }
+                                  if (isPastDay) return;
                                   setSelectedDate(dateStr);
                                 }}
                                 className={`flex-shrink-0 w-16 sm:w-20 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border flex flex-col items-center justify-center transition-all snap-start min-w-0 ${
-                                  isSelected 
+                                  isPastDay
+                                    ? 'opacity-30 cursor-not-allowed border-zinc-800 text-zinc-600'
+                                    : isSelected 
                                     ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.3)]' 
                                     : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
                                 }`}

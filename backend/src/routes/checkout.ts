@@ -4,7 +4,11 @@ import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import * as repo from '../repositories/appointments.js';
 import { getShopSettings } from '../repositories/shopSettings.js';
 import { getServiceById } from '../repositories/services.js';
-import { isDateOnOpenWeekday } from '../appointmentRules.js';
+import {
+  hoursUntilAppointmentStart,
+  isDateOnOpenWeekday,
+  isPastCalendarDateInArgentina,
+} from '../appointmentRules.js';
 
 const router = Router();
 
@@ -250,6 +254,12 @@ router.post('/sena', async (req, res) => {
   }
 
   const shop = await getShopSettings();
+  if (isPastCalendarDateInArgentina(date)) {
+    return res.status(400).json({ error: 'No podés reservar en una fecha pasada.' });
+  }
+  if (hoursUntilAppointmentStart(date, time) <= 0) {
+    return res.status(400).json({ error: 'Elegí un horario futuro.' });
+  }
   if (!isDateOnOpenWeekday(date, shop.openWeekdays)) {
     return res.status(400).json({ error: 'El local no atiende ese día. Elegí otra fecha.' });
   }

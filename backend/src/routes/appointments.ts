@@ -8,6 +8,7 @@ import {
   DEPOSIT_REFUND_MIN_HOURS,
   hoursUntilAppointmentStart,
   isDateOnOpenWeekday,
+  isPastCalendarDateInArgentina,
 } from '../appointmentRules.js';
 import { refundPaymentTotal } from '../mercadopagoRefund.js';
 
@@ -177,6 +178,12 @@ router.post('/', async (req, res) => {
   }
   try {
     const shop = await getShopSettings();
+    if (isPastCalendarDateInArgentina(String(date))) {
+      return res.status(400).json({ error: 'No podés cargar un turno en una fecha pasada.' });
+    }
+    if (hoursUntilAppointmentStart(String(date), String(time)) <= 0) {
+      return res.status(400).json({ error: 'Elegí un horario futuro.' });
+    }
     if (!isDateOnOpenWeekday(date, shop.openWeekdays)) {
       return res.status(400).json({ error: 'El local no atiende ese día.' });
     }

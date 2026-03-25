@@ -65,6 +65,13 @@ function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; 
   return { kind: 'emoji', value: raw };
 }
 
+/** MySQL TIME puede devolver "10:30:00"; la grilla usa "10:30". */
+function normalizeAppointmentTime(t: string | undefined): string {
+  if (!t) return '';
+  const s = t.trim();
+  return s.length >= 5 ? s.slice(0, 5) : s;
+}
+
 function getAppointmentPaymentBadge(app: Appointment): { label: string; className: string } {
   if (app.status === 'pending_payment') {
     return {
@@ -933,7 +940,7 @@ export default function Dashboard() {
                           {slot}
                         </td>
                         {weekAppointmentsByDay.map(({ dateStr, appointments: dayApps }) => {
-                          const app = dayApps.find((a) => a.time === slot);
+                          const app = dayApps.find((a) => normalizeAppointmentTime(a.time) === slot);
                           return (
                             <td key={dateStr} className="py-2 px-2 align-top border-l border-zinc-100">
                               {app ? (
@@ -1000,7 +1007,7 @@ export default function Dashboard() {
                     </div>
                     <div className="p-3 divide-y divide-zinc-100 max-h-[320px] overflow-y-auto">
                       {TIME_SLOTS.map((slot) => {
-                        const app = barberAppointments.find((a) => a.time === slot);
+                        const app = barberAppointments.find((a) => normalizeAppointmentTime(a.time) === slot);
                         return (
                           <div
                             key={slot}
