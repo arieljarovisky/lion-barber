@@ -17,6 +17,25 @@ const TIME_SLOTS = [
   '19:00', '19:30'
 ];
 
+function slotStartDate(dateStr: string, timeStr: string): Date {
+  const [h, m] = timeStr.split(':').map(Number);
+  return new Date(`${dateStr}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
+}
+
+/** Si la fecha es hoy, quita turnos cuyo horario de inicio ya pasó. */
+function filterPastSlotsForToday(slots: string[], dateStr: string): string[] {
+  const todayStr = format(startOfToday(), 'yyyy-MM-dd');
+  if (dateStr !== todayStr) return slots;
+  const now = Date.now();
+  return slots.filter((slot) => slotStartDate(dateStr, slot).getTime() > now);
+}
+
+function isSlotAlreadyPast(dateStr: string, timeStr: string): boolean {
+  const todayStr = format(startOfToday(), 'yyyy-MM-dd');
+  if (dateStr !== todayStr) return false;
+  return slotStartDate(dateStr, timeStr).getTime() <= Date.now();
+}
+
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
   const raw = (icon ?? '').trim();
   if (!raw) return { kind: 'none', value: '' };
@@ -84,6 +103,8 @@ export default function ClientView() {
   const [availableSlots, setAvailableSlots] = useState<string[]>(TIME_SLOTS);
   const [earliestAny, setEarliestAny] = useState<{ barberId: string; time: string } | null>(null);
   const [availableBarberIds, setAvailableBarberIds] = useState<string[]>([]);
+  /** Solo para re-ejecutar el filtro de “hoy” cada minuto. */
+  const [timeTick, setTimeTick] = useState(0);
 
   const getBarberPhotoClasses = (barberId: string) =>
     barberId === 'barber_3'
@@ -101,6 +122,18 @@ export default function ClientView() {
     const set = new Set(availableBarberIds);
     return barbers.filter((b) => set.has(b.id));
   }, [barbers, selectedDate, selectedService, availableBarberIds]);
+
+  const visibleTimeSlots = useMemo(
+    () => filterPastSlotsForToday(availableSlots, selectedDate),
+    [availableSlots, selectedDate, timeTick]
+  );
+
+  useEffect(() => {
+    const todayStr = format(startOfToday(), 'yyyy-MM-dd');
+    if (selectedDate !== todayStr) return;
+    const id = window.setInterval(() => setTimeTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, [selectedDate]);
 
   const validateBookingForm = (): boolean => {
     if (!selectedService || !selectedBarber || !selectedDate || !selectedTime || !name || !phone) {
@@ -125,7 +158,7 @@ export default function ClientView() {
       setBookingError('Ese barbero no está disponible para la fecha elegida.');
       return false;
     }
-    if (!availableSlots.includes(selectedTime)) {
+    if (!visibleTimeSlots.includes(selectedTime)) {
       setBookingError('La hora elegida ya no está disponible. Elegí otra.');
       return false;
     }
@@ -215,10 +248,10 @@ export default function ClientView() {
   }, [selectedDate, selectedBarber, selectedService, selectedServiceDuration, services]);
 
   useEffect(() => {
-    if (selectedTime && availableSlots.length > 0 && !availableSlots.includes(selectedTime)) {
+    if (selectedTime && visibleTimeSlots.length > 0 && !visibleTimeSlots.includes(selectedTime)) {
       setSelectedTime('');
     }
-  }, [availableSlots, selectedTime]);
+  }, [visibleTimeSlots, selectedTime]);
 
   useEffect(() => {
     if (!bookingSuccess) return;
@@ -804,7 +837,7 @@ export default function ClientView() {
                         </p>
                       ) : (
                         <>
-                          {selectedBarber === ANY_BARBER_ID && earliestAny && (
+                          {selectedBarber === ANY_BARBER_ID && earliestAny && !isSlotAlreadyPast(selectedDate, earliestAny.time) && (
                             <button
                               type="button"
                               onClick={() => setSelectedTime(earliestAny.time)}
@@ -813,13 +846,18 @@ export default function ClientView() {
                               Usar el próximo libre: {earliestAny.time}
                             </button>
                           )}
+                          {visibleTimeSlots.length === 0 && availableSlots.length > 0 && selectedDate === format(startOfToday(), 'yyyy-MM-dd') && (
+                            <p className="text-amber-500/90 text-sm mb-2">
+                              Para hoy no quedan horarios a partir de este momento. Elegí otro día.
+                            </p>
+                          )}
                           {availableSlots.length === 0 && selectedService && selectedBarber && (
                             <p className="text-amber-500/90 text-sm mb-2">
                               No hay horarios disponibles para esa fecha y duración. Probá otro día u otro barbero.
                             </p>
                           )}
                           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
-                            {availableSlots.map(time => {
+                            {visibleTimeSlots.map(time => {
                               const isSelected = selectedTime === time;
                               return (
                                 <button
