@@ -20,9 +20,12 @@ const TIME_SLOTS = [
 /** Anticipación mínima para reservar “hoy” (no mostrar turnos que empiezan antes). */
 const BOOKING_LEAD_MINUTES = 15;
 
+/** Inicio del turno en hora local (reloj del navegador; en AR suele ser UTC-3). */
 function slotStartDate(dateStr: string, timeStr: string): Date {
+  const [y, mo, d] = dateStr.split('-').map(Number);
   const [h, m] = timeStr.split(':').map(Number);
-  return new Date(`${dateStr}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`);
+  if (!y || !mo || !d) return new Date(NaN);
+  return new Date(y, mo - 1, d, h, m, 0, 0);
 }
 
 function minBookableTimestampForToday(dateStr: string): number | null {
@@ -148,7 +151,8 @@ export default function ClientView() {
       setBookingError('Por favor completa todos los campos');
       return false;
     }
-    if (isBefore(startOfDay(new Date(selectedDate)), startOfDay(new Date()))) {
+    const todayStr = format(startOfToday(), 'yyyy-MM-dd');
+    if (selectedDate < todayStr) {
       setBookingError('No podés reservar en una fecha pasada.');
       return false;
     }
