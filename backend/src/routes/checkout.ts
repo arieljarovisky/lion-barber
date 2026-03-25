@@ -9,7 +9,9 @@ import { isDateOnOpenWeekday } from '../appointmentRules.js';
 const router = Router();
 
 function getMpConfig(): MercadoPagoConfig | null {
-  const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  const raw = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!raw) return null;
+  const token = raw.trim();
   if (!token) return null;
   return new MercadoPagoConfig({ accessToken: token });
 }
@@ -436,10 +438,14 @@ export function logMercadoPagoEnvHint(): void {
   const t = raw.trim();
   if (t.startsWith('TEST-')) {
     console.log(
-      '[MP] Token: SANDBOX (TEST-). Solo verás pagos de prueba; un pago real da 404 al consultar el id.'
+      `[MP] Token: SANDBOX (TEST-). Solo verás pagos de prueba; un pago real da 404 al consultar el id. (last6: ${t.slice(
+        -6
+      )})`
     );
   } else if (t.startsWith('APP_USR-')) {
-    console.log('[MP] Token: PRODUCCIÓN (APP_USR-).');
+    console.log(
+      `[MP] Token: PRODUCCIÓN (APP_USR-). (last6: ${t.slice(-6)})`
+    );
   } else {
     console.warn('[MP] Token: prefijo inesperado (copiá Access Token de Credenciales, no la Public Key).');
   }
