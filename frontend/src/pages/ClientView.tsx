@@ -5,7 +5,24 @@ import { api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
 import { useAuth } from '../contexts/AuthContext';
-import { format, addDays, startOfToday, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay, getISODay } from 'date-fns';
+import {
+  format,
+  parse,
+  addDays,
+  startOfToday,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  addMonths,
+  subMonths,
+  startOfWeek,
+  endOfWeek,
+  isBefore,
+  startOfDay,
+  getISODay,
+} from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion } from 'motion/react';
 import { Wallet } from '@mercadopago/sdk-react';
@@ -232,13 +249,6 @@ export default function ClientView() {
   }, [selectedService, selectedBarber, selectedDate, selectedTime]);
 
   useEffect(() => {
-    const todayStr = format(startOfToday(), 'yyyy-MM-dd');
-    if (selectedDate < todayStr) {
-      setSelectedDate(todayStr);
-    }
-  }, [selectedDate]);
-
-  useEffect(() => {
     if (!pendingCheckoutSuccess || authLoading) return;
     setBookingSuccess(true);
     setPendingCheckoutSuccess(false);
@@ -301,10 +311,13 @@ export default function ClientView() {
       .filter((d) => openWeekdays.includes(getISODay(d)));
   }, [openWeekdays]);
 
+  /** Solo cuando cambian los días hábiles reales (no en cada referencia nueva del array de la API). */
+  const openWeekdaysKey = [...openWeekdays].sort((a, b) => a - b).join(',');
+
   useEffect(() => {
     if (!openWeekdays.length) return;
     setSelectedDate((current) => {
-      const d = new Date(`${current}T12:00:00`);
+      const d = parse(current, 'yyyy-MM-dd', new Date());
       if (openWeekdays.includes(getISODay(d))) return current;
       const t = startOfToday();
       for (let i = 0; i < 60; i++) {
@@ -315,7 +328,7 @@ export default function ClientView() {
       }
       return current;
     });
-  }, [openWeekdays]);
+  }, [openWeekdaysKey]);
 
   const today = startOfToday();
 
