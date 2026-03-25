@@ -9,7 +9,7 @@ import barberSchedule from './routes/barberSchedule.js';
 import staffInvites from './routes/staffInvites.js';
 import shopSettings from './routes/shopSettings.js';
 import auth from './routes/auth.js';
-import checkout, { mercadopagoWebhook } from './routes/checkout.js';
+import checkout, { logMercadoPagoEnvHint, mercadopagoWebhook } from './routes/checkout.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -41,6 +41,7 @@ async function start() {
   try {
     await initDb();
     console.log('Base de datos MySQL lista.');
+    logMercadoPagoEnvHint();
   } catch (err) {
     console.error('Error al iniciar la base de datos:', err);
     process.exit(1);

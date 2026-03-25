@@ -417,3 +417,22 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     console.error('Webhook MP: no se pudo crear el turno (revisá cupo / reembolso)', e);
   }
 }
+
+/** Al arranque: indica si el token es sandbox o producción (no muestra el secreto). */
+export function logMercadoPagoEnvHint(): void {
+  const raw = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!raw?.trim()) {
+    console.warn('[MP] MERCADOPAGO_ACCESS_TOKEN no está definido.');
+    return;
+  }
+  const t = raw.trim();
+  if (t.startsWith('TEST-')) {
+    console.log(
+      '[MP] Token: SANDBOX (TEST-). Solo verás pagos de prueba; un pago real da 404 al consultar el id.'
+    );
+  } else if (t.startsWith('APP_USR-')) {
+    console.log('[MP] Token: PRODUCCIÓN (APP_USR-).');
+  } else {
+    console.warn('[MP] Token: prefijo inesperado (copiá Access Token de Credenciales, no la Public Key).');
+  }
+}
