@@ -302,7 +302,7 @@ router.post('/sena', async (req, res) => {
     });
   }
 
-  const url = result.sandbox_init_point ?? result.init_point;
+  const url = result.init_point ?? result.sandbox_init_point;
   if (!url) {
     return res.status(500).json({ error: 'Mercado Pago no devolvió URL de pago' });
   }
