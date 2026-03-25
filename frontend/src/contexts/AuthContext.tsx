@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { api, setAuthToken } from '../api';
+import { api, setAuthToken, ApiError } from '../api';
 
 const TOKEN_KEY = 'lion_barber_token';
 
@@ -66,20 +66,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
-      setAuthToken(token);
-      api.auth
-        .getMe()
-        .then((user) => setProfile(profileFromBackend(user)))
-        .catch(() => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    setAuthToken(token);
+    let cancelled = false;
+    (async () => {
+      try {
+        const user = await api.auth.getMe();
+        if (!cancelled) setProfile(profileFromBackend(user));
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
           localStorage.removeItem(TOKEN_KEY);
           setAuthToken(null);
-          setProfile(null);
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+          if (!cancelled) setProfile(null);
+          return;
+        }
+        try {
+          await new Promise((r) => setTimeout(r, 700));
+          const user = await api.auth.getMe();
+          if (!cancelled) setProfile(profileFromBackend(user));
+        } catch (err2) {
+          if (err2 instanceof ApiError && err2.status === 401) {
+            localStorage.removeItem(TOKEN_KEY);
+            setAuthToken(null);
+            if (!cancelled) setProfile(null);
+          }
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const isAdmin = profile?.role === 'admin';

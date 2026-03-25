@@ -2,6 +2,27 @@
 const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '' : '');
 
 let authToken: string | null = null;
+
+/** Errores HTTP de la API (para no cerrar sesión en fallos de red). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+if (typeof window !== 'undefined') {
+  try {
+    const t = localStorage.getItem('lion_barber_token');
+    if (t) authToken = t;
+  } catch {
+    /* ignore */
+  }
+}
+
 export function setAuthToken(token: string | null) {
   authToken = token;
 }
@@ -86,7 +107,8 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? res.statusText);
+    const msg = (err as { error?: string }).error ?? res.statusText;
+    throw new ApiError(msg, res.status);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

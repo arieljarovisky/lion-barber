@@ -148,12 +148,51 @@ function extractPaymentId(req: Request): string | undefined {
   if (!body || typeof body !== 'object') return undefined;
   const data = body.data as { id?: string | number } | undefined;
   if (data?.id != null) return String(data.id);
+  if (typeof (body as { id?: unknown }).id === 'string' || typeof (body as { id?: unknown }).id === 'number') {
+    return String((body as { id: string | number }).id);
+  }
   const resource = body.resource;
   if (typeof resource === 'string') {
     const match = resource.match(/(\d+)\s*$/);
     if (match) return match[1];
   }
   return undefined;
+}
+
+function getMercadopagoErrorStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== 'object') return undefined;
+  const o = err as Record<string, unknown>;
+  if (typeof o.status === 'number') return o.status;
+  return undefined;
+}
+
+/** MP a veces tarda en indexar el pago; 404 también puede ser token test vs prod distinto al cobro. */
+async function getPaymentForWebhook(paymentClient: Payment, paymentId: string) {
+  const delaysMs = [0, 2000, 5000];
+  for (let i = 0; i < delaysMs.length; i++) {
+    if (delaysMs[i] > 0) await new Promise((r) => setTimeout(r, delaysMs[i]));
+    try {
+      return await paymentClient.get({ id: Number(paymentId) });
+    } catch (err: unknown) {
+      const status = getMercadopagoErrorStatus(err);
+      const last = i === delaysMs.length - 1;
+      const retryable = !last && (status === 404 || status === 429 || (status != null && status >= 500));
+      if (retryable) {
+        console.warn(
+          `[Webhook MP] reintento ${i + 2}/${delaysMs.length} pago ${paymentId} (HTTP ${String(status)})`
+        );
+        continue;
+      }
+      console.error('[Webhook MP] no se pudo obtener el pago', paymentId, err);
+      if (status === 404) {
+        console.error(
+          '[Webhook MP] 404: el access token no encuentra ese pago. Revisá TEST vs PROD (TEST-… = sandbox, APP_USR… = producción), misma cuenta MP que cobró la seña, y que el token no tenga espacios al pegarlo.'
+        );
+      }
+      return null;
+    }
+  }
+  return null;
 }
 
 /**
@@ -336,13 +375,8 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
   if (existing) return;
 
   const paymentClient = new Payment(config);
-  let payment;
-  try {
-    payment = await paymentClient.get({ id: Number(paymentId) });
-  } catch (e) {
-    console.error('Webhook MP: no se pudo obtener el pago', paymentId, e);
-    return;
-  }
+  const payment = await getPaymentForWebhook(paymentClient, paymentId);
+  if (!payment) return;
 
   if (payment.status !== 'approved') return;
 

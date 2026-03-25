@@ -44,7 +44,7 @@ const Logo = ({ className = "w-32 h-32" }) => (
 );
 
 export default function ClientView() {
-  const { profile, logout, canAccessDashboard } = useAuth();
+  const { profile, logout, canAccessDashboard, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
@@ -68,6 +68,7 @@ export default function ClientView() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
+  const [pendingCheckoutSuccess, setPendingCheckoutSuccess] = useState(false);
   const [bookingError, setBookingError] = useState('');
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -165,11 +166,10 @@ export default function ClientView() {
   useEffect(() => {
     const checkout = searchParams.get('checkout');
     if (checkout === 'success') {
-      setBookingSuccess(true);
+      setPendingCheckoutSuccess(true);
       setSearchParams({}, { replace: true });
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (checkout === 'cancel' || checkout === 'failure') {
-      setBookingError('Pago cancelado o rechazado. Podés intentar de nuevo o confirmar sin seña online.');
+      setBookingError('Pago cancelado o rechazado. Podés intentar de nuevo desde la reserva.');
       setSearchParams({}, { replace: true });
     } else if (checkout === 'pending') {
       setBookingError(
@@ -178,6 +178,15 @@ export default function ClientView() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!pendingCheckoutSuccess || authLoading) return;
+    setBookingSuccess(true);
+    setPendingCheckoutSuccess(false);
+    window.requestAnimationFrame(() => {
+      document.getElementById('reserva')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [pendingCheckoutSuccess, authLoading]);
 
   useEffect(() => {
     if (!selectedDate || !selectedService || !selectedBarber) {
@@ -221,8 +230,7 @@ export default function ClientView() {
       setSelectedTime('');
       setName('');
       setPhone('');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 3000);
+    }, 12000);
     return () => clearTimeout(t);
   }, [bookingSuccess]);
 
@@ -599,9 +607,9 @@ export default function ClientView() {
                   <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 text-emerald-400">
                     <CheckCircle2 size={32} className="sm:w-10 sm:h-10" />
                   </div>
-                  <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-2">¡Turno Confirmado!</h3>
+                  <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-2">¡Reserva confirmada!</h3>
                   <p className="text-emerald-400/80 text-base sm:text-lg font-sans">
-                    Seña abonada por la web. Te esperamos en Lion Barber.
+                    Tu turno quedó confirmado: la seña se registró correctamente. Te esperamos en Lion Barber.
                   </p>
                 </div>
               ) : (
