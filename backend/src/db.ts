@@ -121,8 +121,20 @@ export async function initDb(): Promise<void> {
   }
   try {
     await pool.execute(
-      "ALTER TABLE appointments ADD COLUMN status ENUM('scheduled','cancelled') NOT NULL DEFAULT 'scheduled'"
+      "ALTER TABLE appointments ADD COLUMN status ENUM('scheduled','pending_payment','cancelled') NOT NULL DEFAULT 'scheduled'"
     );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      "ALTER TABLE appointments MODIFY COLUMN status ENUM('scheduled','pending_payment','cancelled') NOT NULL DEFAULT 'scheduled'"
+    );
+  } catch {
+    /* motor sin cambios o enum ya actualizado */
+  }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN payment_due_at DATETIME NULL');
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }

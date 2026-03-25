@@ -65,6 +65,25 @@ function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; 
   return { kind: 'emoji', value: raw };
 }
 
+function getAppointmentPaymentBadge(app: Appointment): { label: string; className: string } {
+  if (app.status === 'pending_payment') {
+    return {
+      label: 'Pago pendiente',
+      className: 'bg-amber-100 text-amber-900 border border-amber-300',
+    };
+  }
+  if (app.depositPaid) {
+    return {
+      label: 'Senia pagada',
+      className: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
+    };
+  }
+  return {
+    label: 'Sin senia',
+    className: 'bg-zinc-100 text-zinc-700 border border-zinc-200',
+  };
+}
+
 const WEEKDAY_SHORT: { value: number; label: string }[] = [
   { value: 1, label: 'Lun' },
   { value: 2, label: 'Mar' },
@@ -920,6 +939,11 @@ export default function Dashboard() {
                               {app ? (
                                 <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3 text-sm shadow-sm hover:shadow transition-shadow">
                                   <p className="font-bold text-zinc-900 truncate" title={app.name}>{app.name}</p>
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
+                                  >
+                                    {getAppointmentPaymentBadge(app).label}
+                                  </span>
                                   <p className="text-zinc-600 text-xs truncate mt-0.5">{app.service}</p>
                                   <div className="flex gap-1 mt-2">
                                     <button
@@ -985,7 +1009,14 @@ export default function Dashboard() {
                             <span className="w-14 font-mono text-zinc-500 flex-shrink-0">{slot}</span>
                             {app ? (
                               <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-                                <span className="font-medium text-zinc-800 truncate">{app.name}</span>
+                                <div className="min-w-0">
+                                  <span className="font-medium text-zinc-800 truncate block">{app.name}</span>
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
+                                  >
+                                    {getAppointmentPaymentBadge(app).label}
+                                  </span>
+                                </div>
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                   <button
                                     type="button"
@@ -1074,6 +1105,13 @@ export default function Dashboard() {
                       <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-zinc-100 text-zinc-800">
                         {app.service}
                       </span>
+                      <div className="mt-2">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${getAppointmentPaymentBadge(app).className}`}
+                        >
+                          {getAppointmentPaymentBadge(app).label}
+                        </span>
+                      </div>
                     </div>
                     <div>
                       <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Barbero</p>

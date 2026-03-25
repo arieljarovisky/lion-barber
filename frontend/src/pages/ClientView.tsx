@@ -850,8 +850,8 @@ export default function ClientView() {
                     </button>
                   </div>
                   <p className="text-center text-[11px] text-zinc-500 mt-2">
-                    Al pagar la seña te abrimos Mercado Pago (checkout seguro); el turno se registra cuando el pago queda
-                    aprobado.
+                    Al pagar la seña te abrimos Mercado Pago (checkout seguro). Reservamos el horario por 30 minutos: si el
+                    pago no se aprueba en ese tiempo, la reserva se cancela automáticamente.
                   </p>
                 </form>
               )}

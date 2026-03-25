@@ -1,4 +1,4 @@
-export type AppointmentStatus = 'scheduled' | 'cancelled';
+export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
 export interface Appointment {
   id: string;
@@ -17,6 +17,7 @@ export interface Appointment {
   depositPaid?: boolean;
   /** Id. de pago de Mercado Pago (evita duplicar turnos en webhooks). */
   mercadopagoPaymentId?: string;
+  paymentDueAt?: string;
   status?: AppointmentStatus;
 }
 

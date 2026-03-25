@@ -28,6 +28,7 @@ interface DbAppointment {
   service_id: string | null;
   deposit_paid: number;
   mercadopago_payment_id?: string | null;
+  payment_due_at?: string | null;
   status?: string | null;
 }
 
@@ -47,8 +48,15 @@ function rowToAppointment(row: DbAppointment): Appointment {
     durationMinutes: row.duration_minutes ?? 30,
     depositPaid: Boolean(row.deposit_paid),
     mercadopagoPaymentId: row.mercadopago_payment_id ?? undefined,
+    paymentDueAt: row.payment_due_at ?? undefined,
     status: st,
   };
+}
+
+export async function expireStalePendingAppointments(): Promise<void> {
+  await query(
+    "UPDATE appointments SET status = 'cancelled' WHERE status = 'pending_payment' AND payment_due_at IS NOT NULL AND payment_due_at < NOW()"
+  );
 }
 
 function appointmentIntervalsForDay(appointments: Appointment[]): { startMin: number; endMin: number }[] {
@@ -63,6 +71,7 @@ export async function getBlockedIntervalsForBarber(
   barberId: string,
   date: string
 ): Promise<{ startMin: number; endMin: number }[]> {
+  await expireStalePendingAppointments();
   const apps = (await getAppointmentsByBarber(barberId, date)).filter(
     (a) => (a.status ?? 'scheduled') !== 'cancelled'
   );
@@ -127,11 +136,13 @@ export async function resolveBarberForAny(
 }
 
 export async function getAllAppointments(): Promise<Appointment[]> {
+  await expireStalePendingAppointments();
   const rows = await query<DbAppointment[]>('SELECT * FROM appointments ORDER BY date, time');
   return rows.map(rowToAppointment);
 }
 
 export async function getAppointmentsByDate(date: string): Promise<Appointment[]> {
+  await expireStalePendingAppointments();
   const rows = await query<DbAppointment[]>(
     'SELECT * FROM appointments WHERE date = ? ORDER BY time',
     [date]
@@ -140,6 +151,7 @@ export async function getAppointmentsByDate(date: string): Promise<Appointment[]
 }
 
 export async function getAppointmentsByUserId(userId: number): Promise<Appointment[]> {
+  await expireStalePendingAppointments();
   const rows = await query<DbAppointment[]>(
     'SELECT * FROM appointments WHERE user_id = ? ORDER BY date DESC, time DESC',
     [userId]
@@ -148,6 +160,7 @@ export async function getAppointmentsByUserId(userId: number): Promise<Appointme
 }
 
 export async function getAppointmentsByBarber(barberId: string, date?: string): Promise<Appointment[]> {
+  await expireStalePendingAppointments();
   let sql = 'SELECT * FROM appointments WHERE barber_id = ?';
   const params: unknown[] = [barberId];
   if (date) {
@@ -160,6 +173,7 @@ export async function getAppointmentsByBarber(barberId: string, date?: string): 
 }
 
 export async function getAppointmentById(id: string): Promise<Appointment | null> {
+  await expireStalePendingAppointments();
   const rows = await query<DbAppointment[]>('SELECT * FROM appointments WHERE id = ?', [id]);
   const row = rows[0];
   return row ? rowToAppointment(row) : null;
@@ -238,6 +252,7 @@ export async function getEarliestAvailableAnyBarber(
 }
 
 export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<Appointment> {
+  await expireStalePendingAppointments();
   let barberId = data.barberId;
   const durationMinutes = data.durationMinutes ?? (await resolveDurationMinutes(data.serviceId, data.service));
 
@@ -259,10 +274,12 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
   const serviceId = data.serviceId ?? null;
   const depositPaid = data.depositPaid ? 1 : 0;
   const mpId = data.mercadopagoPaymentId ?? null;
+  const status = data.status ?? 'scheduled';
+  const paymentDueAt = data.paymentDueAt ?? null;
 
   const [res] = await pool.execute(
-    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, date, time, duration_minutes, deposit_paid, mercadopago_payment_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, date, time, duration_minutes, deposit_paid, mercadopago_payment_id, status, payment_due_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.userId ?? null,
       data.name,
@@ -276,6 +293,8 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
       durationMinutes,
       depositPaid,
       mpId,
+      status,
+      paymentDueAt,
     ]
   );
   const insertId = (res as { insertId: number }).insertId;
@@ -285,6 +304,7 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
 }
 
 export async function updateAppointment(id: string, data: Partial<Appointment>): Promise<Appointment | null> {
+  await expireStalePendingAppointments();
   const current = await getAppointmentById(id);
   if (!current) return null;
   const updated = { ...current, ...data };
@@ -304,7 +324,7 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
   }
 
   await query(
-    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?
+    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?
      WHERE id = ?`,
     [
       updated.name,
@@ -317,10 +337,23 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       updated.time,
       durationMinutes,
       updated.depositPaid ? 1 : 0,
+      updated.status ?? 'scheduled',
+      updated.paymentDueAt ?? null,
       id,
     ]
   );
   return getAppointmentById(id);
+}
+
+export async function markAppointmentPaidAndScheduled(
+  appointmentId: string,
+  paymentId: string
+): Promise<Appointment | null> {
+  await query(
+    "UPDATE appointments SET status = 'scheduled', deposit_paid = 1, mercadopago_payment_id = ?, payment_due_at = NULL WHERE id = ? AND status != 'cancelled'",
+    [paymentId, appointmentId]
+  );
+  return getAppointmentById(appointmentId);
 }
 
 /** Cancelación por el cliente (soft). */

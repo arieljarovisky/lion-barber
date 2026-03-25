@@ -11,7 +11,7 @@ export function getAuthToken(): string | null {
 
 export const ANY_BARBER_ID = '__any__';
 
-export type AppointmentStatus = 'scheduled' | 'cancelled';
+export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
 export interface Appointment {
   id: string;
@@ -25,6 +25,7 @@ export interface Appointment {
   time: string;
   durationMinutes?: number;
   depositPaid?: boolean;
+  paymentDueAt?: string;
   status?: AppointmentStatus;
   /** Solo en GET /api/appointments/mine */
   canRescheduleOrCancel?: boolean;

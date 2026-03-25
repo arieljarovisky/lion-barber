@@ -62,6 +62,7 @@ function getApiPublicUrl(): string | null {
 /** Referencia compacta en external_reference (máx. ~256 caracteres en MP). */
 interface BookingRefV1 {
   v: 1;
+  a: string;
   n: string;
   p: string;
   s: string;
@@ -74,6 +75,7 @@ interface BookingRefV1 {
 }
 
 function buildBookingRef(input: {
+  appointmentId: string;
   name: string;
   phone: string;
   service: string;
@@ -86,6 +88,7 @@ function buildBookingRef(input: {
 }): string {
   const ref: BookingRefV1 = {
     v: 1,
+    a: input.appointmentId,
     n: input.name,
     p: input.phone,
     s: input.service,
@@ -112,7 +115,7 @@ function parseBookingRef(
   if (externalReference) {
     try {
       const o = JSON.parse(externalReference) as BookingRefV1;
-      if (o.v === 1 && o.n && o.b && o.d && o.t) return o;
+      if (o.v === 1 && o.a && o.n && o.b && o.d && o.t) return o;
     } catch {
       /* preferencia antigua u otro formato */
     }
@@ -122,6 +125,7 @@ function parseBookingRef(
     if (m.lb_n) {
       return {
         v: 1,
+        a: m.lb_a ?? '',
         n: m.lb_n,
         p: m.lb_p ?? '',
         s: m.lb_s ?? '',
@@ -191,6 +195,7 @@ router.post('/sena', async (req, res) => {
   }
 
   try {
+    await repo.expireStalePendingAppointments();
     if (barberId !== repo.ANY_BARBER_ID) {
       await repo.assertNoOverlap(barberId, date, time, durationMinutes);
     } else {
@@ -204,9 +209,32 @@ router.post('/sena', async (req, res) => {
     return res.status(409).json({ error: msg });
   }
 
+  let pending;
+  const paymentDueAt = new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+  try {
+    pending = await repo.createAppointment({
+      name,
+      phone,
+      service,
+      serviceId: serviceId ?? undefined,
+      barberId,
+      date,
+      time,
+      durationMinutes,
+      status: 'pending_payment',
+      paymentDueAt,
+      depositPaid: false,
+      ...(userId != null ? { userId: Number(userId) } : {}),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'No se pudo reservar temporalmente el horario';
+    return res.status(409).json({ error: msg });
+  }
+
   let externalReference: string;
   try {
     externalReference = buildBookingRef({
+      appointmentId: pending.id,
       name,
       phone,
       service,
@@ -243,6 +271,7 @@ router.post('/sena', async (req, res) => {
     ],
     external_reference: externalReference,
     metadata: {
+      lb_a: pending.id,
       lb_n: name,
       lb_p: phone,
       lb_s: service,
@@ -267,6 +296,7 @@ router.post('/sena', async (req, res) => {
     result = await preference.create({ body });
   } catch (e) {
     console.error('Mercado Pago preference.create:', e);
+    await repo.updateAppointment(pending.id, { status: 'cancelled' });
     return res.status(502).json({
       error: 'No se pudo iniciar el pago con Mercado Pago. Revisá credenciales y montos.',
     });
@@ -277,7 +307,7 @@ router.post('/sena', async (req, res) => {
     return res.status(500).json({ error: 'Mercado Pago no devolvió URL de pago' });
   }
 
-  res.json({ url });
+  res.json({ url, appointmentId: pending.id, paymentDueAt });
 });
 
 export default router;
@@ -321,6 +351,12 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
   }
 
   const userId = ref.u ? parseInt(ref.u, 10) : undefined;
+
+  const existingByRefId = ref.a ? await repo.getAppointmentById(ref.a) : null;
+  if (existingByRefId) {
+    await repo.markAppointmentPaidAndScheduled(existingByRefId.id, paymentId);
+    return;
+  }
 
   try {
     await repo.createAppointment({
