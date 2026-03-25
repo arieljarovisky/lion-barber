@@ -222,6 +222,9 @@ export async function initDb(): Promise<void> {
       );
     }
   }
+  await pool.execute('UPDATE barbers SET photo = ? WHERE id = ?', ['/barbers/agus.png', 'barber_1']);
+  await pool.execute('UPDATE barbers SET photo = ? WHERE id = ?', ['/barbers/valen.png', 'barber_2']);
+  await pool.execute('UPDATE barbers SET photo = ? WHERE id = ?', ['/barbers/toni.png', 'barber_3']);
 }
 
 export default pool;
