@@ -51,6 +51,7 @@ export interface Barber {
 export interface ShopSettings {
   cutoffHours: number;
   openWeekdays: number[];
+  depositPercent: number;
 }
 
 export interface BarberFrancoRow {
@@ -135,7 +136,7 @@ export const api = {
 
   getShopSettings: () => fetchApi<ShopSettings>('/api/shop-settings'),
 
-  updateShopSettings: (data: Partial<Pick<ShopSettings, 'cutoffHours' | 'openWeekdays'>>) =>
+  updateShopSettings: (data: Partial<Pick<ShopSettings, 'cutoffHours' | 'openWeekdays' | 'depositPercent'>>) =>
     fetchApi<ShopSettings>('/api/shop-settings', { method: 'PATCH', body: JSON.stringify(data) }),
 
   updateBarberCommission: (barberId: string, commissionPercent: number) =>

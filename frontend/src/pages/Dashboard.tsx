@@ -113,6 +113,7 @@ export default function Dashboard() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [shopCutoff, setShopCutoff] = useState(12);
   const [shopDays, setShopDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [shopDepositPercent, setShopDepositPercent] = useState(30);
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState('');
@@ -214,6 +215,7 @@ export default function Dashboard() {
         if (!cancelled) {
           setShopCutoff(s.cutoffHours);
           setShopDays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
+          setShopDepositPercent(s.depositPercent);
         }
       })
       .catch(() => {
@@ -561,7 +563,11 @@ export default function Dashboard() {
     setShopSaving(true);
     setShopError('');
     try {
-      await api.updateShopSettings({ cutoffHours: shopCutoff, openWeekdays: shopDays });
+      await api.updateShopSettings({
+        cutoffHours: shopCutoff,
+        openWeekdays: shopDays,
+        depositPercent: shopDepositPercent,
+      });
       showToast('Configuración guardada correctamente');
     } catch (err) {
       setShopError(err instanceof Error ? err.message : 'Error al guardar');
@@ -581,7 +587,7 @@ export default function Dashboard() {
           : view === 'configuracion'
             ? {
                 title: 'Configuración del local',
-                subtitle: 'Plazo para cancelar/reprogramar turnos, días abiertos y comisiones por barbero.',
+                subtitle: 'Plazo de gestión, seña online, días abiertos y comisiones por barbero.',
               }
             : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
 
@@ -1464,6 +1470,27 @@ export default function Dashboard() {
                   onChange={(e) => setShopCutoff(Number(e.target.value))}
                   className="w-32 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                 />
+              </div>
+              <div>
+                <h3 className="font-black text-lg text-zinc-900">Seña online</h3>
+                <p className="text-sm text-zinc-500 mt-1">
+                  Se calcula automáticamente como porcentaje del precio del servicio al iniciar Mercado Pago.
+                </p>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mt-4 mb-1">
+                  Porcentaje de seña
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={shopDepositPercent}
+                    onChange={(e) => setShopDepositPercent(Number(e.target.value))}
+                    className="w-32 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                  />
+                  <span className="text-zinc-600 text-sm font-medium">%</span>
+                </div>
               </div>
               <div>
                 <h3 className="font-black text-lg text-zinc-900">Días abiertos</h3>

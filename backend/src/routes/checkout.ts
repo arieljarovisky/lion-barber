@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import * as repo from '../repositories/appointments.js';
 import { getShopSettings } from '../repositories/shopSettings.js';
+import { getServiceById } from '../repositories/services.js';
 import { isDateOnOpenWeekday } from '../appointmentRules.js';
 
 const router = Router();
@@ -13,9 +14,37 @@ function getMpConfig(): MercadoPagoConfig | null {
   return new MercadoPagoConfig({ accessToken: token });
 }
 
-function getSenaAmountArs(): number {
-  const n = Number(process.env.SENA_AMOUNT_ARS ?? '5000');
-  return Number.isFinite(n) && n > 0 ? n : 5000;
+function parseArsAmount(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/\s/g, '').replace(/[^\d.,-]/g, '');
+  if (!cleaned) return null;
+  const hasDot = cleaned.includes('.');
+  const hasComma = cleaned.includes(',');
+  let normalized = cleaned;
+  if (hasDot && hasComma) {
+    normalized = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (hasDot) {
+    const parts = cleaned.split('.');
+    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+      normalized = cleaned.replace(/\./g, '');
+    }
+  } else if (hasComma) {
+    const parts = cleaned.split(',');
+    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+      normalized = cleaned.replace(/,/g, '');
+    } else {
+      normalized = cleaned.replace(',', '.');
+    }
+  }
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function calculateDepositAmountArs(servicePriceArs: number, depositPercent: number): number {
+  const raw = (servicePriceArs * depositPercent) / 100;
+  const rounded = Math.round(raw);
+  return Math.max(1, rounded);
 }
 
 function getFrontendUrl(): string {
@@ -192,7 +221,12 @@ router.post('/sena', async (req, res) => {
     return res.status(400).json({ error: e instanceof Error ? e.message : 'Datos inválidos' });
   }
 
-  const amountArs = getSenaAmountArs();
+  const serviceEntity = serviceId ? await getServiceById(serviceId) : null;
+  const servicePriceArs = parseArsAmount(serviceEntity?.price ?? service);
+  if (!servicePriceArs) {
+    return res.status(400).json({ error: 'No se pudo calcular la seña: precio del servicio inválido.' });
+  }
+  const amountArs = calculateDepositAmountArs(servicePriceArs, shop.depositPercent);
   const base = getFrontendUrl();
   const apiPublic = getApiPublicUrl();
 
