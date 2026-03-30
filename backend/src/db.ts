@@ -58,19 +58,16 @@ export async function initDb(): Promise<void> {
       price VARCHAR(50) NOT NULL,
       duration INT NOT NULL,
       \`desc\` TEXT,
-      emoji TEXT
+      emoji MEDIUMTEXT
     )
   `);
   try {
-    await pool.execute('ALTER TABLE services ADD COLUMN emoji TEXT');
+    await pool.execute('ALTER TABLE services ADD COLUMN emoji MEDIUMTEXT NULL');
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
-  try {
-    await pool.execute('ALTER TABLE services MODIFY COLUMN emoji TEXT');
-  } catch {
-    /* migración no crítica */
-  }
+  /** Tablas antiguas: emoji a veces quedó VARCHAR corto y falla al guardar SVG/URL largos. */
+  await pool.execute('ALTER TABLE services MODIFY COLUMN emoji MEDIUMTEXT NULL');
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS barbers (
       id VARCHAR(50) PRIMARY KEY,
