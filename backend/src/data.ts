@@ -11,9 +11,9 @@ export const SERVICES: Service[] = [
 ];
 
 export const BARBERS: Barber[] = [
-  { id: 'barber_1', name: 'Agus', role: 'Master Barber', photo: 'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?q=80&w=500&auto=format&fit=crop', desc: 'Especialista en cortes clásicos y perfilado de barba.' },
-  { id: 'barber_2', name: 'Valen', role: 'Senior Barber', photo: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=500&auto=format&fit=crop', desc: 'Experto en degradados y estilos urbanos modernos.' },
-  { id: 'barber_3', name: 'Toni', role: 'Barber', photo: 'https://images.unsplash.com/photo-1605406575497-015ab0d21b9b?q=80&w=500&auto=format&fit=crop', desc: 'Detallista y perfeccionista. Especialista en tijera.' },
+  { id: 'barber_1', name: 'Agus', role: 'Master Barber', photo: '/barbers/agus.png', desc: 'Especialista en cortes clásicos y perfilado de barba.' },
+  { id: 'barber_2', name: 'Valen', role: 'Senior Barber', photo: '/barbers/valen.png', desc: 'Experto en degradados y estilos urbanos modernos.' },
+  { id: 'barber_3', name: 'Toni', role: 'Barber', photo: '/barbers/toni.png', desc: 'Detallista y perfeccionista. Especialista en tijera.' },
 ];
 
 const timeSlots = [

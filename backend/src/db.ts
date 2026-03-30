@@ -210,9 +210,9 @@ export async function initDb(): Promise<void> {
   const barberCount = (barberRows as { count: number }[])[0].count;
   if (barberCount === 0) {
     const barbers = [
-      ['barber_1', 'Agus', 'Master Barber', 'https://images.unsplash.com/photo-1622286342621-4bd786c2447c?q=80&w=500&auto=format&fit=crop', 'Especialista en cortes clásicos y perfilado de barba.'],
-      ['barber_2', 'Valen', 'Senior Barber', 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=500&auto=format&fit=crop', 'Experto en degradados y estilos urbanos modernos.'],
-      ['barber_3', 'Toni', 'Barber', 'https://images.unsplash.com/photo-1605406575497-015ab0d21b9b?q=80&w=500&auto=format&fit=crop', 'Detallista y perfeccionista. Especialista en tijera.'],
+      ['barber_1', 'Agus', 'Master Barber', '/barbers/agus.png', 'Especialista en cortes clásicos y perfilado de barba.'],
+      ['barber_2', 'Valen', 'Senior Barber', '/barbers/valen.png', 'Experto en degradados y estilos urbanos modernos.'],
+      ['barber_3', 'Toni', 'Barber', '/barbers/toni.png', 'Detallista y perfeccionista. Especialista en tijera.'],
     ];
     for (const [id, name, role, photo, desc] of barbers) {
       await pool.execute(
