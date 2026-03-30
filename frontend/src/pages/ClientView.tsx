@@ -566,12 +566,8 @@ export default function ClientView() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80"></div>
                   <div className="absolute bottom-0 left-0 w-full p-4 sm:p-6">
-                    <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-1">{barber.name}</h3>
-                    <p className="text-[#e5c185] font-sans font-bold text-xs sm:text-sm uppercase tracking-widest">{barber.role}</p>
+                    <h3 className="text-2xl sm:text-3xl font-serif font-black text-white">{barber.name}</h3>
                   </div>
-                </div>
-                <div className="p-4 sm:p-6">
-                  <p className="text-zinc-400 font-sans font-light leading-relaxed text-sm sm:text-base">{barber.desc}</p>
                 </div>
               </motion.div>
             ))}

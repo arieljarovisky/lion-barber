@@ -1014,81 +1014,89 @@ export default function Dashboard() {
         )}
 
         {/* Listado de turnos */}
-        <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center">
-            <h3 className="font-bold text-lg text-zinc-800">Listado de turnos</h3>
-            <span className="bg-[#e5c185]/20 text-[#b39055] text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider">
+        <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center gap-3">
+            <h3 className="font-semibold text-sm sm:text-base text-zinc-800">Listado de turnos</h3>
+            <span className="bg-[#e5c185]/20 text-[#b39055] text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
               {dayAppointments.length} programados
             </span>
           </div>
 
           {dayAppointments.length === 0 ? (
-            <div className="p-20 text-center text-zinc-400 flex flex-col items-center bg-zinc-50/30">
-              <div className="w-24 h-24 bg-zinc-100 rounded-full flex items-center justify-center mb-6">
-                <CalendarIcon size={40} className="text-zinc-300" />
+            <div className="py-12 px-4 text-center text-zinc-400 flex flex-col items-center bg-zinc-50/30">
+              <div className="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center mb-4">
+                <CalendarIcon size={28} className="text-zinc-300" />
               </div>
-              <p className="text-xl font-medium text-zinc-600">Día libre</p>
-              <p className="mt-2">No hay turnos para esta fecha.</p>
+              <p className="text-base font-medium text-zinc-600">Día libre</p>
+              <p className="mt-1 text-sm">No hay turnos para esta fecha.</p>
               <button
                 type="button"
                 onClick={openCreateModal}
-                className="mt-6 flex items-center gap-2 px-5 py-2.5 bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 font-bold rounded-xl transition-colors"
+                className="mt-4 flex items-center gap-2 px-4 py-2 bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 text-sm font-semibold rounded-lg transition-colors"
               >
-                <Plus size={18} />
+                <Plus size={16} />
                 Crear cita
               </button>
             </div>
           ) : (
             <div className="divide-y divide-zinc-100">
               {dayAppointments.map((app) => (
-                <div key={app.id} className="p-6 hover:bg-zinc-50 transition-colors flex flex-col md:flex-row md:items-center gap-6 group">
-                  <div className="flex-shrink-0 w-28 flex flex-col items-center justify-center bg-zinc-950 text-white rounded-2xl py-4 shadow-md">
-                    <Clock size={18} className="text-[#e5c185] mb-1" />
-                    <span className="font-black text-2xl tracking-tight">{app.time}</span>
+                <div
+                  key={app.id}
+                  className="px-3 py-2.5 sm:px-4 sm:py-3 hover:bg-zinc-50/80 transition-colors flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 group"
+                >
+                  <div className="flex-shrink-0 flex items-center gap-1.5 bg-zinc-950 text-white rounded-lg px-2.5 py-1.5 sm:min-w-[4.5rem] sm:justify-center">
+                    <Clock size={14} className="text-[#e5c185] shrink-0" />
+                    <span className="font-bold text-sm tabular-nums tracking-tight">{app.time}</span>
                   </div>
-                  <div className="flex-grow grid grid-cols-1 md:grid-cols-4 gap-6">
-                    <div>
-                      <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                        <User size={14} /> Cliente
+                  <div className="flex-1 min-w-0 grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2 text-sm">
+                    <div className="min-w-0 col-span-2 lg:col-span-1">
+                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5 flex items-center gap-1">
+                        <User size={11} className="shrink-0" /> Cliente
                       </p>
-                      <p className="font-bold text-lg text-zinc-900">{app.name}</p>
+                      <p className="font-semibold text-zinc-900 truncate">{app.name}</p>
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                        <Phone size={14} /> Teléfono
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5 flex items-center gap-1">
+                        <Phone size={11} className="shrink-0" /> Teléfono
                       </p>
-                      <a href={`https://wa.me/549${app.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="font-bold text-lg text-zinc-900 hover:text-[#b39055] transition-colors">
+                      <a
+                        href={`https://wa.me/549${app.phone.replace(/\D/g, '')}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-zinc-900 hover:text-[#b39055] transition-colors truncate block"
+                      >
                         {app.phone}
                       </a>
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                        <Scissors size={14} /> Servicio
+                    <div className="min-w-0 col-span-2 lg:col-span-1">
+                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5 flex items-center gap-1">
+                        <Scissors size={11} className="shrink-0" /> Servicio
                       </p>
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-zinc-100 text-zinc-800">
+                      <span className="inline-flex max-w-full items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-zinc-100 text-zinc-800 truncate">
                         {app.service}
                       </span>
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Barbero</p>
-                      <span className="font-medium text-zinc-800">{app.barber ?? '—'}</span>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5">Barbero</p>
+                      <span className="font-medium text-zinc-800 truncate block">{app.barber ?? '—'}</span>
                     </div>
                   </div>
-                  <div className="flex-shrink-0 flex flex-wrap gap-2 border-t md:border-t-0 md:border-l border-zinc-100 pt-4 md:pt-0 md:pl-6">
+                  <div className="flex-shrink-0 flex items-center gap-1.5 sm:border-l border-zinc-100 sm:pl-3 pt-2 sm:pt-0 border-t sm:border-t-0 -mx-0.5 sm:mx-0">
                     <button
                       type="button"
                       onClick={() => openEditModal(app)}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-xl text-sm font-bold transition-colors"
+                      className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-amber-50 text-amber-900 hover:bg-amber-100 rounded-md text-xs font-semibold transition-colors"
                     >
-                      <Pencil size={18} />
+                      <Pencil size={14} />
                       Editar
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(app.id)}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-xl text-sm font-bold transition-colors"
+                      className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-md text-xs font-semibold transition-colors"
                     >
-                      <Trash2 size={18} />
+                      <Trash2 size={14} />
                       Eliminar
                     </button>
                   </div>
