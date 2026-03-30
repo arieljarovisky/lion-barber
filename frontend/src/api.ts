@@ -2,6 +2,27 @@
 const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '' : '');
 
 let authToken: string | null = null;
+
+/** Errores HTTP de la API (para no cerrar sesión en fallos de red). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+if (typeof window !== 'undefined') {
+  try {
+    const t = localStorage.getItem('lion_barber_token');
+    if (t) authToken = t;
+  } catch {
+    /* ignore */
+  }
+}
+
 export function setAuthToken(token: string | null) {
   authToken = token;
 }
@@ -11,7 +32,7 @@ export function getAuthToken(): string | null {
 
 export const ANY_BARBER_ID = '__any__';
 
-export type AppointmentStatus = 'scheduled' | 'cancelled';
+export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
 export interface Appointment {
   id: string;
@@ -25,10 +46,14 @@ export interface Appointment {
   time: string;
   durationMinutes?: number;
   depositPaid?: boolean;
+  paymentDueAt?: string;
   status?: AppointmentStatus;
   /** Solo en GET /api/appointments/mine */
-  canRescheduleOrCancel?: boolean;
+  canCancel?: boolean;
+  canReschedule?: boolean;
 }
+
+export type CancelAppointmentNotice = 'refund_processed' | 'deposit_retained_short_notice' | 'no_deposit';
 
 export interface Service {
   id: string;
@@ -51,6 +76,7 @@ export interface Barber {
 export interface ShopSettings {
   cutoffHours: number;
   openWeekdays: number[];
+  depositPercent: number;
 }
 
 export interface BarberFrancoRow {
@@ -84,7 +110,8 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as { error?: string }).error ?? res.statusText);
+    const msg = (err as { error?: string }).error ?? res.statusText;
+    throw new ApiError(msg, res.status);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -106,7 +133,7 @@ export const api = {
   createAppointment: (data: Omit<Appointment, 'id'> & { userId?: number }) =>
     fetchApi<Appointment>('/api/appointments', { method: 'POST', body: JSON.stringify(data) }),
 
-  /** Abre Mercado Pago (Checkout Pro) para abonar la seña; el turno se crea al aprobar el pago (webhook). */
+  /** Crea preferencia de seña; el front usa `preferenceId` con Wallet Brick (y opcionalmente `url` para redirección). */
   createCheckoutSena: (data: {
     name: string;
     phone: string;
@@ -116,7 +143,11 @@ export const api = {
     date: string;
     time: string;
     userId?: number;
-  }) => fetchApi<{ url: string }>('/api/checkout/sena', { method: 'POST', body: JSON.stringify(data) }),
+  }) =>
+    fetchApi<{ preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }>(
+      '/api/checkout/sena',
+      { method: 'POST', body: JSON.stringify(data) }
+    ),
 
   updateAppointment: (id: string, data: Partial<Appointment>) =>
     fetchApi<Appointment>(`/api/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -125,7 +156,10 @@ export const api = {
     fetchApi<void>(`/api/appointments/${id}`, { method: 'DELETE' }),
 
   cancelMyAppointment: (id: string) =>
-    fetchApi<Appointment>(`/api/appointments/${encodeURIComponent(id)}/cancel`, { method: 'POST' }),
+    fetchApi<Appointment & { cancelNotice?: CancelAppointmentNotice }>(
+      `/api/appointments/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST' }
+    ),
 
   rescheduleMyAppointment: (id: string, data: { date: string; time: string }) =>
     fetchApi<Appointment>(`/api/appointments/${encodeURIComponent(id)}/reschedule`, {
@@ -135,7 +169,7 @@ export const api = {
 
   getShopSettings: () => fetchApi<ShopSettings>('/api/shop-settings'),
 
-  updateShopSettings: (data: Partial<Pick<ShopSettings, 'cutoffHours' | 'openWeekdays'>>) =>
+  updateShopSettings: (data: Partial<Pick<ShopSettings, 'cutoffHours' | 'openWeekdays' | 'depositPercent'>>) =>
     fetchApi<ShopSettings>('/api/shop-settings', { method: 'PATCH', body: JSON.stringify(data) }),
 
   updateBarberCommission: (barberId: string, commissionPercent: number) =>

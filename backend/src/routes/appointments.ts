@@ -2,7 +2,15 @@ import { Router } from 'express';
 import * as repo from '../repositories/appointments.js';
 import { getShopSettings } from '../repositories/shopSettings.js';
 import { requireAuth, requireStaffOrAdmin, type AuthRequest } from '../middleware/auth.js';
-import { canClientModifyAppointment, isDateOnOpenWeekday } from '../appointmentRules.js';
+import {
+  canClientCancelAppointment,
+  canClientRescheduleAppointment,
+  DEPOSIT_REFUND_MIN_HOURS,
+  hoursUntilAppointmentStart,
+  isDateOnOpenWeekday,
+  isPastCalendarDateInArgentina,
+} from '../appointmentRules.js';
+import { refundPaymentTotal } from '../mercadopagoRefund.js';
 
 const router = Router();
 
@@ -68,7 +76,8 @@ router.get('/mine', requireAuth, async (req, res) => {
     const list = await repo.getAppointmentsByUserId(authReq.user!.id);
     const enriched = list.map((a) => ({
       ...a,
-      canRescheduleOrCancel: canClientModifyAppointment(a, settings.cutoffHours).ok,
+      canCancel: canClientCancelAppointment(a).ok,
+      canReschedule: canClientRescheduleAppointment(a, settings.cutoffHours).ok,
     }));
     res.json(enriched);
   } catch (err) {
@@ -85,14 +94,29 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
     if (!app || app.userId !== authReq.user!.id) {
       return res.status(403).json({ error: 'No autorizado' });
     }
-    const settings = await getShopSettings();
-    const check = canClientModifyAppointment(app, settings.cutoffHours);
+    const check = canClientCancelAppointment(app);
     if (!check.ok) {
       return res.status(403).json({ error: check.reason ?? 'No podés cancelar este turno' });
     }
+
+    const hoursLeft = hoursUntilAppointmentStart(app.date, app.time);
+    let cancelNotice: 'refund_processed' | 'deposit_retained_short_notice' | 'no_deposit' = 'no_deposit';
+
+    if (app.depositPaid && app.mercadopagoPaymentId) {
+      if (hoursLeft >= DEPOSIT_REFUND_MIN_HOURS) {
+        const refund = await refundPaymentTotal(app.mercadopagoPaymentId);
+        if (!refund.ok) {
+          return res.status(502).json({ error: refund.error });
+        }
+        cancelNotice = 'refund_processed';
+      } else {
+        cancelNotice = 'deposit_retained_short_notice';
+      }
+    }
+
     const updated = await repo.cancelAppointmentByUser(id, authReq.user!.id);
     if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
-    res.json(updated);
+    res.json({ ...updated, cancelNotice });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al cancelar' });
@@ -112,7 +136,7 @@ router.post('/:id/reschedule', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'No autorizado' });
     }
     const settings = await getShopSettings();
-    const check = canClientModifyAppointment(app, settings.cutoffHours);
+    const check = canClientRescheduleAppointment(app, settings.cutoffHours);
     if (!check.ok) {
       return res.status(403).json({ error: check.reason ?? 'No podés reprogramar este turno' });
     }
@@ -154,6 +178,12 @@ router.post('/', async (req, res) => {
   }
   try {
     const shop = await getShopSettings();
+    if (isPastCalendarDateInArgentina(String(date))) {
+      return res.status(400).json({ error: 'No podés cargar un turno en una fecha pasada.' });
+    }
+    if (hoursUntilAppointmentStart(String(date), String(time)) <= 0) {
+      return res.status(400).json({ error: 'Elegí un horario futuro.' });
+    }
     if (!isDateOnOpenWeekday(date, shop.openWeekdays)) {
       return res.status(400).json({ error: 'El local no atiende ese día.' });
     }

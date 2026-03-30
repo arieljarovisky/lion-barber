@@ -9,6 +9,8 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  /** Evita que DATE se convierta en Date de JS (medianoche UTC) y al serializar JSON se corra un día. */
+  dateStrings: true,
 });
 
 export async function query<T = unknown>(sql: string, params?: unknown[]): Promise<T> {
@@ -121,8 +123,20 @@ export async function initDb(): Promise<void> {
   }
   try {
     await pool.execute(
-      "ALTER TABLE appointments ADD COLUMN status ENUM('scheduled','cancelled') NOT NULL DEFAULT 'scheduled'"
+      "ALTER TABLE appointments ADD COLUMN status ENUM('scheduled','pending_payment','cancelled') NOT NULL DEFAULT 'scheduled'"
     );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      "ALTER TABLE appointments MODIFY COLUMN status ENUM('scheduled','pending_payment','cancelled') NOT NULL DEFAULT 'scheduled'"
+    );
+  } catch {
+    /* motor sin cambios o enum ya actualizado */
+  }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN payment_due_at DATETIME NULL');
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
@@ -138,11 +152,21 @@ export async function initDb(): Promise<void> {
     CREATE TABLE IF NOT EXISTS shop_settings (
       id INT PRIMARY KEY DEFAULT 1,
       cutoff_hours INT NOT NULL DEFAULT 12,
-      open_weekdays VARCHAR(64) NOT NULL DEFAULT '1,2,3,4,5,6,7'
+      open_weekdays VARCHAR(64) NOT NULL DEFAULT '1,2,3,4,5,6,7',
+      deposit_percent DECIMAL(5,2) NOT NULL DEFAULT 30
     )
   `);
   try {
-    await pool.execute('INSERT IGNORE INTO shop_settings (id, cutoff_hours, open_weekdays) VALUES (1, 12, \'1,2,3,4,5,6,7\')');
+    await pool.execute(
+      'ALTER TABLE shop_settings ADD COLUMN deposit_percent DECIMAL(5,2) NOT NULL DEFAULT 30'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      "INSERT IGNORE INTO shop_settings (id, cutoff_hours, open_weekdays, deposit_percent) VALUES (1, 12, '1,2,3,4,5,6,7', 30)"
+    );
   } catch {
     /* ya existe */
   }
@@ -200,6 +224,9 @@ export async function initDb(): Promise<void> {
       );
     }
   }
+  await pool.execute('UPDATE barbers SET photo = ? WHERE id = ?', ['/barbers/agus.png', 'barber_1']);
+  await pool.execute('UPDATE barbers SET photo = ? WHERE id = ?', ['/barbers/valen.png', 'barber_2']);
+  await pool.execute('UPDATE barbers SET photo = ? WHERE id = ?', ['/barbers/toni.png', 'barber_3']);
 }
 
 export default pool;

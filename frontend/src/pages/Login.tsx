@@ -10,14 +10,19 @@ export default function Login() {
   const location = useLocation();
   const [error, setError] = useState('');
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname ?? '/perfil';
+  const fromState = (location.state as { from?: { pathname: string; hash?: string } })?.from;
+  const fromPath = fromState?.pathname ?? '/perfil';
+  const fromHash = fromState?.hash?.replace(/^#/, '') ?? '';
 
   React.useEffect(() => {
     if (!loading && user) {
-      const target = canAccessDashboard ? '/dashboard' : from;
-      navigate(target, { replace: true });
+      if (canAccessDashboard) {
+        navigate('/dashboard', { replace: true });
+        return;
+      }
+      navigate({ pathname: fromPath, hash: fromHash || undefined }, { replace: true });
     }
-  }, [user, loading, navigate, from, canAccessDashboard]);
+  }, [user, loading, navigate, fromPath, fromHash, canAccessDashboard]);
 
   const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
     const idToken = credentialResponse.credential;

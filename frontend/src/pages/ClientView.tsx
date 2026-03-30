@@ -1,13 +1,32 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard } from 'lucide-react';
-import { addAppointment, api } from '../store';
+import { api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
 import { useAuth } from '../contexts/AuthContext';
-import { format, addDays, startOfToday, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isBefore, startOfDay, getISODay } from 'date-fns';
+import {
+  format,
+  parse,
+  addDays,
+  startOfToday,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  addMonths,
+  subMonths,
+  startOfWeek,
+  endOfWeek,
+  isBefore,
+  startOfDay,
+  getISODay,
+} from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion } from 'motion/react';
+import { Wallet } from '@mercadopago/sdk-react';
+import heroPortada from '../assets/hero-portada.png';
 
 const TIME_SLOTS = [
   '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
@@ -15,6 +34,36 @@ const TIME_SLOTS = [
   '16:00', '16:30', '17:00', '17:30', '18:00', '18:30',
   '19:00', '19:30'
 ];
+
+/** Anticipación mínima para reservar “hoy” (no mostrar turnos que empiezan antes). */
+const BOOKING_LEAD_MINUTES = 15;
+
+/** Inicio del turno en hora local (reloj del navegador; en AR suele ser UTC-3). */
+function slotStartDate(dateStr: string, timeStr: string): Date {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, m] = timeStr.split(':').map(Number);
+  if (!y || !mo || !d) return new Date(NaN);
+  return new Date(y, mo - 1, d, h, m, 0, 0);
+}
+
+function minBookableTimestampForToday(dateStr: string): number | null {
+  const todayStr = format(startOfToday(), 'yyyy-MM-dd');
+  if (dateStr !== todayStr) return null;
+  return Date.now() + BOOKING_LEAD_MINUTES * 60 * 1000;
+}
+
+/** Si la fecha es hoy, quita turnos que ya pasaron o que empiezan en menos de BOOKING_LEAD_MINUTES minutos. */
+function filterPastSlotsForToday(slots: string[], dateStr: string): string[] {
+  const minTs = minBookableTimestampForToday(dateStr);
+  if (minTs == null) return slots;
+  return slots.filter((slot) => slotStartDate(dateStr, slot).getTime() > minTs);
+}
+
+function isSlotAlreadyPast(dateStr: string, timeStr: string): boolean {
+  const minTs = minBookableTimestampForToday(dateStr);
+  if (minTs == null) return false;
+  return slotStartDate(dateStr, timeStr).getTime() <= minTs;
+}
 
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
   const raw = (icon ?? '').trim();
@@ -43,7 +92,7 @@ const Logo = ({ className = "w-32 h-32" }) => (
 );
 
 export default function ClientView() {
-  const { profile, logout, canAccessDashboard } = useAuth();
+  const { profile, logout, canAccessDashboard, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
@@ -67,8 +116,10 @@ export default function ClientView() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState(false);
-  const [bookingSuccessPaidSena, setBookingSuccessPaidSena] = useState(false);
+  const [pendingCheckoutSuccess, setPendingCheckoutSuccess] = useState(false);
   const [bookingError, setBookingError] = useState('');
+  const [senaCheckoutPreferenceId, setSenaCheckoutPreferenceId] = useState<string | null>(null);
+  const [senaCheckoutLoading, setSenaCheckoutLoading] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(startOfToday());
@@ -83,6 +134,18 @@ export default function ClientView() {
   const [availableSlots, setAvailableSlots] = useState<string[]>(TIME_SLOTS);
   const [earliestAny, setEarliestAny] = useState<{ barberId: string; time: string } | null>(null);
   const [availableBarberIds, setAvailableBarberIds] = useState<string[]>([]);
+  /** Solo para re-ejecutar el filtro de “hoy” cada minuto. */
+  const [timeTick, setTimeTick] = useState(0);
+
+  const getBarberPhotoClasses = (barberId: string) =>
+    barberId === 'barber_3'
+      ? 'w-full h-full object-cover object-top brightness-110 contrast-105 group-hover:scale-105 transition-transform duration-500'
+      : 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-500';
+
+  const getBarberOverlayClasses = (barberId: string) =>
+    barberId === 'barber_3'
+      ? 'absolute inset-0 bg-gradient-to-t from-zinc-950/65 via-zinc-950/15 to-transparent opacity-75'
+      : 'absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80';
 
   const selectedServiceDuration = services.find((s) => s.id === selectedService)?.duration ?? 30;
   const visibleBarbers = useMemo(() => {
@@ -91,12 +154,25 @@ export default function ClientView() {
     return barbers.filter((b) => set.has(b.id));
   }, [barbers, selectedDate, selectedService, availableBarberIds]);
 
+  const visibleTimeSlots = useMemo(
+    () => filterPastSlotsForToday(availableSlots, selectedDate),
+    [availableSlots, selectedDate, timeTick]
+  );
+
+  useEffect(() => {
+    const todayStr = format(startOfToday(), 'yyyy-MM-dd');
+    if (selectedDate !== todayStr) return;
+    const id = window.setInterval(() => setTimeTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, [selectedDate]);
+
   const validateBookingForm = (): boolean => {
     if (!selectedService || !selectedBarber || !selectedDate || !selectedTime || !name || !phone) {
       setBookingError('Por favor completa todos los campos');
       return false;
     }
-    if (isBefore(startOfDay(new Date(selectedDate)), startOfDay(new Date()))) {
+    const todayStr = format(startOfToday(), 'yyyy-MM-dd');
+    if (selectedDate < todayStr) {
       setBookingError('No podés reservar en una fecha pasada.');
       return false;
     }
@@ -114,7 +190,7 @@ export default function ClientView() {
       setBookingError('Ese barbero no está disponible para la fecha elegida.');
       return false;
     }
-    if (!availableSlots.includes(selectedTime)) {
+    if (!visibleTimeSlots.includes(selectedTime)) {
       setBookingError('La hora elegida ya no está disponible. Elegí otra.');
       return false;
     }
@@ -155,12 +231,10 @@ export default function ClientView() {
   useEffect(() => {
     const checkout = searchParams.get('checkout');
     if (checkout === 'success') {
-      setBookingSuccessPaidSena(true);
-      setBookingSuccess(true);
+      setPendingCheckoutSuccess(true);
       setSearchParams({}, { replace: true });
-      window.scrollTo({ top: 0, behavior: 'smooth' });
     } else if (checkout === 'cancel' || checkout === 'failure') {
-      setBookingError('Pago cancelado o rechazado. Podés intentar de nuevo o confirmar sin seña online.');
+      setBookingError('Pago cancelado o rechazado. Podés intentar de nuevo desde la reserva.');
       setSearchParams({}, { replace: true });
     } else if (checkout === 'pending') {
       setBookingError(
@@ -169,6 +243,19 @@ export default function ClientView() {
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    setSenaCheckoutPreferenceId(null);
+  }, [selectedService, selectedBarber, selectedDate, selectedTime]);
+
+  useEffect(() => {
+    if (!pendingCheckoutSuccess || authLoading) return;
+    setBookingSuccess(true);
+    setPendingCheckoutSuccess(false);
+    window.requestAnimationFrame(() => {
+      document.getElementById('reserva')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, [pendingCheckoutSuccess, authLoading]);
 
   useEffect(() => {
     if (!selectedDate || !selectedService || !selectedBarber) {
@@ -197,24 +284,23 @@ export default function ClientView() {
   }, [selectedDate, selectedBarber, selectedService, selectedServiceDuration, services]);
 
   useEffect(() => {
-    if (selectedTime && availableSlots.length > 0 && !availableSlots.includes(selectedTime)) {
+    if (selectedTime && visibleTimeSlots.length > 0 && !visibleTimeSlots.includes(selectedTime)) {
       setSelectedTime('');
     }
-  }, [availableSlots, selectedTime]);
+  }, [visibleTimeSlots, selectedTime]);
 
   useEffect(() => {
     if (!bookingSuccess) return;
     const t = window.setTimeout(() => {
       setBookingSuccess(false);
-      setBookingSuccessPaidSena(false);
       setSelectedService('');
       setSelectedBarber('');
       setSelectedDate(format(startOfToday(), 'yyyy-MM-dd'));
       setSelectedTime('');
       setName('');
       setPhone('');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 3000);
+      setSenaCheckoutPreferenceId(null);
+    }, 12000);
     return () => clearTimeout(t);
   }, [bookingSuccess]);
 
@@ -225,10 +311,13 @@ export default function ClientView() {
       .filter((d) => openWeekdays.includes(getISODay(d)));
   }, [openWeekdays]);
 
+  /** Solo cuando cambian los días hábiles reales (no en cada referencia nueva del array de la API). */
+  const openWeekdaysKey = [...openWeekdays].sort((a, b) => a - b).join(',');
+
   useEffect(() => {
     if (!openWeekdays.length) return;
     setSelectedDate((current) => {
-      const d = new Date(`${current}T12:00:00`);
+      const d = parse(current, 'yyyy-MM-dd', new Date());
       if (openWeekdays.includes(getISODay(d))) return current;
       const t = startOfToday();
       for (let i = 0; i < 60; i++) {
@@ -239,7 +328,7 @@ export default function ClientView() {
       }
       return current;
     });
-  }, [openWeekdays]);
+  }, [openWeekdaysKey]);
 
   const today = startOfToday();
 
@@ -249,7 +338,8 @@ export default function ClientView() {
     if (!isSelectedInBase) {
       const [year, month, day] = selectedDate.split('-').map(Number);
       const customDate = new Date(year, month - 1, day);
-      if (openWeekdays.includes(getISODay(customDate))) {
+      const notPast = !isBefore(startOfDay(customDate), startOfToday());
+      if (openWeekdays.includes(getISODay(customDate)) && notPast) {
         displayDays = [customDate, ...baseDays];
       }
     }
@@ -292,12 +382,26 @@ export default function ClientView() {
     scrollContainerRef.current.scrollLeft = scrollLeft - walk;
   };
 
+  const mpPublicKey = import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY as string | undefined;
+
   const handlePaySena = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     setBookingError('');
+    if (!profile) {
+      navigate('/login', { state: { from: { pathname: '/', hash: '#reserva' } } });
+      return;
+    }
     if (!validateBookingForm()) return;
+    const key = mpPublicKey?.trim();
+    if (!key) {
+      setBookingError(
+        'Falta la clave pública de Mercado Pago en el sitio (VITE_MERCADOPAGO_PUBLIC_KEY). Pedile al administrador que la configure.'
+      );
+      return;
+    }
+    setSenaCheckoutLoading(true);
     try {
-      const { url } = await api.createCheckoutSena({
+      const data = await api.createCheckoutSena({
         name: name.trim(),
         phone: phone.trim(),
         service: services.find((s) => s.id === selectedService)?.name ?? selectedService,
@@ -305,39 +409,19 @@ export default function ClientView() {
         barberId: selectedBarber,
         date: selectedDate,
         time: selectedTime,
-        ...(profile?.id && { userId: profile.id }),
+        userId: profile.id,
       });
-      window.location.href = url;
+      setSenaCheckoutPreferenceId(data.preferenceId);
     } catch (err) {
       setBookingError(err instanceof Error ? err.message : 'No se pudo iniciar el pago de la seña');
+    } finally {
+      setSenaCheckoutLoading(false);
     }
   };
 
   const handleLogout = async () => {
     await logout();
     navigate('/', { replace: true });
-  };
-
-  const handleBook = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBookingError('');
-    if (!validateBookingForm()) return;
-
-    try {
-      await addAppointment({
-        name: name.trim(),
-        phone: phone.trim(),
-        service: services.find(s => s.id === selectedService)?.name ?? selectedService,
-        serviceId: selectedService,
-        barberId: selectedBarber,
-        date: selectedDate,
-        time: selectedTime,
-        ...(profile?.id && { userId: profile.id }),
-      });
-      setBookingSuccess(true);
-    } catch (err) {
-      setBookingError(err instanceof Error ? err.message : 'Error al reservar. ¿Está el backend en marcha?');
-    }
   };
 
   return (
@@ -447,12 +531,12 @@ export default function ClientView() {
       <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
         <div className="absolute inset-0 z-0">
           <img 
-            src="https://images.unsplash.com/photo-1585747860715-2ba37e788b70?auto=format&fit=crop&q=80" 
+            src={heroPortada}
             alt="Barbershop interior" 
-            className="w-full h-full object-cover opacity-20"
+            className="w-full h-full object-cover object-center opacity-45 brightness-110 contrast-105"
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/50 via-zinc-950/80 to-zinc-950"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-zinc-950/55 to-zinc-950/85"></div>
         </div>
 
         <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
@@ -460,11 +544,11 @@ export default function ClientView() {
             De 10 a 20 hs
           </p>
           
-          <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-hidden">
+          <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-visible">
             <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[6rem] xl:text-[140px] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
               Agenda
             </h1>
-            <span className="text-6xl sm:text-7xl md:text-8xl lg:text-[7rem] xl:text-[160px] font-script text-[#e5c185] drop-shadow-lg absolute top-1/2 -translate-y-1/2 mt-4 sm:mt-6 md:mt-8 lg:mt-16 leading-none select-none">
+            <span className="text-5xl sm:text-7xl md:text-8xl lg:text-[7rem] xl:text-[160px] font-script text-[#e5c185] drop-shadow-lg absolute top-1/2 -translate-y-1/2 mt-4 sm:mt-6 md:mt-8 lg:mt-16 leading-none select-none whitespace-nowrap px-3">
               abierta
             </span>
           </div>
@@ -561,10 +645,10 @@ export default function ClientView() {
                   <img 
                     src={barber.photo} 
                     alt={barber.name} 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    className={getBarberPhotoClasses(barber.id)}
                     referrerPolicy="no-referrer"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80"></div>
+                  <div className={getBarberOverlayClasses(barber.id)}></div>
                   <div className="absolute bottom-0 left-0 w-full p-4 sm:p-6">
                     <h3 className="text-2xl sm:text-3xl font-serif font-black text-white">{barber.name}</h3>
                   </div>
@@ -586,6 +670,16 @@ export default function ClientView() {
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black uppercase tracking-tight mb-2 text-white">Reserva tu lugar</h2>
               <p className="text-sm sm:text-base text-zinc-400 mb-8 sm:mb-10 font-sans font-light">Completa los datos para agendar tu próximo corte.</p>
 
+              {!profile && (
+                <div className="mb-6 p-4 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-100/90 text-sm">
+                  Para confirmar el turno con la seña online tenés que{' '}
+                  <Link to="/login" state={{ from: { pathname: '/', hash: '#reserva' } }} className="font-bold text-[#e5c185] underline underline-offset-2 hover:text-[#d4b074]">
+                    iniciar sesión con Google
+                  </Link>
+                  .
+                </div>
+              )}
+
               {bookingError && (
                 <div className="mb-6 p-4 bg-red-950/30 border border-red-500/30 rounded-xl text-red-400 text-sm">{bookingError}</div>
               )}
@@ -595,14 +689,16 @@ export default function ClientView() {
                   <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 text-emerald-400">
                     <CheckCircle2 size={32} className="sm:w-10 sm:h-10" />
                   </div>
-                  <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-2">¡Turno Confirmado!</h3>
+                  <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-2">¡Reserva confirmada!</h3>
                   <p className="text-emerald-400/80 text-base sm:text-lg font-sans">
-                    {bookingSuccessPaidSena ? 'Seña abonada por la web. ' : ''}
-                    Te esperamos en Lion Barber.
+                    Tu turno quedó confirmado: la seña se registró correctamente. Te esperamos en Lion Barber.
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleBook} className="space-y-6 font-sans">
+                <form
+                  onSubmit={(e) => e.preventDefault()}
+                  className="space-y-6 font-sans"
+                >
                   <div className="grid md:grid-cols-2 gap-6">
                     {/* Service Selection */}
                     <div className="space-y-2 md:col-span-2 min-w-0">
@@ -711,20 +807,25 @@ export default function ClientView() {
                           {displayDays.map(date => {
                             const dateStr = format(date, 'yyyy-MM-dd');
                             const isSelected = selectedDate === dateStr;
+                            const isPastDay = isBefore(startOfDay(date), startOfToday());
                             return (
                               <button
                                 key={dateStr}
                                 type="button"
+                                disabled={isPastDay}
                                 onClick={(e) => {
                                   if (dragged) {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     return;
                                   }
+                                  if (isPastDay) return;
                                   setSelectedDate(dateStr);
                                 }}
                                 className={`flex-shrink-0 w-16 sm:w-20 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border flex flex-col items-center justify-center transition-all snap-start min-w-0 ${
-                                  isSelected 
+                                  isPastDay
+                                    ? 'opacity-30 cursor-not-allowed border-zinc-800 text-zinc-600'
+                                    : isSelected 
                                     ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.3)]' 
                                     : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
                                 }`}
@@ -790,7 +891,7 @@ export default function ClientView() {
                         </p>
                       ) : (
                         <>
-                          {selectedBarber === ANY_BARBER_ID && earliestAny && (
+                          {selectedBarber === ANY_BARBER_ID && earliestAny && !isSlotAlreadyPast(selectedDate, earliestAny.time) && (
                             <button
                               type="button"
                               onClick={() => setSelectedTime(earliestAny.time)}
@@ -799,13 +900,18 @@ export default function ClientView() {
                               Usar el próximo libre: {earliestAny.time}
                             </button>
                           )}
+                          {visibleTimeSlots.length === 0 && availableSlots.length > 0 && selectedDate === format(startOfToday(), 'yyyy-MM-dd') && (
+                            <p className="text-amber-500/90 text-sm mb-2">
+                              Para hoy no quedan horarios con al menos {BOOKING_LEAD_MINUTES} minutos de anticipación. Elegí otro día.
+                            </p>
+                          )}
                           {availableSlots.length === 0 && selectedService && selectedBarber && (
                             <p className="text-amber-500/90 text-sm mb-2">
                               No hay horarios disponibles para esa fecha y duración. Probá otro día u otro barbero.
                             </p>
                           )}
                           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
-                            {availableSlots.map(time => {
+                            {visibleTimeSlots.map(time => {
                               const isSelected = selectedTime === time;
                               return (
                                 <button
@@ -858,24 +964,41 @@ export default function ClientView() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-3 mt-4">
-                    <button
-                      type="submit"
-                      className="flex-1 bg-[#e5c185] hover:bg-[#d4b074] text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      Confirmar reserva
-                    </button>
+                  <div className="flex flex-col gap-3 mt-4">
                     <button
                       type="button"
                       onClick={handlePaySena}
-                      className="flex-1 bg-transparent border-2 border-[#e5c185]/80 hover:bg-[#e5c185]/10 text-[#e5c185] font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+                      disabled={senaCheckoutLoading}
+                      className="bg-[#e5c185] hover:bg-[#d4b074] disabled:opacity-60 disabled:pointer-events-none text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      Pagar seña y confirmar
+                      {senaCheckoutLoading
+                        ? 'Preparando pago…'
+                        : profile
+                          ? senaCheckoutPreferenceId
+                            ? 'Preferencia lista — pagá abajo'
+                            : 'Pagar seña y confirmar turno'
+                          : 'Iniciar sesión para confirmar'}
                     </button>
+                    {senaCheckoutPreferenceId && (
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 min-h-[120px]">
+                        <p className="text-xs text-zinc-400 mb-3 text-center">
+                          Completá el pago con Mercado Pago. Si te redirige al checkout, al volver podés ver el estado del
+                          turno en tu perfil.
+                        </p>
+                        <Wallet
+                          initialization={{ preferenceId: senaCheckoutPreferenceId, redirectMode: 'self' }}
+                          locale="es-AR"
+                          customization={{ theme: 'dark' }}
+                          onError={(err) => {
+                            setBookingError(err.message || 'Error al cargar el botón de pago');
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                   <p className="text-center text-[11px] text-zinc-500 mt-2">
-                    Al pagar la seña te abrimos Mercado Pago (checkout seguro); el turno se registra cuando el pago queda
-                    aprobado.
+                    Reservamos el horario por 30 minutos: si el pago no se aprueba en ese tiempo, la reserva se cancela
+                    automáticamente.
                   </p>
                 </form>
               )}

@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Perfil from './pages/Perfil';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
+import MercadoPagoInit from './components/MercadoPagoInit';
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
 
@@ -14,6 +15,7 @@ export default function App() {
     <GoogleOAuthProvider clientId={googleClientId}>
       <AuthProvider>
         <BrowserRouter>
+        <MercadoPagoInit />
         <Routes>
           <Route path="/" element={<ClientView />} />
           <Route path="/login" element={<Login />} />

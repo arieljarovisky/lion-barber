@@ -65,6 +65,32 @@ function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; 
   return { kind: 'emoji', value: raw };
 }
 
+/** MySQL TIME puede devolver "10:30:00"; la grilla usa "10:30". */
+function normalizeAppointmentTime(t: string | undefined): string {
+  if (!t) return '';
+  const s = t.trim();
+  return s.length >= 5 ? s.slice(0, 5) : s;
+}
+
+function getAppointmentPaymentBadge(app: Appointment): { label: string; className: string } {
+  if (app.status === 'pending_payment') {
+    return {
+      label: 'Pago pendiente',
+      className: 'bg-amber-100 text-amber-900 border border-amber-300',
+    };
+  }
+  if (app.depositPaid) {
+    return {
+      label: 'Senia pagada',
+      className: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
+    };
+  }
+  return {
+    label: 'Sin senia',
+    className: 'bg-zinc-100 text-zinc-700 border border-zinc-200',
+  };
+}
+
 const WEEKDAY_SHORT: { value: number; label: string }[] = [
   { value: 1, label: 'Lun' },
   { value: 2, label: 'Mar' },
@@ -113,6 +139,7 @@ export default function Dashboard() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [shopCutoff, setShopCutoff] = useState(12);
   const [shopDays, setShopDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [shopDepositPercent, setShopDepositPercent] = useState(30);
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState('');
@@ -214,6 +241,7 @@ export default function Dashboard() {
         if (!cancelled) {
           setShopCutoff(s.cutoffHours);
           setShopDays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
+          setShopDepositPercent(s.depositPercent);
         }
       })
       .catch(() => {
@@ -561,7 +589,11 @@ export default function Dashboard() {
     setShopSaving(true);
     setShopError('');
     try {
-      await api.updateShopSettings({ cutoffHours: shopCutoff, openWeekdays: shopDays });
+      await api.updateShopSettings({
+        cutoffHours: shopCutoff,
+        openWeekdays: shopDays,
+        depositPercent: shopDepositPercent,
+      });
       showToast('Configuración guardada correctamente');
     } catch (err) {
       setShopError(err instanceof Error ? err.message : 'Error al guardar');
@@ -581,7 +613,7 @@ export default function Dashboard() {
           : view === 'configuracion'
             ? {
                 title: 'Configuración del local',
-                subtitle: 'Plazo para cancelar/reprogramar turnos, días abiertos y comisiones por barbero.',
+                subtitle: 'Plazo de gestión, seña online, días abiertos y comisiones por barbero.',
               }
             : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
 
@@ -908,12 +940,17 @@ export default function Dashboard() {
                           {slot}
                         </td>
                         {weekAppointmentsByDay.map(({ dateStr, appointments: dayApps }) => {
-                          const app = dayApps.find((a) => a.time === slot);
+                          const app = dayApps.find((a) => normalizeAppointmentTime(a.time) === slot);
                           return (
                             <td key={dateStr} className="py-2 px-2 align-top border-l border-zinc-100">
                               {app ? (
                                 <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3 text-sm shadow-sm hover:shadow transition-shadow">
                                   <p className="font-bold text-zinc-900 truncate" title={app.name}>{app.name}</p>
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
+                                  >
+                                    {getAppointmentPaymentBadge(app).label}
+                                  </span>
                                   <p className="text-zinc-600 text-xs truncate mt-0.5">{app.service}</p>
                                   <div className="flex gap-1 mt-2">
                                     <button
@@ -970,7 +1007,7 @@ export default function Dashboard() {
                     </div>
                     <div className="p-3 divide-y divide-zinc-100 max-h-[320px] overflow-y-auto">
                       {TIME_SLOTS.map((slot) => {
-                        const app = barberAppointments.find((a) => a.time === slot);
+                        const app = barberAppointments.find((a) => normalizeAppointmentTime(a.time) === slot);
                         return (
                           <div
                             key={slot}
@@ -979,7 +1016,14 @@ export default function Dashboard() {
                             <span className="w-14 font-mono text-zinc-500 flex-shrink-0">{slot}</span>
                             {app ? (
                               <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-                                <span className="font-medium text-zinc-800 truncate">{app.name}</span>
+                                <div className="min-w-0">
+                                  <span className="font-medium text-zinc-800 truncate block">{app.name}</span>
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
+                                  >
+                                    {getAppointmentPaymentBadge(app).label}
+                                  </span>
+                                </div>
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                   <button
                                     type="button"
@@ -1076,6 +1120,13 @@ export default function Dashboard() {
                       <span className="inline-flex max-w-full items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-zinc-100 text-zinc-800 truncate">
                         {app.service}
                       </span>
+                      <div className="mt-2">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${getAppointmentPaymentBadge(app).className}`}
+                        >
+                          {getAppointmentPaymentBadge(app).label}
+                        </span>
+                      </div>
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5">Barbero</p>
@@ -1472,6 +1523,27 @@ export default function Dashboard() {
                   onChange={(e) => setShopCutoff(Number(e.target.value))}
                   className="w-32 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                 />
+              </div>
+              <div>
+                <h3 className="font-black text-lg text-zinc-900">Seña online</h3>
+                <p className="text-sm text-zinc-500 mt-1">
+                  Se calcula automáticamente como porcentaje del precio del servicio al iniciar Mercado Pago.
+                </p>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mt-4 mb-1">
+                  Porcentaje de seña
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={shopDepositPercent}
+                    onChange={(e) => setShopDepositPercent(Number(e.target.value))}
+                    className="w-32 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                  />
+                  <span className="text-zinc-600 text-sm font-medium">%</span>
+                </div>
               </div>
               <div>
                 <h3 className="font-black text-lg text-zinc-900">Días abiertos</h3>

@@ -3,19 +3,54 @@ import type { Request, Response } from 'express';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import * as repo from '../repositories/appointments.js';
 import { getShopSettings } from '../repositories/shopSettings.js';
-import { isDateOnOpenWeekday } from '../appointmentRules.js';
+import { getServiceById } from '../repositories/services.js';
+import {
+  hoursUntilAppointmentStart,
+  isDateOnOpenWeekday,
+  isPastCalendarDateInArgentina,
+} from '../appointmentRules.js';
 
 const router = Router();
 
 function getMpConfig(): MercadoPagoConfig | null {
-  const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  const raw = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!raw) return null;
+  const token = raw.trim();
   if (!token) return null;
   return new MercadoPagoConfig({ accessToken: token });
 }
 
-function getSenaAmountArs(): number {
-  const n = Number(process.env.SENA_AMOUNT_ARS ?? '5000');
-  return Number.isFinite(n) && n > 0 ? n : 5000;
+function parseArsAmount(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/\s/g, '').replace(/[^\d.,-]/g, '');
+  if (!cleaned) return null;
+  const hasDot = cleaned.includes('.');
+  const hasComma = cleaned.includes(',');
+  let normalized = cleaned;
+  if (hasDot && hasComma) {
+    normalized = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (hasDot) {
+    const parts = cleaned.split('.');
+    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+      normalized = cleaned.replace(/\./g, '');
+    }
+  } else if (hasComma) {
+    const parts = cleaned.split(',');
+    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+      normalized = cleaned.replace(/,/g, '');
+    } else {
+      normalized = cleaned.replace(',', '.');
+    }
+  }
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function calculateDepositAmountArs(servicePriceArs: number, depositPercent: number): number {
+  const raw = (servicePriceArs * depositPercent) / 100;
+  const rounded = Math.round(raw);
+  return Math.max(1, rounded);
 }
 
 function getFrontendUrl(): string {
@@ -33,6 +68,7 @@ function getApiPublicUrl(): string | null {
 /** Referencia compacta en external_reference (máx. ~256 caracteres en MP). */
 interface BookingRefV1 {
   v: 1;
+  a: string;
   n: string;
   p: string;
   s: string;
@@ -45,6 +81,7 @@ interface BookingRefV1 {
 }
 
 function buildBookingRef(input: {
+  appointmentId: string;
   name: string;
   phone: string;
   service: string;
@@ -57,6 +94,7 @@ function buildBookingRef(input: {
 }): string {
   const ref: BookingRefV1 = {
     v: 1,
+    a: input.appointmentId,
     n: input.name,
     p: input.phone,
     s: input.service,
@@ -83,7 +121,7 @@ function parseBookingRef(
   if (externalReference) {
     try {
       const o = JSON.parse(externalReference) as BookingRefV1;
-      if (o.v === 1 && o.n && o.b && o.d && o.t) return o;
+      if (o.v === 1 && o.a && o.n && o.b && o.d && o.t) return o;
     } catch {
       /* preferencia antigua u otro formato */
     }
@@ -93,6 +131,7 @@ function parseBookingRef(
     if (m.lb_n) {
       return {
         v: 1,
+        a: m.lb_a ?? '',
         n: m.lb_n,
         p: m.lb_p ?? '',
         s: m.lb_s ?? '',
@@ -110,21 +149,79 @@ function parseBookingRef(
 
 function extractPaymentId(req: Request): string | undefined {
   const q = req.query as Record<string, string | undefined>;
-  if (q.topic === 'payment' && q.id) return String(q.id);
   const body = req.body as Record<string, unknown> | null | undefined;
   if (!body || typeof body !== 'object') return undefined;
-  const data = body.data as { id?: string | number } | undefined;
-  if (data?.id != null) return String(data.id);
-  const resource = body.resource;
-  if (typeof resource === 'string') {
-    const match = resource.match(/(\d+)\s*$/);
-    if (match) return match[1];
+
+  const action = (body as { action?: unknown }).action;
+  const isPaymentEvent =
+    q.topic === 'payment' ||
+    (typeof action === 'string' && action.startsWith('payment.')) ||
+    (typeof (body as { type?: unknown }).type === 'string' && (body as any).type === 'payment');
+
+  // Para evitar consultar "Payment" con ids que pertenecen a otros topics (ej. merchant_order),
+  // solo usamos el id cuando parece ser un evento de pago.
+  if (isPaymentEvent && q.topic === 'payment' && q.id) return String(q.id);
+
+  const data = (body as { data?: unknown }).data as { id?: string | number; type?: string } | undefined;
+  if (data?.id != null) {
+    if (data.type && data.type !== 'payment' && !isPaymentEvent) return undefined;
+    return String(data.id);
+  }
+
+  const bodyId = (body as { id?: unknown }).id;
+  if (isPaymentEvent && (typeof bodyId === 'string' || typeof bodyId === 'number')) {
+    return String(bodyId);
+  }
+
+  const resource = (body as { resource?: unknown }).resource;
+  if (typeof resource === 'string' && isPaymentEvent) {
+    // Si viene tipo URL, intentamos extraer el id asociado a "payments/{id}".
+    const matchPayments = resource.match(/payments\/(\d+)\b/);
+    if (matchPayments) return matchPayments[1];
+    const matchTrailing = resource.match(/(\d+)\s*$/);
+    if (matchTrailing) return matchTrailing[1];
   }
   return undefined;
 }
 
+function getMercadopagoErrorStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== 'object') return undefined;
+  const o = err as Record<string, unknown>;
+  if (typeof o.status === 'number') return o.status;
+  return undefined;
+}
+
+/** MP a veces tarda en indexar el pago; 404 también puede ser token test vs prod distinto al cobro. */
+async function getPaymentForWebhook(paymentClient: Payment, paymentId: string) {
+  const delaysMs = [0, 2000, 5000];
+  for (let i = 0; i < delaysMs.length; i++) {
+    if (delaysMs[i] > 0) await new Promise((r) => setTimeout(r, delaysMs[i]));
+    try {
+      return await paymentClient.get({ id: Number(paymentId) });
+    } catch (err: unknown) {
+      const status = getMercadopagoErrorStatus(err);
+      const last = i === delaysMs.length - 1;
+      const retryable = !last && (status === 404 || status === 429 || (status != null && status >= 500));
+      if (retryable) {
+        console.warn(
+          `[Webhook MP] reintento ${i + 2}/${delaysMs.length} pago ${paymentId} (HTTP ${String(status)})`
+        );
+        continue;
+      }
+      console.error('[Webhook MP] no se pudo obtener el pago', paymentId, err);
+      if (status === 404) {
+        console.error(
+          '[Webhook MP] 404: el access token no encuentra ese pago. Revisá TEST vs PROD (TEST-… = sandbox, APP_USR… = producción), misma cuenta MP que cobró la seña, y que el token no tenga espacios al pegarlo.'
+        );
+      }
+      return null;
+    }
+  }
+  return null;
+}
+
 /**
- * Checkout Pro: preferencia de pago por la seña. El turno se crea al aprobar el pago (webhook / IPN).
+ * Preferencia de pago por la seña (Checkout Pro / Wallet Brick). El turno queda pending_payment hasta el webhook.
  */
 router.post('/sena', async (req, res) => {
   const config = getMpConfig();
@@ -133,6 +230,8 @@ router.post('/sena', async (req, res) => {
       .status(503)
       .json({ error: 'Mercado Pago no está configurado (MERCADOPAGO_ACCESS_TOKEN).' });
   }
+  const t = (process.env.MERCADOPAGO_ACCESS_TOKEN ?? '').trim();
+  console.log(`[MP] preference.create usando token last6: ${t.slice(-6)}`);
 
   const { name, phone, service, serviceId, barberId, date, time, userId } = req.body as {
     name?: string;
@@ -149,7 +248,18 @@ router.post('/sena', async (req, res) => {
     return res.status(400).json({ error: 'Faltan datos para la reserva con seña' });
   }
 
+  const uid = userId != null ? Number(userId) : NaN;
+  if (!Number.isFinite(uid) || uid <= 0) {
+    return res.status(401).json({ error: 'Tenés que iniciar sesión para confirmar el turno.' });
+  }
+
   const shop = await getShopSettings();
+  if (isPastCalendarDateInArgentina(date)) {
+    return res.status(400).json({ error: 'No podés reservar en una fecha pasada.' });
+  }
+  if (hoursUntilAppointmentStart(date, time) <= 0) {
+    return res.status(400).json({ error: 'Elegí un horario futuro.' });
+  }
   if (!isDateOnOpenWeekday(date, shop.openWeekdays)) {
     return res.status(400).json({ error: 'El local no atiende ese día. Elegí otra fecha.' });
   }
@@ -162,6 +272,7 @@ router.post('/sena', async (req, res) => {
   }
 
   try {
+    await repo.expireStalePendingAppointments();
     if (barberId !== repo.ANY_BARBER_ID) {
       await repo.assertNoOverlap(barberId, date, time, durationMinutes);
     } else {
@@ -175,9 +286,32 @@ router.post('/sena', async (req, res) => {
     return res.status(409).json({ error: msg });
   }
 
+  let pending;
+  const paymentDueAt = new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+  try {
+    pending = await repo.createAppointment({
+      name,
+      phone,
+      service,
+      serviceId: serviceId ?? undefined,
+      barberId,
+      date,
+      time,
+      durationMinutes,
+      status: 'pending_payment',
+      paymentDueAt,
+      depositPaid: false,
+      userId: uid,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'No se pudo reservar temporalmente el horario';
+    return res.status(409).json({ error: msg });
+  }
+
   let externalReference: string;
   try {
     externalReference = buildBookingRef({
+      appointmentId: pending.id,
       name,
       phone,
       service,
@@ -186,13 +320,18 @@ router.post('/sena', async (req, res) => {
       date,
       time,
       durationMinutes,
-      userId: userId != null ? String(userId) : '',
+      userId: String(uid),
     });
   } catch (e) {
     return res.status(400).json({ error: e instanceof Error ? e.message : 'Datos inválidos' });
   }
 
-  const amountArs = getSenaAmountArs();
+  const serviceEntity = serviceId ? await getServiceById(serviceId) : null;
+  const servicePriceArs = parseArsAmount(serviceEntity?.price ?? service);
+  if (!servicePriceArs) {
+    return res.status(400).json({ error: 'No se pudo calcular la seña: precio del servicio inválido.' });
+  }
+  const amountArs = calculateDepositAmountArs(servicePriceArs, shop.depositPercent);
   const base = getFrontendUrl();
   const apiPublic = getApiPublicUrl();
 
@@ -209,6 +348,7 @@ router.post('/sena', async (req, res) => {
     ],
     external_reference: externalReference,
     metadata: {
+      lb_a: pending.id,
       lb_n: name,
       lb_p: phone,
       lb_s: service,
@@ -217,7 +357,7 @@ router.post('/sena', async (req, res) => {
       lb_d: date,
       lb_t: time,
       lb_m: String(durationMinutes),
-      lb_u: userId != null ? String(userId) : '',
+      lb_u: String(uid),
     },
     back_urls: {
       success: `${base}/?checkout=success`,
@@ -233,24 +373,73 @@ router.post('/sena', async (req, res) => {
     result = await preference.create({ body });
   } catch (e) {
     console.error('Mercado Pago preference.create:', e);
+    await repo.updateAppointment(pending.id, { status: 'cancelled' });
     return res.status(502).json({
       error: 'No se pudo iniciar el pago con Mercado Pago. Revisá credenciales y montos.',
     });
   }
 
-  const url = result.sandbox_init_point ?? result.init_point;
-  if (!url) {
-    return res.status(500).json({ error: 'Mercado Pago no devolvió URL de pago' });
+  const preferenceId = result.id != null ? String(result.id) : '';
+  if (!preferenceId) {
+    await repo.updateAppointment(pending.id, { status: 'cancelled' });
+    return res.status(500).json({ error: 'Mercado Pago no devolvió el id de preferencia' });
   }
 
-  res.json({ url });
+  const url = result.init_point ?? result.sandbox_init_point ?? undefined;
+
+  res.json({
+    preferenceId,
+    ...(url ? { url } : {}),
+    appointmentId: pending.id,
+    paymentDueAt,
+  });
 });
 
 export default router;
 
 export async function mercadopagoWebhook(req: Request, res: Response): Promise<void> {
   const paymentId = extractPaymentId(req);
+  const q = req.query as Record<string, unknown>;
+  const body = req.body as Record<string, unknown> | null | undefined;
+  const action = body && typeof body === 'object' ? (body as any).action : undefined;
+  const topic = q?.topic;
+  const isPaymentEvent =
+    topic === 'payment' ||
+    (typeof action === 'string' && action.startsWith('payment.')) ||
+    (typeof (body as any)?.type === 'string' && (body as any).type === 'payment');
+
+  // Debug: ayuda a confirmar si estamos parseando bien el id que luego consultamos con el token.
+  // No logueamos datos sensibles; solo identificadores y campos de routing del webhook.
+  try {
+    const q = req.query as Record<string, unknown>;
+    const body = req.body as Record<string, unknown> | null | undefined;
+    const topic = q.topic;
+    const queryId = q.id;
+    const dataId = body && typeof body === 'object' ? (body as any).data?.id : undefined;
+    const dataType = body && typeof body === 'object' ? (body as any).data?.type : undefined;
+    const resource = body && typeof body === 'object' ? (body as any).resource : undefined;
+    const eventId = (body as any)?.id;
+    const action = (body as any)?.action;
+
+    console.log(
+      `[Webhook MP] parse: topic=${String(topic)} queryId=${String(
+        queryId
+      )} dataType=${String(dataType)} dataId=${String(
+        dataId
+      )} resource=${typeof resource === 'string' ? resource.slice(0, 40) : typeof resource} action=${String(
+        action
+      )} eventId=${String(eventId)} extractedPaymentId=${paymentId}`
+    );
+  } catch {
+    /* ignore debug failures */
+  }
+
   if (!paymentId) {
+    // Para topics que no son de pago (ej. merchant_order), ignoramos el evento sin provocar reintentos.
+    if (!isPaymentEvent) {
+      res.status(200).send('OK');
+      return;
+    }
     res.status(400).send('Sin id de pago');
     return;
   }
@@ -262,18 +451,15 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     console.error('Webhook MP: MERCADOPAGO_ACCESS_TOKEN no configurado');
     return;
   }
+  const t = (process.env.MERCADOPAGO_ACCESS_TOKEN ?? '').trim();
+  console.log(`[MP] webhook usando token last6: ${t.slice(-6)}`);
 
   const existing = await repo.getAppointmentByMercadopagoPaymentId(paymentId);
   if (existing) return;
 
   const paymentClient = new Payment(config);
-  let payment;
-  try {
-    payment = await paymentClient.get({ id: Number(paymentId) });
-  } catch (e) {
-    console.error('Webhook MP: no se pudo obtener el pago', paymentId, e);
-    return;
-  }
+  const payment = await getPaymentForWebhook(paymentClient, paymentId);
+  if (!payment) return;
 
   if (payment.status !== 'approved') return;
 
@@ -287,6 +473,12 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
   }
 
   const userId = ref.u ? parseInt(ref.u, 10) : undefined;
+
+  const existingByRefId = ref.a ? await repo.getAppointmentById(ref.a) : null;
+  if (existingByRefId) {
+    await repo.markAppointmentPaidAndScheduled(existingByRefId.id, paymentId);
+    return;
+  }
 
   try {
     await repo.createAppointment({
@@ -306,5 +498,28 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     const code = (e as { code?: string }).code;
     if (code === 'ER_DUP_ENTRY') return;
     console.error('Webhook MP: no se pudo crear el turno (revisá cupo / reembolso)', e);
+  }
+}
+
+/** Al arranque: indica si el token es sandbox o producción (no muestra el secreto). */
+export function logMercadoPagoEnvHint(): void {
+  const raw = process.env.MERCADOPAGO_ACCESS_TOKEN;
+  if (!raw?.trim()) {
+    console.warn('[MP] MERCADOPAGO_ACCESS_TOKEN no está definido.');
+    return;
+  }
+  const t = raw.trim();
+  if (t.startsWith('TEST-')) {
+    console.log(
+      `[MP] Token: SANDBOX (TEST-). Solo verás pagos de prueba; un pago real da 404 al consultar el id. (last6: ${t.slice(
+        -6
+      )})`
+    );
+  } else if (t.startsWith('APP_USR-')) {
+    console.log(
+      `[MP] Token: PRODUCCIÓN (APP_USR-). (last6: ${t.slice(-6)})`
+    );
+  } else {
+    console.warn('[MP] Token: prefijo inesperado (copiá Access Token de Credenciales, no la Public Key).');
   }
 }
