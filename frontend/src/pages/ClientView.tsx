@@ -586,7 +586,7 @@ export default function ClientView() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
             {services.map((service) => (
               <div key={service.id} className="bg-zinc-900/50 border border-zinc-800 p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl hover:border-[#e5c185]/50 transition-colors group min-w-0">
-                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-zinc-950 border border-zinc-800 rounded-lg sm:rounded-xl flex items-center justify-center text-[#e5c185] mb-4 sm:mb-6 group-hover:scale-110 transition-transform text-2xl sm:text-3xl">
+                <div className="w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] bg-zinc-950 border border-zinc-800 rounded-lg sm:rounded-xl flex items-center justify-center text-[#e5c185] mb-4 sm:mb-6 group-hover:scale-110 transition-transform text-3xl sm:text-4xl leading-none">
                   {(() => {
                     const icon = getServiceIconSource(service.emoji);
                     if (icon.kind === 'svg') {
@@ -594,13 +594,13 @@ export default function ClientView() {
                         <img
                           src={icon.value}
                           alt={service.name}
-                          className="w-7 h-7 sm:w-8 sm:h-8 object-contain"
+                          className="w-10 h-10 sm:w-11 sm:h-11 object-contain"
                           referrerPolicy="no-referrer"
                         />
                       );
                     }
-                    if (icon.kind === 'emoji') return <span>{icon.value}</span>;
-                    return <Scissors size={28} className="w-7 h-7 sm:w-7 sm:h-7" />;
+                    if (icon.kind === 'emoji') return <span className="select-none">{icon.value}</span>;
+                    return <Scissors size={36} className="w-9 h-9 sm:w-10 sm:h-10 shrink-0" strokeWidth={1.75} />;
                   })()}
                 </div>
                 <h3 className="text-xl sm:text-2xl font-serif font-bold mb-2 text-white break-words">{service.name}</h3>
