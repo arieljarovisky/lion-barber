@@ -98,6 +98,7 @@ export interface StaffInviteRow {
   id: number;
   email: string;
   name: string | null;
+  barberId: string | null;
   createdAt: string;
 }
 
@@ -246,7 +247,7 @@ export const api = {
 
   getStaffInvites: () => fetchApi<StaffInviteRow[]>('/api/staff-invites'),
 
-  createStaffInvite: (data: { email: string; name?: string }) =>
+  createStaffInvite: (data: { email: string; name?: string; barberId: string }) =>
     fetchApi<StaffInviteRow>('/api/staff-invites', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -257,11 +258,20 @@ export const api = {
 
   auth: {
     postGoogle: (idToken: string) =>
-      fetchApi<{ token: string; user: { id: number; email: string; name: string; role: string; points: number } }>(
-        '/api/auth/google',
-        { method: 'POST', body: JSON.stringify({ idToken }) }
-      ),
+      fetchApi<{
+        token: string;
+        user: {
+          id: number;
+          email: string;
+          name: string;
+          role: string;
+          points: number;
+          barberId?: string | null;
+        };
+      }>('/api/auth/google', { method: 'POST', body: JSON.stringify({ idToken }) }),
     getMe: () =>
-      fetchApi<{ id: number; email: string; name: string; role: string; points: number }>('/api/auth/me'),
+      fetchApi<{ id: number; email: string; name: string; role: string; points: number; barberId?: string | null }>(
+        '/api/auth/me'
+      ),
   },
 };

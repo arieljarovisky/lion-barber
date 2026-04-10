@@ -36,11 +36,13 @@ router.post('/google', async (req, res) => {
       if (isAdminEmail(email)) role = 'admin';
       else if (invite) role = 'staff';
 
+      const inviteBarberId = invite?.barberId ?? null;
       user = await userRepo.createUser({
         google_uid: googleUid,
         email,
         name,
         role,
+        barberId: role === 'staff' ? inviteBarberId : null,
       });
       if (invite) await staffInvites.deleteInviteByEmail(emailLower);
     } else {
@@ -48,6 +50,9 @@ router.post('/google', async (req, res) => {
         await userRepo.updateUserRole(user.id, 'admin');
       } else if (invite && user.role !== 'admin') {
         await userRepo.updateUserRole(user.id, 'staff');
+        if (invite.barberId) {
+          await userRepo.updateUserBarberId(user.id, invite.barberId);
+        }
       }
       if (invite) await staffInvites.deleteInviteByEmail(emailLower);
       user = (await userRepo.findUserById(user.id))!;
@@ -67,6 +72,7 @@ router.post('/google', async (req, res) => {
         name: user.name,
         role: user.role,
         points: user.points ?? 0,
+        barberId: user.barber_id ?? null,
       },
     });
   } catch (err) {
@@ -85,6 +91,7 @@ router.get('/me', requireAuth, async (req, res) => {
     name: user.name,
     role: user.role,
     points: user.points ?? 0,
+    barberId: user.barber_id ?? null,
   });
 });
 

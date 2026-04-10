@@ -51,6 +51,16 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE users ADD COLUMN barber_id VARCHAR(50) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE staff_invites ADD COLUMN barber_id VARCHAR(50) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS services (
       id VARCHAR(50) PRIMARY KEY,

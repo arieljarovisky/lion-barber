@@ -12,8 +12,13 @@ function parseWeekday(v: unknown): number | null {
   return n;
 }
 
-router.get('/:barberId', async (req, res) => {
+router.get('/:barberId', requireAuth, requireStaffOrAdmin, async (req: AuthRequest, res) => {
   const { barberId } = req.params;
+  if (req.user!.role === 'staff') {
+    if (!req.user!.barberId || req.user!.barberId !== barberId) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+  }
   const barber = await getBarberById(barberId);
   if (!barber) return res.status(404).json({ error: 'Barbero no encontrado' });
   const francos = await scheduleRepo.listFrancos(barberId);
@@ -23,6 +28,11 @@ router.get('/:barberId', async (req, res) => {
 
 router.post('/:barberId/francos', requireAuth, requireStaffOrAdmin, async (req: AuthRequest, res) => {
   const { barberId } = req.params;
+  if (req.user!.role === 'staff') {
+    if (!req.user!.barberId || req.user!.barberId !== barberId) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+  }
   const barber = await getBarberById(barberId);
   if (!barber) return res.status(404).json({ error: 'Barbero no encontrado' });
   const weekday = parseWeekday(req.body.weekday);
@@ -42,8 +52,13 @@ router.post('/:barberId/francos', requireAuth, requireStaffOrAdmin, async (req: 
   }
 });
 
-router.delete('/:barberId/francos/:francoId', requireAuth, requireStaffOrAdmin, async (req, res) => {
+router.delete('/:barberId/francos/:francoId', requireAuth, requireStaffOrAdmin, async (req: AuthRequest, res) => {
   const { barberId } = req.params;
+  if (req.user!.role === 'staff') {
+    if (!req.user!.barberId || req.user!.barberId !== barberId) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+  }
   const francoId = parseInt(req.params.francoId, 10);
   if (!Number.isFinite(francoId)) return res.status(400).json({ error: 'ID inválido' });
   const ok = await scheduleRepo.deleteFrancoForBarber(francoId, barberId);
@@ -51,8 +66,13 @@ router.delete('/:barberId/francos/:francoId', requireAuth, requireStaffOrAdmin, 
   res.status(204).send();
 });
 
-router.post('/:barberId/blocks', requireAuth, requireStaffOrAdmin, async (req, res) => {
+router.post('/:barberId/blocks', requireAuth, requireStaffOrAdmin, async (req: AuthRequest, res) => {
   const { barberId } = req.params;
+  if (req.user!.role === 'staff') {
+    if (!req.user!.barberId || req.user!.barberId !== barberId) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+  }
   const barber = await getBarberById(barberId);
   if (!barber) return res.status(404).json({ error: 'Barbero no encontrado' });
 
@@ -91,8 +111,13 @@ router.post('/:barberId/blocks', requireAuth, requireStaffOrAdmin, async (req, r
   }
 });
 
-router.delete('/:barberId/blocks/:blockId', requireAuth, requireStaffOrAdmin, async (req, res) => {
+router.delete('/:barberId/blocks/:blockId', requireAuth, requireStaffOrAdmin, async (req: AuthRequest, res) => {
   const { barberId } = req.params;
+  if (req.user!.role === 'staff') {
+    if (!req.user!.barberId || req.user!.barberId !== barberId) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+  }
   const blockId = parseInt(req.params.blockId, 10);
   if (!Number.isFinite(blockId)) return res.status(400).json({ error: 'ID inválido' });
   const ok = await scheduleRepo.deleteTimeBlockForBarber(blockId, barberId);

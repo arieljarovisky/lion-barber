@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as repo from '../repositories/appointments.js';
 import { getShopSettings } from '../repositories/shopSettings.js';
-import { requireAuth, requireStaffOrAdmin, type AuthRequest } from '../middleware/auth.js';
+import { requireAuth, requireStaffOrAdmin, optionalAuth, type AuthRequest } from '../middleware/auth.js';
 import {
   canClientCancelAppointment,
   canClientRescheduleAppointment,
@@ -50,19 +50,41 @@ router.get('/availability', async (req, res) => {
   }
 });
 
-router.get('/', async (req, res) => {
+router.get('/', optionalAuth, async (req, res) => {
   const { date, barberId } = req.query;
+  const u = (req as AuthRequest).user;
+  const staffBid = u?.role === 'staff' ? u.barberId ?? null : null;
+
   try {
+    if (u?.role === 'staff' && !staffBid) {
+      return res.status(403).json({
+        error:
+          'Tu cuenta de barbero no está vinculada. Pedile al administrador que te invite de nuevo indicando tu nombre en la agenda.',
+      });
+    }
+
     if (date && typeof date === 'string') {
+      if (staffBid) {
+        return res.json(await repo.getAppointmentsByBarber(staffBid, date));
+      }
       if (barberId && typeof barberId === 'string') {
         return res.json(await repo.getAppointmentsByBarber(barberId, date));
       }
       return res.json(await repo.getAppointmentsByDate(date));
     }
     if (barberId && typeof barberId === 'string') {
+      if (staffBid && barberId !== staffBid) {
+        return res.status(403).json({ error: 'No autorizado' });
+      }
       return res.json(await repo.getAppointmentsByBarber(barberId));
     }
-    res.json(await repo.getAllAppointments());
+    if (staffBid) {
+      return res.json(await repo.getAppointmentsByBarber(staffBid));
+    }
+    if (u?.role === 'admin') {
+      return res.json(await repo.getAllAppointments());
+    }
+    return res.status(401).json({ error: 'Iniciá sesión para ver la agenda' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al obtener citas' });
@@ -167,7 +189,7 @@ router.get('/:id', async (req, res) => {
   res.json(app);
 });
 
-router.post('/', async (req, res) => {
+router.post('/', optionalAuth, async (req, res) => {
   const { name, phone, service, serviceId, barber, barberId, date, time, userId, depositPaid, durationMinutes } =
     req.body;
   if (!name || !phone || !service || !date || !time) {
@@ -175,6 +197,13 @@ router.post('/', async (req, res) => {
   }
   if (!barberId) {
     return res.status(400).json({ error: 'Falta barberId (o elige "Cualquier barbero")' });
+  }
+  const u = (req as AuthRequest).user;
+  if (u?.role === 'staff') {
+    const bid = u.barberId;
+    if (!bid || String(barberId) !== bid) {
+      return res.status(403).json({ error: 'Solo podés cargar turnos en tu propia agenda' });
+    }
   }
   try {
     const shop = await getShopSettings();
@@ -210,8 +239,26 @@ router.post('/', async (req, res) => {
 });
 
 router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
+  const authReq = req as AuthRequest;
   try {
-    const updated = await repo.updateAppointment(req.params.id, req.body);
+    const existing = await repo.getAppointmentById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
+    if (authReq.user!.role === 'staff') {
+      const bid = authReq.user!.barberId;
+      if (!bid || existing.barberId !== bid) {
+        return res.status(403).json({ error: 'No autorizado' });
+      }
+    }
+    const payload =
+      authReq.user!.role === 'staff'
+        ? (() => {
+            const b = { ...req.body } as Record<string, unknown>;
+            delete b.barberId;
+            delete b.barber;
+            return b;
+          })()
+        : req.body;
+    const updated = await repo.updateAppointment(req.params.id, payload);
     if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
     res.json(updated);
   } catch (err) {
@@ -223,6 +270,15 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
 });
 
 router.delete('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
+  const authReq = req as AuthRequest;
+  const existing = await repo.getAppointmentById(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
+  if (authReq.user!.role === 'staff') {
+    const bid = authReq.user!.barberId;
+    if (!bid || existing.barberId !== bid) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+  }
   const ok = await repo.deleteAppointment(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Cita no encontrada' });
   res.status(204).send();

@@ -10,6 +10,8 @@ export interface UserProfile {
   points: number;
   role: 'client' | 'admin' | 'staff';
   phone?: string;
+  /** Cuenta de barbero (staff): id en la agenda */
+  barberId?: string | null;
 }
 
 interface AuthContextType {
@@ -35,7 +37,14 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
-function profileFromBackend(u: { id: number; email: string; name: string; role: string; points?: number }): UserProfile {
+function profileFromBackend(u: {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+  points?: number;
+  barberId?: string | null;
+}): UserProfile {
   const role =
     u.role === 'admin' ? 'admin' : u.role === 'staff' ? 'staff' : 'client';
   return {
@@ -44,6 +53,7 @@ function profileFromBackend(u: { id: number; email: string; name: string; role: 
     email: u.email,
     points: u.points ?? 0,
     role,
+    barberId: u.barberId ?? null,
   };
 }
 

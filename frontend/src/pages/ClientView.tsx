@@ -757,10 +757,7 @@ export default function ClientView() {
                             }`}
                           >
                             <img src={b.photo} alt={b.name} className="w-10 h-10 rounded-full object-cover" referrerPolicy="no-referrer" />
-                            <div>
-                              <div className={`font-bold ${selectedBarber === b.id ? 'text-black' : 'text-white'}`}>{b.name}</div>
-                              <div className={`text-xs ${selectedBarber === b.id ? 'text-black/70' : 'text-zinc-500'}`}>{b.role}</div>
-                            </div>
+                            <div className={`font-bold ${selectedBarber === b.id ? 'text-black' : 'text-white'}`}>{b.name}</div>
                           </button>
                         ))}
                       </div>

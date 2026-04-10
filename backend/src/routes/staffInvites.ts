@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as repo from '../repositories/staffInvites.js';
+import { getBarberById } from '../repositories/barbers.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
@@ -19,11 +20,19 @@ router.get('/', requireAuth, requireAdmin, async (_req, res) => {
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   const email = typeof req.body.email === 'string' ? req.body.email.trim() : '';
   const name = req.body.name != null ? String(req.body.name).trim() : null;
+  const barberId = typeof req.body.barberId === 'string' ? req.body.barberId.trim() : '';
   if (!email || !EMAIL_RE.test(email)) {
     return res.status(400).json({ error: 'Email inválido' });
   }
+  if (!barberId) {
+    return res.status(400).json({ error: 'Elegí el barbero al que pertenece esta cuenta' });
+  }
+  const barber = await getBarberById(barberId);
+  if (!barber) {
+    return res.status(400).json({ error: 'Barbero no encontrado' });
+  }
   try {
-    const created = await repo.createInvite(email, name || null);
+    const created = await repo.createInvite(email, name || null, barberId);
     res.status(201).json(created);
   } catch (e) {
     const code = (e as { code?: string }).code;

@@ -7,6 +7,7 @@ export interface DbUser {
   name: string;
   role: string;
   points: number;
+  barber_id: string | null;
   created_at: Date;
 }
 
@@ -25,10 +26,11 @@ export async function createUser(data: {
   email: string;
   name: string;
   role: string;
+  barberId?: string | null;
 }): Promise<DbUser> {
   await query(
-    'INSERT INTO users (google_uid, email, name, role) VALUES (?, ?, ?, ?)',
-    [data.google_uid, data.email, data.name, data.role]
+    'INSERT INTO users (google_uid, email, name, role, barber_id) VALUES (?, ?, ?, ?, ?)',
+    [data.google_uid, data.email, data.name, data.role, data.barberId ?? null]
   );
   const user = await findUserByGoogleUid(data.google_uid);
   if (!user) throw new Error('User not created');
@@ -37,6 +39,10 @@ export async function createUser(data: {
 
 export async function updateUserRole(id: number, role: string): Promise<void> {
   await query('UPDATE users SET role = ? WHERE id = ?', [role, id]);
+}
+
+export async function updateUserBarberId(id: number, barberId: string | null): Promise<void> {
+  await query('UPDATE users SET barber_id = ? WHERE id = ?', [barberId, id]);
 }
 
 export async function updateUserGoogleUid(id: number, googleUid: string): Promise<void> {

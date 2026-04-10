@@ -135,6 +135,7 @@ export default function Dashboard() {
   const [teamError, setTeamError] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
+  const [inviteBarberId, setInviteBarberId] = useState('');
   const [savingInvite, setSavingInvite] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [shopCutoff, setShopCutoff] = useState(12);
@@ -162,6 +163,8 @@ export default function Dashboard() {
   }, []);
 
   const { profile, logout, isAdmin, canAccessDashboard } = useAuth();
+  const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
+  const isStaffBarber = Boolean(staffBarberId);
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -180,7 +183,8 @@ export default function Dashboard() {
         api.getServices(),
       ]);
       setAppointments(appRes);
-      setBarbers(barbersRes);
+      const staffBid = profile?.role === 'staff' ? profile.barberId ?? null : null;
+      setBarbers(staffBid ? barbersRes.filter((b) => b.id === staffBid) : barbersRes);
       setServices(servicesRes);
     } catch {
       setAppointments([]);
@@ -189,11 +193,18 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [dateStr, selectedBarberId, isWeekView]);
+  }, [dateStr, selectedBarberId, isWeekView, profile?.role, profile?.barberId]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (profile?.role === 'staff' && profile.barberId) {
+      setSelectedBarberId(profile.barberId);
+      setScheduleBarberId(profile.barberId);
+    }
+  }, [profile?.role, profile?.barberId]);
 
   useEffect(() => {
     if (view === 'horarios' && barbers.length && !scheduleBarberId) {
@@ -321,15 +332,21 @@ export default function Dashboard() {
   const handleAddStaffInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail.trim()) return;
+    if (!inviteBarberId) {
+      setTeamError('Elegí el barbero para esta cuenta.');
+      return;
+    }
     setSavingInvite(true);
     setTeamError('');
     try {
       await api.createStaffInvite({
         email: inviteEmail.trim(),
         name: inviteName.trim() || undefined,
+        barberId: inviteBarberId,
       });
       setInviteEmail('');
       setInviteName('');
+      setInviteBarberId('');
       await loadStaffInvites();
     } catch (err) {
       setTeamError(err instanceof Error ? err.message : 'Error al invitar');
@@ -392,11 +409,12 @@ export default function Dashboard() {
 
   const openCreateModal = () => {
     setEditingAppointment(null);
+    const defaultBarber = staffBarberId ?? barbers[0]?.id ?? '';
     setForm({
       name: '',
       phone: '',
       service: services[0]?.id ?? '',
-      barberId: barbers[0]?.id ?? '',
+      barberId: defaultBarber,
       date: dateStr,
       time: TIME_SLOTS[0] ?? '10:00',
     });
@@ -430,7 +448,8 @@ export default function Dashboard() {
     setError('');
     setSaving(true);
     const serviceName = services.find((s) => s.id === form.service)?.name ?? form.service;
-    const barber = barbers.find((b) => b.id === form.barberId);
+    const effectiveBarberId = staffBarberId ?? form.barberId;
+    const barber = barbers.find((b) => b.id === effectiveBarberId);
     try {
       if (editingAppointment) {
         await api.updateAppointment(editingAppointment.id, {
@@ -438,7 +457,7 @@ export default function Dashboard() {
           phone: form.phone,
           service: serviceName,
           serviceId: form.service,
-          barberId: form.barberId,
+          barberId: effectiveBarberId,
           date: form.date,
           time: form.time,
         });
@@ -448,7 +467,7 @@ export default function Dashboard() {
           phone: form.phone,
           service: serviceName,
           serviceId: form.service,
-          barberId: form.barberId,
+          barberId: effectiveBarberId,
           barber: barber?.name,
           date: form.date,
           time: form.time,
@@ -605,11 +624,21 @@ export default function Dashboard() {
 
   const viewHeading =
     view === 'agenda'
-      ? { title: 'Agenda de Turnos', subtitle: 'Calendario por peluquero y gestión de reservas.' }
+      ? {
+          title: 'Agenda de Turnos',
+          subtitle: isStaffBarber
+            ? 'Solo tus turnos y tu calendario.'
+            : 'Calendario por peluquero y gestión de reservas.',
+        }
       : view === 'servicios'
         ? { title: 'Servicios', subtitle: 'Precios, duración e iconos mostrados en la web.' }
         : view === 'horarios'
-          ? { title: 'Horarios y disponibilidad', subtitle: 'Francos semanales y bloqueos por barbero.' }
+          ? {
+              title: 'Horarios y disponibilidad',
+              subtitle: isStaffBarber
+                ? 'Tus francos y bloqueos (solo afectan tu agenda).'
+                : 'Francos semanales y bloqueos por barbero.',
+            }
           : view === 'configuracion'
             ? {
                 title: 'Configuración del local',
@@ -783,6 +812,12 @@ export default function Dashboard() {
         </header>
 
         <main className="mx-auto w-full min-w-0 flex-1 max-w-7xl p-3 sm:p-4 md:p-8">
+        {profile?.role === 'staff' && !staffBarberId && (
+          <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            Tu cuenta de empleado no está vinculada a un barbero. Pedile al administrador que te envíe una invitación
+            desde Equipo eligiendo tu nombre en la agenda.
+          </div>
+        )}
         <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <h2 className="truncate text-2xl font-black tracking-tight sm:text-3xl">{viewHeading.title}</h2>
@@ -823,16 +858,24 @@ export default function Dashboard() {
                 </button>
               </div>
 
-              <select
-                value={selectedBarberId}
-                onChange={(e) => setSelectedBarberId(e.target.value as 'all' | string)}
-                className="bg-white border border-zinc-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 font-medium text-zinc-800 shadow-sm text-sm w-full sm:w-auto min-w-0"
-              >
-                <option value="all">Todos los barberos</option>
-                {barbers.map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
+              {isStaffBarber ? (
+                <div className="bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm font-bold text-white w-full sm:w-auto">
+                  {barbers[0]?.name ?? 'Barbero'}
+                </div>
+              ) : (
+                <select
+                  value={selectedBarberId}
+                  onChange={(e) => setSelectedBarberId(e.target.value as 'all' | string)}
+                  className="bg-white border border-zinc-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 font-medium text-zinc-800 shadow-sm text-sm w-full sm:w-auto min-w-0"
+                >
+                  <option value="all">Todos los barberos</option>
+                  {barbers.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              )}
 
               <button
                 type="button"
@@ -857,17 +900,23 @@ export default function Dashboard() {
           {view === 'horarios' && (
             <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
               <label className="text-sm font-bold text-zinc-600 sr-only sm:not-sr-only sm:inline">Barbero</label>
-              <select
-                value={scheduleBarberId}
-                onChange={(e) => setScheduleBarberId(e.target.value)}
-                className="bg-white border border-zinc-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 font-medium text-zinc-800 shadow-sm text-sm min-w-[180px]"
-              >
-                {barbers.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+              {isStaffBarber ? (
+                <div className="bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm font-bold text-white min-w-[180px]">
+                  {barbers[0]?.name ?? '—'}
+                </div>
+              ) : (
+                <select
+                  value={scheduleBarberId}
+                  onChange={(e) => setScheduleBarberId(e.target.value)}
+                  className="bg-white border border-zinc-200 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 font-medium text-zinc-800 shadow-sm text-sm min-w-[180px]"
+                >
+                  {barbers.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
         </div>
@@ -901,7 +950,7 @@ export default function Dashboard() {
                   <img src={selectedBarber.photo} alt={selectedBarber.name} className="w-12 h-12 rounded-full object-cover border-2 border-[#e5c185] shadow-md" referrerPolicy="no-referrer" />
                   <div>
                     <h3 className="font-black text-lg text-zinc-900 tracking-tight">Calendario de la semana</h3>
-                    <p className="text-[#b39055] font-bold uppercase tracking-wider text-xs mt-0.5">{selectedBarber.name} · {selectedBarber.role}</p>
+                    <p className="text-[#b39055] font-bold uppercase tracking-wider text-xs mt-0.5">{selectedBarber.name}</p>
                   </div>
                 </div>
                 <p className="text-sm text-zinc-500 font-medium">
@@ -1002,7 +1051,6 @@ export default function Dashboard() {
                       <img src={barber.photo} alt={barber.name} className="w-12 h-12 rounded-full object-cover" referrerPolicy="no-referrer" />
                       <div>
                         <p className="font-bold text-lg">{barber.name}</p>
-                        <p className="text-xs text-[#e5c185] font-medium">{barber.role}</p>
                       </div>
                     </div>
                     <div className="p-3 divide-y divide-zinc-100 max-h-[320px] overflow-y-auto">
@@ -1425,8 +1473,8 @@ export default function Dashboard() {
                 Invitar empleado
               </h3>
               <p className="text-sm text-zinc-500 mt-2">
-                Ingresá el correo de Google del empleado. Cuando inicie sesión por primera vez con esa cuenta, recibirá
-                acceso al panel (agenda y horarios). No hace falta contraseña: usa el mismo botón de Google en la web.
+                Ingresá el correo de Google del barbero y elegí a qué puesto de la agenda corresponde. En el primer
+                acceso con esa cuenta solo verá sus turnos y podrá bloquear sus horarios.
               </p>
               <form onSubmit={handleAddStaffInvite} className="mt-6 space-y-4">
                 <div>
@@ -1439,6 +1487,22 @@ export default function Dashboard() {
                     className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                     placeholder="empleado@gmail.com"
                   />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Barbero</label>
+                  <select
+                    required
+                    value={inviteBarberId}
+                    onChange={(e) => setInviteBarberId(e.target.value)}
+                    className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                  >
+                    <option value="">Seleccioná el barbero</option>
+                    {barbers.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
@@ -1478,6 +1542,12 @@ export default function Dashboard() {
                       <div>
                         <p className="font-medium text-zinc-900">{inv.email}</p>
                         {inv.name && <p className="text-zinc-500 text-xs">{inv.name}</p>}
+                        <p className="text-zinc-600 text-xs mt-1">
+                          Agenda:{' '}
+                          <span className="font-semibold">
+                            {barbers.find((b) => b.id === inv.barberId)?.name ?? inv.barberId ?? '—'}
+                          </span>
+                        </p>
                         <p className="text-zinc-400 text-xs mt-1">
                           Invitado {format(parseISO(inv.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
                         </p>
@@ -1669,10 +1739,13 @@ export default function Dashboard() {
                 <select
                   value={form.barberId}
                   onChange={(e) => setForm((f) => ({ ...f, barberId: e.target.value }))}
-                  className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                  disabled={isStaffBarber}
+                  className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-600"
                 >
                   {barbers.map((b) => (
-                    <option key={b.id} value={b.id}>{b.name} - {b.role}</option>
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
                   ))}
                 </select>
               </div>
