@@ -170,7 +170,8 @@ export default function Dashboard() {
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
-  const isWeekView = selectedBarberId !== 'all';
+  /** Vista semana solo para admin (elige un peluquero). Los barberos usan vista por día (día actual / calendario). */
+  const isWeekView = selectedBarberId !== 'all' && !isStaffBarber;
 
   const loadData = useCallback(async () => {
     setLoading(true);
