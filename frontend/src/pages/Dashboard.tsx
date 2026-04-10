@@ -1,5 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { format, parseISO, addDays, subDays, addWeeks, subWeeks, startOfDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import {
+  format,
+  parseISO,
+  addDays,
+  subDays,
+  addWeeks,
+  subWeeks,
+  startOfDay,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  isSameDay,
+} from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   Calendar as CalendarIcon,
@@ -172,6 +184,9 @@ export default function Dashboard() {
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
   /** Vista semana solo para admin (elige un peluquero). Los barberos usan vista por día (día actual / calendario). */
   const isWeekView = selectedBarberId !== 'all' && !isStaffBarber;
+  const isDayToday = isSameDay(selectedDate, new Date());
+  /** Un solo peluquero en pantalla (ej. cuenta barbero): layout de día ampliado */
+  const isSingleBarberDayView = !isWeekView && barbers.length === 1;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -931,16 +946,67 @@ export default function Dashboard() {
 
         {view === 'agenda' && (
         <>
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white border border-zinc-200 p-6 rounded-2xl shadow-sm">
-            <p className="text-sm font-bold text-zinc-500 uppercase tracking-wider mb-1">Turnos del día</p>
-            <p className="text-4xl font-black text-zinc-900">{dayAppointments.length}</p>
+        {!isSingleBarberDayView && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 max-w-2xl">
+            <div className="bg-white border border-zinc-200 p-5 sm:p-6 rounded-2xl shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-900 rounded-l-2xl" aria-hidden />
+              <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1 pl-2">Turnos del día</p>
+              <p className="text-3xl sm:text-4xl font-black text-zinc-900 tabular-nums pl-2">{dayAppointments.length}</p>
+            </div>
+            <div className="bg-white border border-zinc-200 p-5 sm:p-6 rounded-2xl shadow-sm relative overflow-hidden">
+              <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 rounded-l-2xl" aria-hidden />
+              <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1 pl-2">Ingresos est.</p>
+              <p className="text-3xl sm:text-4xl font-black text-emerald-600 tabular-nums pl-2">
+                ${totalIncome.toLocaleString('es-AR')}
+              </p>
+            </div>
           </div>
-          <div className="bg-white border border-zinc-200 p-6 rounded-2xl shadow-sm">
-            <p className="text-sm font-bold text-zinc-500 uppercase tracking-wider mb-1">Ingresos est.</p>
-            <p className="text-4xl font-black text-emerald-600">${totalIncome.toLocaleString('es-AR')}</p>
+        )}
+
+        {isSingleBarberDayView && barbers[0] && (
+          <div className="mb-8 rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-white shadow-xl overflow-hidden">
+            <div className="p-6 sm:p-8">
+              <div className="flex flex-col lg:flex-row lg:items-center gap-6 lg:gap-10">
+                <div className="flex items-center gap-5 min-w-0">
+                  <div className="relative shrink-0">
+                    <img
+                      src={barbers[0].photo}
+                      alt={barbers[0].name}
+                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl object-cover ring-2 ring-[#e5c185]/40 shadow-lg"
+                      referrerPolicy="no-referrer"
+                    />
+                    {isDayToday && (
+                      <span className="absolute -bottom-1 -right-1 rounded-lg bg-[#e5c185] px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-zinc-950 shadow">
+                        Hoy
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[#e5c185] text-[11px] font-bold uppercase tracking-[0.2em] mb-1">
+                      {isStaffBarber ? 'Tu agenda' : 'Vista del día'}
+                    </p>
+                    <h3 className="text-2xl sm:text-3xl font-black tracking-tight truncate">{barbers[0].name}</h3>
+                    <p className="text-zinc-400 mt-1.5 text-sm sm:text-base capitalize">
+                      {format(selectedDate, "EEEE d 'de' MMMM yyyy", { locale: es })}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-6 sm:gap-10 lg:ml-auto">
+                  <div>
+                    <p className="text-zinc-500 text-[10px] sm:text-xs font-bold uppercase tracking-wider">Turnos</p>
+                    <p className="text-3xl sm:text-4xl font-black tabular-nums text-white mt-0.5">{dayAppointments.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-zinc-500 text-[10px] sm:text-xs font-bold uppercase tracking-wider">Ingresos est.</p>
+                    <p className="text-3xl sm:text-4xl font-black tabular-nums text-emerald-400 mt-0.5">
+                      ${totalIncome.toLocaleString('es-AR')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Vista semana: calendario del barbero seleccionado */}
         {isWeekView && selectedBarber && (
@@ -1036,80 +1102,168 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Calendario por peluquero (vista día, todos) */}
+        {/* Vista día: timeline (un barbero) o grilla (varios) */}
         {!isWeekView && (
-          <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden mb-8">
-            <div className="p-6 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center">
-              <h3 className="font-bold text-lg text-zinc-800">Calendario por peluquero</h3>
-            </div>
+          <div className="mb-8">
             {loading ? (
-              <div className="p-12 text-center text-zinc-400">Cargando...</div>
-            ) : (
-              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-                {appointmentsByBarber.map(({ barber, appointments: barberAppointments }) => (
-                  <div key={barber.id} className="border border-zinc-200 rounded-2xl overflow-hidden">
-                    <div className="bg-zinc-900 text-white p-4 flex items-center gap-3">
-                      <img src={barber.photo} alt={barber.name} className="w-12 h-12 rounded-full object-cover" referrerPolicy="no-referrer" />
-                      <div>
-                        <p className="font-bold text-lg">{barber.name}</p>
-                      </div>
-                    </div>
-                    <div className="p-3 divide-y divide-zinc-100 max-h-[320px] overflow-y-auto">
+              <div className="py-16 text-center text-zinc-400 rounded-2xl border border-zinc-200 bg-white">
+                Cargando agenda…
+              </div>
+            ) : isSingleBarberDayView && appointmentsByBarber[0] ? (
+              <div className="max-w-4xl mx-auto">
+                <div className="flex items-center justify-between gap-4 mb-4 px-1">
+                  <h3 className="font-bold text-lg text-zinc-900">Horarios del día</h3>
+                  <span className="text-xs text-zinc-500 hidden sm:inline">Deslizá si hay muchos turnos</span>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
+                  <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-contain">
+                    <ul className="divide-y divide-zinc-100">
                       {TIME_SLOTS.map((slot) => {
-                        const app = barberAppointments.find((a) => normalizeAppointmentTime(a.time) === slot);
+                        const app = appointmentsByBarber[0].appointments.find(
+                          (a) => normalizeAppointmentTime(a.time) === slot
+                        );
                         return (
-                          <div
+                          <li
                             key={slot}
-                            className="flex items-center gap-2 py-2 text-sm"
+                            className={`flex gap-3 sm:gap-5 p-3 sm:p-4 ${app ? 'bg-amber-50/40' : 'bg-zinc-50/30'}`}
                           >
-                            <span className="w-14 font-mono text-zinc-500 flex-shrink-0">{slot}</span>
-                            {app ? (
-                              <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <span className="font-medium text-zinc-800 truncate block">{app.name}</span>
-                                  <span
-                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
-                                  >
-                                    {getAppointmentPaymentBadge(app).label}
-                                  </span>
+                            <div className="w-16 sm:w-20 shrink-0 text-right pt-0.5">
+                              <span className="font-mono text-sm font-bold text-zinc-900 tabular-nums">{slot}</span>
+                            </div>
+                            <div className="flex-1 min-w-0 border-l-2 border-zinc-200 pl-4 sm:pl-5 -ml-px">
+                              {app ? (
+                                <div className="rounded-xl border border-amber-200/80 bg-white p-3 sm:p-4 shadow-sm">
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <p className="font-bold text-zinc-900 text-base leading-tight">{app.name}</p>
+                                      <p className="text-sm text-zinc-600 mt-1">{app.service}</p>
+                                      <span
+                                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-2 ${getAppointmentPaymentBadge(app).className}`}
+                                      >
+                                        {getAppointmentPaymentBadge(app).label}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditModal(app)}
+                                        className="p-2 text-zinc-500 hover:text-amber-800 hover:bg-amber-100 rounded-lg transition-colors"
+                                        title="Editar"
+                                      >
+                                        <Pencil size={16} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDelete(app.id)}
+                                        className="p-2 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Eliminar"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditModal(app)}
-                                    className="p-1.5 text-zinc-400 hover:text-[#e5c185] hover:bg-amber-50 rounded-lg transition-colors"
-                                    title="Editar"
-                                  >
-                                    <Pencil size={14} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(app.id)}
-                                    className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Eliminar"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-zinc-300">—</span>
-                            )}
-                          </div>
+                              ) : (
+                                <p className="text-sm text-zinc-400 py-2">Libre</p>
+                              )}
+                            </div>
+                          </li>
                         );
                       })}
-                    </div>
+                    </ul>
                   </div>
-                ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden">
+                <div className="p-5 sm:p-6 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h3 className="font-black text-lg text-zinc-900">Calendario por peluquero</h3>
+                  <p className="text-xs text-zinc-500 capitalize">
+                    {format(selectedDate, "EEEE d MMMM", { locale: es })}
+                  </p>
+                </div>
+                <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                  {appointmentsByBarber.map(({ barber, appointments: barberAppointments }) => (
+                    <div
+                      key={barber.id}
+                      className="border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-white"
+                    >
+                      <div className="bg-gradient-to-r from-zinc-900 to-zinc-800 text-white p-4 flex items-center gap-3">
+                        <img
+                          src={barber.photo}
+                          alt={barber.name}
+                          className="w-11 h-11 rounded-xl object-cover ring-2 ring-white/10"
+                          referrerPolicy="no-referrer"
+                        />
+                        <p className="font-bold text-base leading-tight">{barber.name}</p>
+                      </div>
+                      <div className="p-3 divide-y divide-zinc-100 max-h-[300px] overflow-y-auto">
+                        {TIME_SLOTS.map((slot) => {
+                          const app = barberAppointments.find((a) => normalizeAppointmentTime(a.time) === slot);
+                          return (
+                            <div key={slot} className="flex items-center gap-2 py-2 text-sm">
+                              <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold">
+                                {slot}
+                              </span>
+                              {app ? (
+                                <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <span className="font-medium text-zinc-800 truncate block">{app.name}</span>
+                                    <span
+                                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
+                                    >
+                                      {getAppointmentPaymentBadge(app).label}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditModal(app)}
+                                      className="p-1.5 text-zinc-400 hover:text-[#e5c185] hover:bg-amber-50 rounded-lg transition-colors"
+                                      title="Editar"
+                                    >
+                                      <Pencil size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDelete(app.id)}
+                                      className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Eliminar"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-zinc-300 text-xs">—</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         )}
 
         {/* Listado de turnos */}
-        <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
+        <div
+          className={`bg-white border rounded-2xl shadow-sm overflow-hidden ${
+            isSingleBarberDayView ? 'border-zinc-200/80 border-dashed' : 'border-zinc-200'
+          }`}
+        >
           <div className="px-4 py-3 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center gap-3">
-            <h3 className="font-semibold text-sm sm:text-base text-zinc-800">Listado de turnos</h3>
+            <div>
+              <h3 className="font-semibold text-sm sm:text-base text-zinc-800">
+                {isSingleBarberDayView ? 'Mismo día · vista lista' : 'Listado de turnos'}
+              </h3>
+              {isSingleBarberDayView && (
+                <p className="text-[11px] text-zinc-500 mt-0.5">Orden cronológico para revisar o anotar</p>
+              )}
+            </div>
             <span className="bg-[#e5c185]/20 text-[#b39055] text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
               {dayAppointments.length} programados
             </span>
