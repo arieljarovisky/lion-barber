@@ -21,8 +21,7 @@ import {
   Scissors,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
-  ChevronDown,
+  GripVertical,
   LogOut,
   Plus,
   Pencil,
@@ -139,6 +138,8 @@ export default function Dashboard() {
   const [serviceForm, setServiceForm] = useState({ name: '', price: '', duration: 30, desc: '', emoji: '' });
   const [savingService, setSavingService] = useState(false);
   const [sortingServices, setSortingServices] = useState(false);
+  const [dragServiceId, setDragServiceId] = useState<string | null>(null);
+  const [dragOverServiceId, setDragOverServiceId] = useState<string | null>(null);
   const [serviceError, setServiceError] = useState('');
   const [scheduleBarberId, setScheduleBarberId] = useState('');
   const [francos, setFrancos] = useState<BarberFrancoRow[]>([]);
@@ -604,16 +605,8 @@ export default function Dashboard() {
     }
   };
 
-  const moveService = async (fromIndex: number, direction: -1 | 1) => {
-    const toIndex = fromIndex + direction;
-    if (fromIndex < 0 || toIndex < 0 || fromIndex >= services.length || toIndex >= services.length) return;
+  const persistServiceOrder = async (next: Service[], before: Service[]) => {
     if (sortingServices) return;
-
-    const before = [...services];
-    const next = [...services];
-    const [moved] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, moved);
-
     setServices(next);
     setSortingServices(true);
     setServiceError('');
@@ -629,6 +622,39 @@ export default function Dashboard() {
     } finally {
       setSortingServices(false);
     }
+  };
+
+  const handleServiceDragStart = (e: React.DragEvent<HTMLTableRowElement>, serviceId: string) => {
+    if (sortingServices) return;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', serviceId);
+    setDragServiceId(serviceId);
+    setDragOverServiceId(serviceId);
+  };
+
+  const handleServiceDragOver = (e: React.DragEvent<HTMLTableRowElement>, serviceId: string) => {
+    e.preventDefault();
+    if (!dragServiceId || dragServiceId === serviceId) return;
+    setDragOverServiceId(serviceId);
+  };
+
+  const handleServiceDrop = async (targetId: string) => {
+    if (!dragServiceId || dragServiceId === targetId || sortingServices) return;
+    const before = [...services];
+    const fromIndex = before.findIndex((s) => s.id === dragServiceId);
+    const toIndex = before.findIndex((s) => s.id === targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const next = [...before];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setDragServiceId(null);
+    setDragOverServiceId(null);
+    await persistServiceOrder(next, before);
+  };
+
+  const handleServiceDragEnd = () => {
+    setDragServiceId(null);
+    setDragOverServiceId(null);
   };
 
   const totalIncome = dayAppointments.reduce((acc, curr) => acc + getPrice(curr.service), 0);
@@ -1403,7 +1429,7 @@ export default function Dashboard() {
             <div className="p-4 sm:p-6 border-b border-zinc-100 bg-zinc-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
               <div>
                 <h3 className="font-bold text-base sm:text-lg text-zinc-800">Servicios</h3>
-                <p className="text-xs text-zinc-500 mt-0.5">Podés cambiar el orden con las flechas ↑ ↓</p>
+                <p className="text-xs text-zinc-500 mt-0.5">Podés ordenar arrastrando desde las barritas</p>
               </div>
               <span className="text-zinc-500 text-sm">
                 {sortingServices ? 'Guardando orden…' : `${services.length} servicios`}
@@ -1414,7 +1440,7 @@ export default function Dashboard() {
                 <thead>
                   <tr className="border-b border-zinc-200 bg-zinc-50/50">
                     <th className="text-center py-3 px-2 text-xs font-bold text-zinc-500 uppercase tracking-wider w-16">
-                      Orden
+                      Mover
                     </th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider w-14">Icono</th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Nombre</th>
@@ -1425,28 +1451,28 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {services.map((s, index) => (
-                    <tr key={s.id} className="border-b border-zinc-100 hover:bg-zinc-50/50">
+                  {services.map((s) => (
+                    <tr
+                      key={s.id}
+                      draggable={!sortingServices}
+                      onDragStart={(e) => handleServiceDragStart(e, s.id)}
+                      onDragOver={(e) => handleServiceDragOver(e, s.id)}
+                      onDrop={() => void handleServiceDrop(s.id)}
+                      onDragEnd={handleServiceDragEnd}
+                      className={`border-b border-zinc-100 hover:bg-zinc-50/50 ${
+                        dragOverServiceId === s.id && dragServiceId !== s.id ? 'bg-amber-50' : ''
+                      } ${dragServiceId === s.id ? 'opacity-60' : ''}`}
+                    >
                       <td className="py-4 px-2">
-                        <div className="flex items-center justify-center gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => moveService(index, -1)}
-                            disabled={sortingServices || index === 0}
-                            className="p-1 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Subir"
-                          >
-                            <ChevronUp size={15} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveService(index, 1)}
-                            disabled={sortingServices || index === services.length - 1}
-                            className="p-1 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="Bajar"
-                          >
-                            <ChevronDown size={15} />
-                          </button>
+                        <div
+                          className={`mx-auto w-8 h-8 rounded-md border flex items-center justify-center ${
+                            sortingServices
+                              ? 'border-zinc-200 text-zinc-300 cursor-not-allowed'
+                              : 'border-zinc-300 text-zinc-500 cursor-grab active:cursor-grabbing'
+                          }`}
+                          title="Arrastrar para reordenar"
+                        >
+                          <GripVertical size={16} />
                         </div>
                       </td>
                       <td className="py-4 px-4">{(() => {
