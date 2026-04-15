@@ -28,6 +28,8 @@ export interface Service {
   duration: number;
   desc: string;
   emoji?: string;
+  /** Orden manual en el listado (menor valor = más arriba). */
+  sortOrder?: number;
 }
 
 export interface Barber {

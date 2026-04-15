@@ -68,7 +68,8 @@ export async function initDb(): Promise<void> {
       price VARCHAR(50) NOT NULL,
       duration INT NOT NULL,
       \`desc\` TEXT,
-      emoji MEDIUMTEXT
+      emoji MEDIUMTEXT,
+      sort_order INT NOT NULL DEFAULT 0
     )
   `);
   try {
@@ -76,8 +77,27 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE services ADD COLUMN sort_order INT NOT NULL DEFAULT 0');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   /** Tablas antiguas: emoji a veces quedó VARCHAR corto y falla al guardar SVG/URL largos. */
   await pool.execute('ALTER TABLE services MODIFY COLUMN emoji MEDIUMTEXT NULL');
+  await pool.execute('ALTER TABLE services MODIFY COLUMN sort_order INT NOT NULL DEFAULT 0');
+  /**
+   * Si sort_order quedó en 0 para todos (migración vieja), se asigna un orden estable por nombre.
+   * Se usa tabla temporal con ROW_NUMBER para MySQL 8+.
+   */
+  await pool.execute(`
+    UPDATE services s
+    JOIN (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY name, id) AS rn
+      FROM services
+    ) ord ON ord.id = s.id
+    SET s.sort_order = ord.rn
+    WHERE s.sort_order = 0
+  `);
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS barbers (
       id VARCHAR(50) PRIMARY KEY,
@@ -208,11 +228,13 @@ export async function initDb(): Promise<void> {
       ['rapado', 'Rapado', '$10.000', 20, 'Rapado completo a máquina.'],
       ['afeitado_tradicional', 'Afeitado tradicional', '$8.000', 30, 'Afeitado clásico con navaja y toallas calientes.'],
     ];
+    let sortOrder = 1;
     for (const [id, name, price, duration, desc] of services) {
       await pool.execute(
-        'INSERT INTO services (id, name, price, duration, `desc`, emoji) VALUES (?, ?, ?, ?, ?, ?)',
-        [id, name, price, duration, desc, '✂️']
+        'INSERT INTO services (id, name, price, duration, `desc`, emoji, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [id, name, price, duration, desc, '✂️', sortOrder]
       );
+      sortOrder += 1;
     }
   }
 

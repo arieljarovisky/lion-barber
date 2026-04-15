@@ -49,6 +49,20 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+router.patch('/reorder/manual', requireAuth, requireAdmin, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x: unknown) => String(x)) : null;
+  if (!ids || ids.length === 0) {
+    return res.status(400).json({ error: 'Enviá ids en el orden deseado.' });
+  }
+  try {
+    const ordered = await repo.reorderServices(ids);
+    res.json(ordered);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'No se pudo actualizar el orden de servicios';
+    res.status(400).json({ error: msg });
+  }
+});
+
 router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, price, duration, desc, emoji } = req.body;

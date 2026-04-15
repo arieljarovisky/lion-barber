@@ -21,6 +21,8 @@ import {
   Scissors,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   LogOut,
   Plus,
   Pencil,
@@ -47,10 +49,16 @@ import type {
 } from '../api';
 
 const TIME_SLOTS = [
-  '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
-  '13:00', '13:30', '14:00', '14:30', '15:00', '15:30',
-  '16:00', '16:30', '17:00', '17:30', '18:00', '18:30',
-  '19:00', '19:30',
+  '10:00', '10:20', '10:40',
+  '11:00', '11:20', '11:40',
+  '12:00', '12:20', '12:40',
+  '13:00', '13:20', '13:40',
+  '14:00', '14:20', '14:40',
+  '15:00', '15:20', '15:40',
+  '16:00', '16:20', '16:40',
+  '17:00', '17:20', '17:40',
+  '18:00', '18:20', '18:40',
+  '19:00', '19:20', '19:40',
 ];
 
 const SERVICE_PRICES: Record<string, number> = {
@@ -130,6 +138,7 @@ export default function Dashboard() {
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [serviceForm, setServiceForm] = useState({ name: '', price: '', duration: 30, desc: '', emoji: '' });
   const [savingService, setSavingService] = useState(false);
+  const [sortingServices, setSortingServices] = useState(false);
   const [serviceError, setServiceError] = useState('');
   const [scheduleBarberId, setScheduleBarberId] = useState('');
   const [francos, setFrancos] = useState<BarberFrancoRow[]>([]);
@@ -592,6 +601,33 @@ export default function Dashboard() {
       loadData();
     } catch {
       setServiceError('Error al eliminar');
+    }
+  };
+
+  const moveService = async (fromIndex: number, direction: -1 | 1) => {
+    const toIndex = fromIndex + direction;
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= services.length || toIndex >= services.length) return;
+    if (sortingServices) return;
+
+    const before = [...services];
+    const next = [...services];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+
+    setServices(next);
+    setSortingServices(true);
+    setServiceError('');
+    try {
+      const ordered = await api.reorderServices(next.map((s) => s.id));
+      setServices(ordered);
+      showToast('Orden de servicios actualizado');
+    } catch (err) {
+      setServices(before);
+      const msg = err instanceof Error ? err.message : 'No se pudo reordenar';
+      setServiceError(msg);
+      showToast(msg, 'err');
+    } finally {
+      setSortingServices(false);
     }
   };
 
@@ -1365,24 +1401,54 @@ export default function Dashboard() {
         {view === 'servicios' && (
           <div className="bg-white border border-zinc-200 rounded-2xl sm:rounded-3xl shadow-sm overflow-hidden min-w-0">
             <div className="p-4 sm:p-6 border-b border-zinc-100 bg-zinc-50/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <h3 className="font-bold text-base sm:text-lg text-zinc-800">Servicios</h3>
-              <span className="text-zinc-500 text-sm">{services.length} servicios</span>
+              <div>
+                <h3 className="font-bold text-base sm:text-lg text-zinc-800">Servicios</h3>
+                <p className="text-xs text-zinc-500 mt-0.5">Podés cambiar el orden con las flechas ↑ ↓</p>
+              </div>
+              <span className="text-zinc-500 text-sm">
+                {sortingServices ? 'Guardando orden…' : `${services.length} servicios`}
+              </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-zinc-200 bg-zinc-50/50">
+                    <th className="text-center py-3 px-2 text-xs font-bold text-zinc-500 uppercase tracking-wider w-16">
+                      Orden
+                    </th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider w-14">Icono</th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Nombre</th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Precio</th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">Duración</th>
                     <th className="text-left py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider hidden md:table-cell">Descripción</th>
-                    <th className="text-right py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider w-24">Acciones</th>
+                    <th className="text-right py-3 px-4 text-xs font-bold text-zinc-500 uppercase tracking-wider w-28">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {services.map((s) => (
+                  {services.map((s, index) => (
                     <tr key={s.id} className="border-b border-zinc-100 hover:bg-zinc-50/50">
+                      <td className="py-4 px-2">
+                        <div className="flex items-center justify-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => moveService(index, -1)}
+                            disabled={sortingServices || index === 0}
+                            className="p-1 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Subir"
+                          >
+                            <ChevronUp size={15} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveService(index, 1)}
+                            disabled={sortingServices || index === services.length - 1}
+                            className="p-1 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                            title="Bajar"
+                          >
+                            <ChevronDown size={15} />
+                          </button>
+                        </div>
+                      </td>
                       <td className="py-4 px-4">{(() => {
                         const icon = getServiceIconSource(s.emoji);
                         if (icon.kind === 'svg') {

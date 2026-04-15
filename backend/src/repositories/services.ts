@@ -1,4 +1,4 @@
-import { query } from '../db.js';
+import pool, { query } from '../db.js';
 import type { Service } from '../types.js';
 
 interface DbService {
@@ -8,6 +8,7 @@ interface DbService {
   duration: number;
   desc: string | null;
   emoji: string | null;
+  sort_order: number;
 }
 
 function rowToService(r: DbService): Service {
@@ -18,11 +19,12 @@ function rowToService(r: DbService): Service {
     duration: r.duration,
     desc: r.desc ?? '',
     emoji: r.emoji ?? undefined,
+    sortOrder: r.sort_order,
   };
 }
 
 export async function getAllServices(): Promise<Service[]> {
-  const rows = await query<DbService[]>('SELECT * FROM services ORDER BY name');
+  const rows = await query<DbService[]>('SELECT * FROM services ORDER BY sort_order ASC, name ASC');
   return rows.map(rowToService);
 }
 
@@ -48,9 +50,13 @@ export async function createService(data: Omit<Service, 'id'>): Promise<Service>
   if (existing) {
     id = `${id}_${Math.random().toString(36).slice(2, 8)}`;
   }
+  const maxRows = await query<{ maxOrder: number | null }[]>(
+    'SELECT MAX(sort_order) AS maxOrder FROM services'
+  );
+  const nextOrder = Number(maxRows[0]?.maxOrder ?? 0) + 1;
   await query(
-    'INSERT INTO services (id, name, price, duration, `desc`, emoji) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, data.name, data.price, data.duration, data.desc || null, data.emoji || '']
+    'INSERT INTO services (id, name, price, duration, `desc`, emoji, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, data.name, data.price, data.duration, data.desc || null, data.emoji || '', nextOrder]
   );
   const created = await getServiceById(id);
   if (!created) throw new Error('Servicio no creado');
@@ -81,4 +87,36 @@ export async function deleteService(id: string): Promise<boolean> {
     [id]
   );
   return (res as { affectedRows: number }).affectedRows > 0;
+}
+
+export async function reorderServices(idsInOrder: string[]): Promise<Service[]> {
+  const ids = idsInOrder.map((x) => x.trim()).filter(Boolean);
+  if (ids.length === 0) return getAllServices();
+
+  const rows = await query<{ id: string }[]>('SELECT id FROM services ORDER BY sort_order ASC, name ASC');
+  const currentIds = rows.map((r) => r.id);
+  if (currentIds.length !== ids.length) {
+    throw new Error('La lista de servicios no coincide con la cantidad actual.');
+  }
+  const currentSet = new Set(currentIds);
+  if (ids.some((id) => !currentSet.has(id))) {
+    throw new Error('La lista de servicios contiene IDs inválidos.');
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    let sortOrder = 1;
+    for (const id of ids) {
+      await conn.execute('UPDATE services SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+      sortOrder += 1;
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+  return getAllServices();
 }

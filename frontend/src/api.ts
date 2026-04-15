@@ -62,6 +62,7 @@ export interface Service {
   duration: number;
   desc: string;
   emoji?: string;
+  sortOrder?: number;
 }
 
 export interface Barber {
@@ -199,6 +200,11 @@ export const api = {
     fetchApi<Service>('/api/services', { method: 'POST', body: JSON.stringify(data) }),
   updateService: (id: string, data: Partial<Service>) =>
     fetchApi<Service>(`/api/services/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  reorderServices: (ids: string[]) =>
+    fetchApi<Service[]>('/api/services/reorder/manual', {
+      method: 'PATCH',
+      body: JSON.stringify({ ids }),
+    }),
   deleteService: (id: string) =>
     fetchApi<void>(`/api/services/${id}`, { method: 'DELETE' }),
   getBarbers: () => fetchApi<Barber[]>('/api/barbers'),
