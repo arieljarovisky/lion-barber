@@ -36,6 +36,8 @@ export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
 export interface Appointment {
   id: string;
+  /** Usuario cliente vinculado (si reservó con cuenta o turno manual enlazado). */
+  userId?: number;
   name: string;
   phone: string;
   service: string;
