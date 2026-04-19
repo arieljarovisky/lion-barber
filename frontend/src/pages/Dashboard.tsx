@@ -38,6 +38,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import PointsProgramPanel from '../components/PointsProgramPanel';
+import ShopProductsPanel from '../components/ShopProductsPanel';
 import { api } from '../api';
 import type {
   Appointment,
@@ -207,7 +208,7 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [view, setView] = useState<
-    'agenda' | 'servicios' | 'horarios' | 'equipo' | 'puntos' | 'configuracion'
+    'agenda' | 'servicios' | 'horarios' | 'equipo' | 'puntos' | 'productos' | 'configuracion'
   >('agenda');
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -252,6 +253,7 @@ export default function Dashboard() {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shopProducts, setShopProducts] = useState<ShopProduct[]>([]);
   const [pointsPanelLoading, setPointsPanelLoading] = useState(false);
+  const [shopProductsPanelLoading, setShopProductsPanelLoading] = useState(false);
   const [afipConfigured, setAfipConfigured] = useState(false);
   const [afipInvoicingId, setAfipInvoicingId] = useState<string | null>(null);
 
@@ -274,23 +276,39 @@ export default function Dashboard() {
   const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
   const isStaffBarber = Boolean(staffBarberId);
 
-  const loadPointsProgram = useCallback(async () => {
+  const loadServicePointsPanel = useCallback(async () => {
     setPointsPanelLoading(true);
     try {
-      const [s, p] = await Promise.all([api.getServices(), api.getShopProducts()]);
+      const s = await api.getServices();
       setServices(s);
-      setShopProducts(p);
     } catch {
-      showToast('No se pudo cargar el programa de puntos', 'err');
+      showToast('No se pudo cargar los puntos por servicio', 'err');
     } finally {
       setPointsPanelLoading(false);
     }
   }, [showToast]);
 
+  const loadShopProductsPanel = useCallback(async () => {
+    setShopProductsPanelLoading(true);
+    try {
+      const p = await api.getShopProducts();
+      setShopProducts(p);
+    } catch {
+      showToast('No se pudo cargar los productos', 'err');
+    } finally {
+      setShopProductsPanelLoading(false);
+    }
+  }, [showToast]);
+
   useEffect(() => {
     if (view !== 'puntos') return;
-    void loadPointsProgram();
-  }, [view, loadPointsProgram]);
+    void loadServicePointsPanel();
+  }, [view, loadServicePointsPanel]);
+
+  useEffect(() => {
+    if (view !== 'productos') return;
+    void loadShopProductsPanel();
+  }, [view, loadShopProductsPanel]);
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -870,9 +888,14 @@ export default function Dashboard() {
           : view === 'puntos'
             ? {
                 title: 'Programa de puntos',
-                subtitle: 'Puntos por servicio y por producto; el administrador gestiona servicios en la sección Servicios.',
+                subtitle: 'Puntos por servicio (el catálogo se edita en Servicios). Los productos de venta van en Productos.',
               }
-            : view === 'configuracion'
+            : view === 'productos'
+              ? {
+                  title: 'Productos',
+                  subtitle: 'Artículos que vendés en el local y cuántos puntos suma cada compra.',
+                }
+              : view === 'configuracion'
               ? {
                   title: 'Configuración del local',
                   subtitle: 'Plazo de gestión, seña online, días abiertos y comisiones por barbero.',
@@ -1820,9 +1843,17 @@ export default function Dashboard() {
         {view === 'puntos' && (profile?.role === 'admin' || profile?.role === 'staff') && (
           <PointsProgramPanel
             services={services}
-            shopProducts={shopProducts}
             loading={pointsPanelLoading}
-            onRefresh={loadPointsProgram}
+            onRefresh={loadServicePointsPanel}
+            showToast={showToast}
+          />
+        )}
+
+        {view === 'productos' && (profile?.role === 'admin' || profile?.role === 'staff') && (
+          <ShopProductsPanel
+            shopProducts={shopProducts}
+            loading={shopProductsPanelLoading}
+            onRefresh={loadShopProductsPanel}
             showToast={showToast}
           />
         )}

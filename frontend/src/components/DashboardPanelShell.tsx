@@ -8,6 +8,7 @@ import {
   Users,
   Settings,
   Award,
+  ShoppingBag,
   LogOut,
   Menu,
   X,
@@ -19,6 +20,7 @@ export type DashboardPanelId =
   | 'servicios'
   | 'horarios'
   | 'puntos'
+  | 'productos'
   | 'equipo'
   | 'clientes'
   | 'configuracion';
@@ -131,6 +133,20 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             >
               <Award size={18} className="flex-shrink-0" />
               Puntos
+            </button>
+          )}
+          {(profile?.role === 'admin' || profile?.role === 'staff') && (
+            <button
+              type="button"
+              onClick={() => go('productos')}
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+                activePanel === 'productos'
+                  ? 'bg-[#e5c185] text-zinc-950'
+                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              <ShoppingBag size={18} className="flex-shrink-0" />
+              Productos
             </button>
           )}
           {isAdmin && (
