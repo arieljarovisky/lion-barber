@@ -91,6 +91,78 @@ function normalizeAppointmentTime(t: string | undefined): string {
   return s.length >= 5 ? s.slice(0, 5) : s;
 }
 
+/** Intervalo de la grilla (coincide con backend). */
+const SLOT_STEP_MINUTES = 20;
+/** Altura visual mínima por “franja” de 20 min en el timeline (rem). */
+const TIMELINE_ROW_UNIT_REM = 3.75;
+
+function appointmentSlotSpan(app: Appointment): number {
+  const dm = app.durationMinutes ?? 30;
+  return Math.max(1, Math.ceil(dm / SLOT_STEP_MINUTES));
+}
+
+/** Una fila por bloque libre o turno que ocupa N franjas de 20 min. */
+function buildDayTimelineRows(
+  apps: Appointment[],
+  slots: string[]
+): Array<{ kind: 'free'; slot: string } | { kind: 'appointment'; slot: string; app: Appointment; span: number }> {
+  const byStart = new Map<string, Appointment>();
+  for (const a of apps) {
+    const k = normalizeAppointmentTime(a.time);
+    if (k) byStart.set(k, a);
+  }
+  const rows: Array<
+    { kind: 'free'; slot: string } | { kind: 'appointment'; slot: string; app: Appointment; span: number }
+  > = [];
+  let i = 0;
+  while (i < slots.length) {
+    const slot = slots[i];
+    const app = byStart.get(slot);
+    if (app) {
+      const rawSpan = appointmentSlotSpan(app);
+      const span = Math.min(rawSpan, slots.length - i);
+      rows.push({ kind: 'appointment', slot, app, span });
+      i += span;
+    } else {
+      rows.push({ kind: 'free', slot });
+      i += 1;
+    }
+  }
+  return rows;
+}
+
+/** Para tabla semanal: por índice de franja, celda libre, inicio de turno (con rowspan) o skip por rowspan. */
+function buildWeekColumnCells(
+  apps: Appointment[],
+  slots: string[]
+): Array<'skip' | { kind: 'free' } | { kind: 'app'; app: Appointment; rowspan: number }> {
+  const result: Array<'skip' | { kind: 'free' } | { kind: 'app'; app: Appointment; rowspan: number }> = slots.map(
+    () => ({ kind: 'free' as const })
+  );
+  for (const a of apps) {
+    const startIdx = slots.indexOf(normalizeAppointmentTime(a.time));
+    if (startIdx < 0) continue;
+    const rawSpan = appointmentSlotSpan(a);
+    const span = Math.min(rawSpan, slots.length - startIdx);
+    result[startIdx] = { kind: 'app', app: a, rowspan: span };
+    for (let j = 1; j < span; j++) {
+      if (startIdx + j < result.length) result[startIdx + j] = 'skip';
+    }
+  }
+  return result;
+}
+
+function addMinutesToClock(hhmm: string, minutes: number): string {
+  const parts = hhmm.trim().slice(0, 5).split(':');
+  const h = parseInt(parts[0] ?? '0', 10);
+  const m = parseInt(parts[1] ?? '0', 10);
+  let total = h * 60 + m + minutes;
+  total = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const H = Math.floor(total / 60);
+  const M = total % 60;
+  return `${String(H).padStart(2, '0')}:${String(M).padStart(2, '0')}`;
+}
+
 function getAppointmentPaymentBadge(app: Appointment): { label: string; className: string } {
   if (app.status === 'pending_payment') {
     return {
@@ -432,6 +504,10 @@ export default function Dashboard() {
       .filter((a) => a.date === format(day, 'yyyy-MM-dd') && a.status !== 'cancelled')
       .sort((a, b) => a.time.localeCompare(b.time)),
   }));
+
+  const weekColumnCellsByDay = weekAppointmentsByDay.map(({ appointments: dayApps }) =>
+    buildWeekColumnCells(dayApps, TIME_SLOTS)
+  );
 
   const openCreateModal = () => {
     setEditingAppointment(null);
@@ -1112,25 +1188,43 @@ export default function Dashboard() {
               <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)] sm:max-h-[calc(100vh-320px)] -mx-2 sm:mx-0">
                 <table className="w-full min-w-[640px] sm:min-w-[720px] border-collapse table-fixed">
                   <tbody>
-                    {TIME_SLOTS.map((slot) => (
+                    {TIME_SLOTS.map((slot, slotIndex) => (
                       <tr key={slot} className="border-b border-zinc-100 hover:bg-zinc-50/70 transition-colors">
                         <td className="py-2 px-4 font-mono text-sm font-semibold text-zinc-600 sticky left-0 bg-white z-10 border-r border-zinc-100 whitespace-nowrap">
                           {slot}
                         </td>
-                        {weekAppointmentsByDay.map(({ dateStr, appointments: dayApps }) => {
-                          const app = dayApps.find((a) => normalizeAppointmentTime(a.time) === slot);
-                          return (
-                            <td key={dateStr} className="py-2 px-2 align-top border-l border-zinc-100">
-                              {app ? (
-                                <div className="bg-amber-50 border border-amber-200/80 rounded-xl p-3 text-sm shadow-sm hover:shadow transition-shadow">
-                                  <p className="font-bold text-zinc-900 truncate" title={app.name}>{app.name}</p>
+                        {weekAppointmentsByDay.map(({ dateStr }, dayIdx) => {
+                          const col = weekColumnCellsByDay[dayIdx][slotIndex];
+                          if (col === 'skip') {
+                            return <React.Fragment key={dateStr} />;
+                          }
+                          if (col.kind === 'app') {
+                            const app = col.app;
+                            const dm = app.durationMinutes ?? 30;
+                            const endClock = addMinutesToClock(normalizeAppointmentTime(app.time) ?? slot, dm);
+                            return (
+                              <td
+                                key={dateStr}
+                                rowSpan={col.rowspan}
+                                className="py-2 px-2 align-top border-l border-zinc-100"
+                              >
+                                <div
+                                  className="bg-amber-50 border border-amber-200/80 rounded-xl p-3 text-sm shadow-sm hover:shadow transition-shadow flex flex-col"
+                                  style={{ minHeight: `${col.rowspan * TIMELINE_ROW_UNIT_REM}rem` }}
+                                >
+                                  <p className="font-bold text-zinc-900 truncate" title={app.name}>
+                                    {app.name}
+                                  </p>
                                   <span
                                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
                                   >
                                     {getAppointmentPaymentBadge(app).label}
                                   </span>
+                                  <p className="text-zinc-500 text-[10px] mt-0.5 tabular-nums">
+                                    {normalizeAppointmentTime(app.time)} – {endClock} · {dm} min
+                                  </p>
                                   <p className="text-zinc-600 text-xs truncate mt-0.5">{app.service}</p>
-                                  <div className="flex gap-1 mt-2">
+                                  <div className="flex gap-1 mt-auto pt-2">
                                     <button
                                       type="button"
                                       onClick={() => openEditModal(app)}
@@ -1149,9 +1243,15 @@ export default function Dashboard() {
                                     </button>
                                   </div>
                                 </div>
-                              ) : (
-                                <div className="h-[3.5rem] rounded-lg bg-zinc-50 border border-zinc-100" />
-                              )}
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={dateStr} className="py-2 px-2 align-top border-l border-zinc-100">
+                              <div
+                                className="rounded-lg bg-zinc-50 border border-zinc-100"
+                                style={{ minHeight: `${TIMELINE_ROW_UNIT_REM}rem` }}
+                              />
                             </td>
                           );
                         })}
@@ -1180,54 +1280,77 @@ export default function Dashboard() {
                 <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
                   <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-contain">
                     <ul className="divide-y divide-zinc-100">
-                      {TIME_SLOTS.map((slot) => {
-                        const app = appointmentsByBarber[0].appointments.find(
-                          (a) => normalizeAppointmentTime(a.time) === slot
-                        );
+                      {buildDayTimelineRows(appointmentsByBarber[0].appointments, TIME_SLOTS).map((row) => {
+                        if (row.kind === 'free') {
+                          return (
+                            <li
+                              key={row.slot}
+                              className="flex gap-3 sm:gap-5 p-3 sm:p-4 bg-zinc-50/30 min-h-[3.25rem]"
+                            >
+                              <div className="w-16 sm:w-20 shrink-0 text-right pt-0.5">
+                                <span className="font-mono text-sm font-bold text-zinc-900 tabular-nums">
+                                  {row.slot}
+                                </span>
+                              </div>
+                              <div className="flex-1 min-w-0 border-l-2 border-zinc-200 pl-4 sm:pl-5 -ml-px">
+                                <p className="text-sm text-zinc-400 py-2">Libre</p>
+                              </div>
+                            </li>
+                          );
+                        }
+                        const { app, span, slot } = row;
+                        const dm = app.durationMinutes ?? 30;
+                        const blockRem = span * TIMELINE_ROW_UNIT_REM;
+                        const endClock = addMinutesToClock(slot, dm);
                         return (
                           <li
-                            key={slot}
-                            className={`flex gap-3 sm:gap-5 p-3 sm:p-4 ${app ? 'bg-amber-50/40' : 'bg-zinc-50/30'}`}
+                            key={`${app.id}-${slot}`}
+                            className="flex gap-3 sm:gap-5 p-3 sm:p-4 bg-amber-50/40"
+                            style={{ minHeight: `${blockRem}rem` }}
                           >
-                            <div className="w-16 sm:w-20 shrink-0 text-right pt-0.5">
+                            <div className="w-16 sm:w-20 shrink-0 text-right pt-0.5 flex flex-col">
                               <span className="font-mono text-sm font-bold text-zinc-900 tabular-nums">{slot}</span>
+                              {span > 1 && (
+                                <span className="font-mono text-[11px] text-zinc-500 mt-1 tabular-nums leading-tight">
+                                  {endClock}
+                                </span>
+                              )}
                             </div>
-                            <div className="flex-1 min-w-0 border-l-2 border-zinc-200 pl-4 sm:pl-5 -ml-px">
-                              {app ? (
-                                <div className="rounded-xl border border-amber-200/80 bg-white p-3 sm:p-4 shadow-sm">
-                                  <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                      <p className="font-bold text-zinc-900 text-base leading-tight">{app.name}</p>
-                                      <p className="text-sm text-zinc-600 mt-1">{app.service}</p>
-                                      <span
-                                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-2 ${getAppointmentPaymentBadge(app).className}`}
-                                      >
-                                        {getAppointmentPaymentBadge(app).label}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <button
-                                        type="button"
-                                        onClick={() => openEditModal(app)}
-                                        className="p-2 text-zinc-500 hover:text-amber-800 hover:bg-amber-100 rounded-lg transition-colors"
-                                        title="Editar"
-                                      >
-                                        <Pencil size={16} />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDelete(app.id)}
-                                        className="p-2 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                        title="Eliminar"
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
-                                    </div>
+                            <div className="flex-1 min-w-0 border-l-2 border-amber-200/60 pl-4 sm:pl-5 -ml-px flex flex-col">
+                              <div className="rounded-xl border border-amber-200/80 bg-white p-3 sm:p-4 shadow-sm flex-1 flex flex-col min-h-0">
+                                <div className="flex flex-wrap items-start justify-between gap-3 flex-1">
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-zinc-900 text-base leading-tight">{app.name}</p>
+                                    <p className="text-sm text-zinc-600 mt-1">{app.service}</p>
+                                    <p className="text-[11px] text-zinc-500 mt-1">
+                                      {slot} – {endClock} · {dm} min
+                                    </p>
+                                    <span
+                                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-2 ${getAppointmentPaymentBadge(app).className}`}
+                                    >
+                                      {getAppointmentPaymentBadge(app).label}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditModal(app)}
+                                      className="p-2 text-zinc-500 hover:text-amber-800 hover:bg-amber-100 rounded-lg transition-colors"
+                                      title="Editar"
+                                    >
+                                      <Pencil size={16} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDelete(app.id)}
+                                      className="p-2 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                      title="Eliminar"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
                                   </div>
                                 </div>
-                              ) : (
-                                <p className="text-sm text-zinc-400 py-2">Libre</p>
-                              )}
+                              </div>
                             </div>
                           </li>
                         );
@@ -1260,45 +1383,61 @@ export default function Dashboard() {
                         <p className="font-bold text-base leading-tight">{barber.name}</p>
                       </div>
                       <div className="p-3 divide-y divide-zinc-100 max-h-[300px] overflow-y-auto">
-                        {TIME_SLOTS.map((slot) => {
-                          const app = barberAppointments.find((a) => normalizeAppointmentTime(a.time) === slot);
-                          return (
-                            <div key={slot} className="flex items-center gap-2 py-2 text-sm">
-                              <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold">
-                                {slot}
-                              </span>
-                              {app ? (
-                                <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <span className="font-medium text-zinc-800 truncate block">{app.name}</span>
-                                    <span
-                                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
-                                    >
-                                      {getAppointmentPaymentBadge(app).label}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-1 flex-shrink-0">
-                                    <button
-                                      type="button"
-                                      onClick={() => openEditModal(app)}
-                                      className="p-1.5 text-zinc-400 hover:text-[#e5c185] hover:bg-amber-50 rounded-lg transition-colors"
-                                      title="Editar"
-                                    >
-                                      <Pencil size={14} />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDelete(app.id)}
-                                      className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                      title="Eliminar"
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
+                        {buildDayTimelineRows(barberAppointments, TIME_SLOTS).map((row) => {
+                          if (row.kind === 'free') {
+                            return (
+                              <div key={row.slot} className="flex items-center gap-2 py-2 text-sm min-h-[2.25rem]">
+                                <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold">
+                                  {row.slot}
+                                </span>
                                 <span className="text-zinc-300 text-xs">—</span>
-                              )}
+                              </div>
+                            );
+                          }
+                          const { app, span, slot } = row;
+                          const dm = app.durationMinutes ?? 30;
+                          const endClock = addMinutesToClock(slot, dm);
+                          return (
+                            <div
+                              key={`${app.id}-${slot}`}
+                              className="flex items-stretch gap-2 py-2 text-sm"
+                              style={{ minHeight: `${span * 2.5}rem` }}
+                            >
+                              <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold pt-0.5">
+                                {slot}
+                                {span > 1 ? (
+                                  <span className="block text-[10px] text-zinc-400 mt-0.5">{endClock}</span>
+                                ) : null}
+                              </span>
+                              <div className="flex-1 min-w-0 flex items-center justify-between gap-2 border border-amber-200/80 bg-amber-50/50 rounded-lg px-2 py-1.5">
+                                <div className="min-w-0">
+                                  <span className="font-medium text-zinc-800 truncate block">{app.name}</span>
+                                  <span className="text-[10px] text-zinc-500">{dm} min</span>
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
+                                  >
+                                    {getAppointmentPaymentBadge(app).label}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(app)}
+                                    className="p-1.5 text-zinc-400 hover:text-[#e5c185] hover:bg-amber-50 rounded-lg transition-colors"
+                                    title="Editar"
+                                  >
+                                    <Pencil size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(app.id)}
+                                    className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    title="Eliminar"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           );
                         })}

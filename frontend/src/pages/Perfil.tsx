@@ -42,6 +42,128 @@ function formatMmSs(totalSeconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/**
+ * Cabecera del turno + cuenta regresiva + acciones. El timer está acá para que el brick de MP
+ * sea hermano (en el padre) y no se reinicialice cada segundo.
+ */
+function FutureAppointmentCardBody({
+  a,
+  senaLoadingId,
+  actionBusy,
+  onPaySena,
+  openReschedule,
+  onCancel,
+}: {
+  a: Appointment;
+  senaLoadingId: string | null;
+  actionBusy: boolean;
+  onPaySena: (app: Appointment) => void;
+  openReschedule: (app: Appointment) => void;
+  onCancel: (app: Appointment) => void;
+}) {
+  const awaitingSena = a.status === 'pending_payment' && !a.depositPaid;
+  const [sec, setSec] = useState(() =>
+    awaitingSena && a.paymentDueAt ? secondsUntilPaymentDue(a.paymentDueAt) : -1
+  );
+  useEffect(() => {
+    if (!awaitingSena || !a.paymentDueAt) {
+      setSec(-1);
+      return;
+    }
+    const due = a.paymentDueAt;
+    const tick = () => setSec(secondsUntilPaymentDue(due));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [awaitingSena, a.paymentDueAt]);
+
+  const canShowPayButton = awaitingSena && (!a.paymentDueAt || sec > 0);
+
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-white text-sm sm:text-base truncate">{a.service}</p>
+        <p className="text-xs sm:text-sm text-zinc-400 truncate">
+          {format(parseAppointmentDateOnly(a.date), "EEEE d 'de' MMMM", { locale: es })} · {a.time}
+        </p>
+        {a.barber && <p className="text-xs text-zinc-500 mt-1 truncate">Barbero: {a.barber}</p>}
+        {awaitingSena && (
+          <p className="text-xs text-amber-400/95 mt-1 font-medium">
+            Pendiente de pago de la seña
+            {a.paymentDueAt && sec > 0 && (
+              <span className="text-zinc-400 font-normal"> · queda {formatMmSs(sec)}</span>
+            )}
+            {a.paymentDueAt && sec === 0 && (
+              <span className="text-zinc-500 font-normal"> · plazo vencido, actualizando…</span>
+            )}
+          </p>
+        )}
+        {a.depositPaid && !awaitingSena && (
+          <p className="text-xs text-amber-400/90 mt-1">Seña abonada</p>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+        {canShowPayButton ? (
+          <button
+            type="button"
+            disabled={
+              Boolean(senaLoadingId) ||
+              actionBusy ||
+              (a.paymentDueAt != null && sec <= 0)
+            }
+            onClick={() => void onPaySena(a)}
+            className="px-3 py-2 rounded-lg bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 text-xs font-bold disabled:opacity-50"
+          >
+            {senaLoadingId === a.id ? 'Preparando…' : 'Pagar seña'}
+          </button>
+        ) : null}
+        {a.canReschedule && a.barberId ? (
+          <button
+            type="button"
+            disabled={actionBusy}
+            onClick={() => openReschedule(a)}
+            className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold disabled:opacity-50"
+          >
+            Reprogramar
+          </button>
+        ) : null}
+        {a.canCancel ? (
+          <button
+            type="button"
+            disabled={actionBusy}
+            onClick={() => void onCancel(a)}
+            className="px-3 py-2 rounded-lg bg-red-950/80 hover:bg-red-900 text-red-200 text-xs font-bold border border-red-900 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        ) : null}
+        {!a.canReschedule && !a.canCancel && !awaitingSena && (
+          <p className="text-xs text-zinc-500 max-w-[220px]">
+            Ya no podés modificar este turno (por ejemplo, el horario ya pasó).
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const SenaWalletBrick = React.memo(function SenaWalletBrick({
+  preferenceId,
+  onError,
+}: {
+  preferenceId: string;
+  onError: (message: string) => void;
+}) {
+  return (
+    <Wallet
+      initialization={{ preferenceId, redirectMode: 'self' }}
+      locale="es-AR"
+      customization={{ theme: 'dark' }}
+      onError={(err) => onError(err.message || 'Error al cargar el botón de pago')}
+    />
+  );
+});
+
 export default function Perfil() {
   const { profile, logout, canAccessDashboard } = useAuth();
   const navigate = useNavigate();
@@ -59,8 +181,9 @@ export default function Perfil() {
   const [senaWallet, setSenaWallet] = useState<{ appointmentId: string; preferenceId: string } | null>(null);
   const [senaLoadingId, setSenaLoadingId] = useState<string | null>(null);
   const [senaError, setSenaError] = useState('');
-  const [payTick, setPayTick] = useState(0);
   const expiryReloadDoneRef = useRef(false);
+  const appointmentsRef = useRef(appointments);
+  appointmentsRef.current = appointments;
 
   const mpPublicKey = import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY as string | undefined;
 
@@ -97,30 +220,25 @@ export default function Perfil() {
   }, [searchParams, setSearchParams, reload]);
 
   useEffect(() => {
-    const hasPending = appointments.some(
-      (a) => a.status === 'pending_payment' && !a.depositPaid && a.paymentDueAt
-    );
-    if (!hasPending) return;
-    const id = window.setInterval(() => setPayTick((n) => n + 1), 1000);
+    const id = window.setInterval(() => {
+      const apps = appointmentsRef.current;
+      const overdue = apps.some(
+        (a) =>
+          a.status === 'pending_payment' &&
+          !a.depositPaid &&
+          a.paymentDueAt &&
+          secondsUntilPaymentDue(a.paymentDueAt) === 0
+      );
+      if (!overdue) {
+        expiryReloadDoneRef.current = false;
+        return;
+      }
+      if (expiryReloadDoneRef.current) return;
+      expiryReloadDoneRef.current = true;
+      void reload();
+    }, 1000);
     return () => clearInterval(id);
-  }, [appointments]);
-
-  useEffect(() => {
-    const overdue = appointments.some(
-      (a) =>
-        a.status === 'pending_payment' &&
-        !a.depositPaid &&
-        a.paymentDueAt &&
-        secondsUntilPaymentDue(a.paymentDueAt) === 0
-    );
-    if (!overdue) {
-      expiryReloadDoneRef.current = false;
-      return;
-    }
-    if (expiryReloadDoneRef.current) return;
-    expiryReloadDoneRef.current = true;
-    void reload();
-  }, [appointments, payTick, reload]);
+  }, [reload]);
 
   useEffect(() => {
     api.getShopSettings().then((s) => setShopCutoffHours(s.cutoffHours)).catch(() => {});
@@ -185,6 +303,10 @@ export default function Perfil() {
       setActionBusy(false);
     }
   };
+
+  const handleWalletError = useCallback((message: string) => {
+    setSenaError(message);
+  }, []);
 
   const handlePaySena = async (a: Appointment) => {
     setSenaError('');
@@ -328,96 +450,33 @@ export default function Perfil() {
             <p className="text-zinc-500 text-sm">No tenés turnos programados.</p>
           ) : (
             <ul className="space-y-2 sm:space-y-3">
-              {futureAppointments.map((a) => {
-                void payTick;
-                const awaitingSena = a.status === 'pending_payment' && !a.depositPaid;
-                const payLeftSec =
-                  awaitingSena && a.paymentDueAt ? secondsUntilPaymentDue(a.paymentDueAt) : null;
-                return (
+              {futureAppointments.map((a) => (
                 <li
                   key={a.id}
                   className="flex flex-col gap-3 p-3 sm:p-4 bg-zinc-950/50 rounded-lg sm:rounded-xl border border-zinc-800 min-w-0"
                 >
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold text-white text-sm sm:text-base truncate">{a.service}</p>
-                    <p className="text-xs sm:text-sm text-zinc-400 truncate">
-                      {format(parseAppointmentDateOnly(a.date), "EEEE d 'de' MMMM", { locale: es })} · {a.time}
-                    </p>
-                    {a.barber && <p className="text-xs text-zinc-500 mt-1 truncate">Barbero: {a.barber}</p>}
-                    {awaitingSena && (
-                      <p className="text-xs text-amber-400/95 mt-1 font-medium">
-                        Pendiente de pago de la seña
-                        {a.paymentDueAt && payLeftSec != null && payLeftSec > 0 && (
-                          <span className="text-zinc-400 font-normal">
-                            {' '}
-                            · queda {formatMmSs(payLeftSec)}
-                          </span>
-                        )}
-                        {a.paymentDueAt && payLeftSec === 0 && (
-                          <span className="text-zinc-500 font-normal"> · plazo vencido, actualizando…</span>
-                        )}
-                      </p>
-                    )}
-                    {a.depositPaid && !awaitingSena && (
-                      <p className="text-xs text-amber-400/90 mt-1">Seña abonada</p>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
-                    {awaitingSena && (payLeftSec === null || payLeftSec > 0) ? (
-                      <button
-                        type="button"
-                        disabled={Boolean(senaLoadingId) || actionBusy}
-                        onClick={() => void handlePaySena(a)}
-                        className="px-3 py-2 rounded-lg bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 text-xs font-bold disabled:opacity-50"
-                      >
-                        {senaLoadingId === a.id ? 'Preparando…' : 'Pagar seña'}
-                      </button>
-                    ) : null}
-                    {a.canReschedule && a.barberId ? (
-                      <button
-                        type="button"
-                        disabled={actionBusy}
-                        onClick={() => openReschedule(a)}
-                        className="px-3 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold disabled:opacity-50"
-                      >
-                        Reprogramar
-                      </button>
-                    ) : null}
-                    {a.canCancel ? (
-                      <button
-                        type="button"
-                        disabled={actionBusy}
-                        onClick={() => void handleCancel(a)}
-                        className="px-3 py-2 rounded-lg bg-red-950/80 hover:bg-red-900 text-red-200 text-xs font-bold border border-red-900 disabled:opacity-50"
-                      >
-                        Cancelar
-                      </button>
-                    ) : null}
-                    {!a.canReschedule && !a.canCancel && !awaitingSena && (
-                      <p className="text-xs text-zinc-500 max-w-[220px]">
-                        Ya no podés modificar este turno (por ejemplo, el horario ya pasó).
-                      </p>
-                    )}
-                  </div>
-                  </div>
+                  <FutureAppointmentCardBody
+                    a={a}
+                    senaLoadingId={senaLoadingId}
+                    actionBusy={actionBusy}
+                    onPaySena={handlePaySena}
+                    openReschedule={openReschedule}
+                    onCancel={handleCancel}
+                  />
                   {senaWallet?.appointmentId === a.id && (
                     <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 p-4">
                       <p className="text-xs text-zinc-400 mb-3 text-center">
                         Completá el pago con Mercado Pago. Si te redirige al checkout, al volver verás el turno confirmado
                         acá.
                       </p>
-                      <Wallet
-                        initialization={{ preferenceId: senaWallet.preferenceId, redirectMode: 'self' }}
-                        locale="es-AR"
-                        customization={{ theme: 'dark' }}
-                        onError={(err) => setSenaError(err.message || 'Error al cargar el botón de pago')}
+                      <SenaWalletBrick
+                        preferenceId={senaWallet.preferenceId}
+                        onError={handleWalletError}
                       />
                     </div>
                   )}
                 </li>
-              );
-              })}
+              ))}
             </ul>
           )}
         </section>
