@@ -4,6 +4,7 @@ import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import * as repo from '../repositories/appointments.js';
 import { getShopSettings } from '../repositories/shopSettings.js';
 import { getServiceById } from '../repositories/services.js';
+import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import {
   hoursUntilAppointmentStart,
   isDateOnOpenWeekday,
@@ -11,6 +12,16 @@ import {
 } from '../appointmentRules.js';
 
 const router = Router();
+
+/** Plazo para abonar la seña desde que se reserva el horario (minutos). */
+export const PENDING_PAYMENT_MINUTES = 15;
+
+function paymentDueAtMysqlFromNow(): string {
+  return new Date(Date.now() + PENDING_PAYMENT_MINUTES * 60 * 1000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+}
 
 function getMpConfig(): MercadoPagoConfig | null {
   const raw = process.env.MERCADOPAGO_ACCESS_TOKEN;
@@ -63,6 +74,86 @@ function getApiPublicUrl(): string | null {
   const u = process.env.API_PUBLIC_URL ?? process.env.BACKEND_PUBLIC_URL;
   if (!u) return null;
   return u.replace(/\/$/, '');
+}
+
+async function createMercadoPagoSenaPreference(
+  config: MercadoPagoConfig,
+  input: {
+    appointmentId: string;
+    name: string;
+    phone: string;
+    service: string;
+    serviceId: string;
+    barberId: string;
+    date: string;
+    time: string;
+    durationMinutes: number;
+    userId: number;
+    /** Si true, MP redirige a /perfil tras el pago (flujo desde el perfil). */
+    returnToProfile?: boolean;
+  }
+): Promise<{ preferenceId: string; url?: string }> {
+  const shop = await getShopSettings();
+  const serviceEntity = input.serviceId ? await getServiceById(input.serviceId) : null;
+  const servicePriceArs = parseArsAmount(serviceEntity?.price ?? input.service);
+  if (!servicePriceArs) {
+    throw new Error('No se pudo calcular la seña: precio del servicio inválido.');
+  }
+  const amountArs = calculateDepositAmountArs(servicePriceArs, shop.depositPercent);
+  const externalReference = buildBookingRef({
+    appointmentId: input.appointmentId,
+    name: input.name,
+    phone: input.phone,
+    service: input.service,
+    serviceId: input.serviceId,
+    barberId: input.barberId,
+    date: input.date,
+    time: input.time,
+    durationMinutes: input.durationMinutes,
+    userId: String(input.userId),
+  });
+  const base = getFrontendUrl();
+  const apiPublic = getApiPublicUrl();
+  const checkoutBase = input.returnToProfile ? `${base}/perfil` : `${base}/`;
+  const preference = new Preference(config);
+  const body = {
+    items: [
+      {
+        id: 'lion-sena',
+        title: 'Seña — Lion Barber',
+        quantity: 1,
+        unit_price: amountArs,
+        currency_id: 'ARS',
+      },
+    ],
+    external_reference: externalReference,
+    metadata: {
+      lb_a: input.appointmentId,
+      lb_n: input.name,
+      lb_p: input.phone,
+      lb_s: input.service,
+      lb_i: input.serviceId,
+      lb_b: input.barberId,
+      lb_d: input.date,
+      lb_t: input.time,
+      lb_m: String(input.durationMinutes),
+      lb_u: String(input.userId),
+    },
+    back_urls: {
+      success: `${checkoutBase}?checkout=success`,
+      failure: `${checkoutBase}?checkout=failure`,
+      pending: `${checkoutBase}?checkout=pending`,
+    },
+    auto_return: 'approved' as const,
+    ...(apiPublic ? { notification_url: `${apiPublic}/api/webhooks/mercadopago` } : {}),
+  };
+  const result = await preference.create({ body });
+  const preferenceId = result.id != null ? String(result.id) : '';
+  if (!preferenceId) {
+    throw new Error('Mercado Pago no devolvió el id de preferencia');
+  }
+  const url = result.init_point ?? result.sandbox_init_point ?? undefined;
+  return { preferenceId, ...(url ? { url } : {}) };
 }
 
 /** Referencia compacta en external_reference (máx. ~256 caracteres en MP). */
@@ -287,7 +378,7 @@ router.post('/sena', async (req, res) => {
   }
 
   let pending;
-  const paymentDueAt = new Date(Date.now() + 30 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
+  const paymentDueAt = paymentDueAtMysqlFromNow();
   try {
     pending = await repo.createAppointment({
       name,
@@ -308,9 +399,9 @@ router.post('/sena', async (req, res) => {
     return res.status(409).json({ error: msg });
   }
 
-  let externalReference: string;
+  let pref: { preferenceId: string; url?: string };
   try {
-    externalReference = buildBookingRef({
+    pref = await createMercadoPagoSenaPreference(config, {
       appointmentId: pending.id,
       name,
       phone,
@@ -320,57 +411,8 @@ router.post('/sena', async (req, res) => {
       date,
       time,
       durationMinutes,
-      userId: String(uid),
+      userId: uid,
     });
-  } catch (e) {
-    return res.status(400).json({ error: e instanceof Error ? e.message : 'Datos inválidos' });
-  }
-
-  const serviceEntity = serviceId ? await getServiceById(serviceId) : null;
-  const servicePriceArs = parseArsAmount(serviceEntity?.price ?? service);
-  if (!servicePriceArs) {
-    return res.status(400).json({ error: 'No se pudo calcular la seña: precio del servicio inválido.' });
-  }
-  const amountArs = calculateDepositAmountArs(servicePriceArs, shop.depositPercent);
-  const base = getFrontendUrl();
-  const apiPublic = getApiPublicUrl();
-
-  const preference = new Preference(config);
-  const body = {
-    items: [
-      {
-        id: 'lion-sena',
-        title: 'Seña — Lion Barber',
-        quantity: 1,
-        unit_price: amountArs,
-        currency_id: 'ARS',
-      },
-    ],
-    external_reference: externalReference,
-    metadata: {
-      lb_a: pending.id,
-      lb_n: name,
-      lb_p: phone,
-      lb_s: service,
-      lb_i: serviceId ?? '',
-      lb_b: barberId,
-      lb_d: date,
-      lb_t: time,
-      lb_m: String(durationMinutes),
-      lb_u: String(uid),
-    },
-    back_urls: {
-      success: `${base}/?checkout=success`,
-      failure: `${base}/?checkout=failure`,
-      pending: `${base}/?checkout=pending`,
-    },
-    auto_return: 'approved' as const,
-    ...(apiPublic ? { notification_url: `${apiPublic}/api/webhooks/mercadopago` } : {}),
-  };
-
-  let result;
-  try {
-    result = await preference.create({ body });
   } catch (e) {
     console.error('Mercado Pago preference.create:', e);
     await repo.updateAppointment(pending.id, { status: 'cancelled' });
@@ -379,20 +421,84 @@ router.post('/sena', async (req, res) => {
     });
   }
 
-  const preferenceId = result.id != null ? String(result.id) : '';
-  if (!preferenceId) {
-    await repo.updateAppointment(pending.id, { status: 'cancelled' });
-    return res.status(500).json({ error: 'Mercado Pago no devolvió el id de preferencia' });
-  }
-
-  const url = result.init_point ?? result.sandbox_init_point ?? undefined;
-
   res.json({
-    preferenceId,
-    ...(url ? { url } : {}),
+    preferenceId: pref.preferenceId,
+    ...(pref.url ? { url: pref.url } : {}),
     appointmentId: pending.id,
     paymentDueAt,
   });
+});
+
+/**
+ * Nueva preferencia de seña para un turno ya creado (pending_payment), p. ej. desde el perfil.
+ * No extiende el plazo: sigue valiendo el payment_due_at original.
+ */
+router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
+  const config = getMpConfig();
+  if (!config) {
+    return res
+      .status(503)
+      .json({ error: 'Mercado Pago no está configurado (MERCADOPAGO_ACCESS_TOKEN).' });
+  }
+  const authReq = req as AuthRequest;
+  const appointmentId = req.params.appointmentId;
+
+  try {
+    await repo.expireStalePendingAppointments();
+    const app = await repo.getAppointmentById(appointmentId);
+    if (!app || app.userId !== authReq.user!.id) {
+      return res.status(403).json({ error: 'No autorizado' });
+    }
+    if (app.status !== 'pending_payment' || app.depositPaid) {
+      return res.status(400).json({ error: 'Este turno no está esperando el pago de la seña.' });
+    }
+    if (!app.paymentDueAt) {
+      return res.status(400).json({ error: 'Turno sin plazo de pago registrado.' });
+    }
+    const dueMs = Date.parse(String(app.paymentDueAt).replace(' ', 'T') + 'Z');
+    if (!Number.isFinite(dueMs) || dueMs <= Date.now()) {
+      return res.status(400).json({
+        error: 'El plazo para pagar la seña venció. Volvé a reservar desde la web.',
+      });
+    }
+    if (!app.barberId) {
+      return res.status(400).json({ error: 'Turno sin barbero asignado.' });
+    }
+
+    const durationMinutes =
+      app.durationMinutes ?? (await repo.resolveDurationMinutes(app.serviceId, app.service));
+
+    let pref: { preferenceId: string; url?: string };
+    try {
+    pref = await createMercadoPagoSenaPreference(config, {
+      appointmentId: app.id,
+      name: app.name,
+      phone: app.phone,
+      service: app.service,
+      serviceId: app.serviceId ?? '',
+      barberId: app.barberId,
+      date: app.date,
+      time: app.time,
+      durationMinutes,
+      userId: authReq.user!.id,
+      returnToProfile: true,
+    });
+    } catch (e) {
+      console.error('Mercado Pago preference.create (retry):', e);
+      const msg = e instanceof Error ? e.message : 'No se pudo iniciar el pago';
+      return res.status(502).json({ error: msg });
+    }
+
+    res.json({
+      preferenceId: pref.preferenceId,
+      ...(pref.url ? { url: pref.url } : {}),
+      appointmentId: app.id,
+      paymentDueAt: app.paymentDueAt,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al preparar el pago' });
+  }
 });
 
 export default router;

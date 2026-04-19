@@ -151,6 +151,13 @@ export const api = {
       { method: 'POST', body: JSON.stringify(data) }
     ),
 
+  /** Nueva preferencia MP para un turno pending_payment (p. ej. desde el perfil). Requiere sesión. */
+  createCheckoutSenaForAppointment: (appointmentId: string) =>
+    fetchApi<{ preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }>(
+      `/api/checkout/sena/${encodeURIComponent(appointmentId)}`,
+      { method: 'POST' }
+    ),
+
   updateAppointment: (id: string, data: Partial<Appointment>) =>
     fetchApi<Appointment>(`/api/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 

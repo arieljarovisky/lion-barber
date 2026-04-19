@@ -695,6 +695,13 @@ export default function ClientView() {
                   <p className="text-emerald-400/80 text-base sm:text-lg font-sans">
                     Tu turno quedó confirmado: la seña se registró correctamente. Te esperamos en Lion Barber.
                   </p>
+                  <p className="mt-5 flex items-center justify-center gap-2 text-zinc-300 text-sm sm:text-base font-sans max-w-md mx-auto">
+                    <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-[#e5c185] shrink-0" aria-hidden />
+                    <span>
+                      Recordá que hay <span className="font-semibold text-white">10 minutos de tolerancia</span> desde la
+                      hora de tu turno.
+                    </span>
+                  </p>
                 </div>
               ) : (
                 <form
@@ -996,8 +1003,8 @@ export default function ClientView() {
                     )}
                   </div>
                   <p className="text-center text-[11px] text-zinc-500 mt-2">
-                    Reservamos el horario por 30 minutos: si el pago no se aprueba en ese tiempo, la reserva se cancela
-                    automáticamente.
+                    Reservamos el horario por 15 minutos: si el pago de la seña no se aprueba en ese tiempo, la reserva se
+                    cancela automáticamente. Podés volver a pagar desde tu perfil mientras no venza el plazo.
                   </p>
                 </form>
               )}

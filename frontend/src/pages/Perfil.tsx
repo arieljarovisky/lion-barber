@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   User,
   Clock,
@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
 import type { Appointment } from '../api';
+import { Wallet } from '@mercadopago/sdk-react';
 import { format, isBefore, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -29,9 +30,22 @@ function appointmentDateTime(a: Appointment): Date {
   return parse(`${d} ${t}`, 'yyyy-MM-dd HH:mm', new Date());
 }
 
+function secondsUntilPaymentDue(paymentDueAt: string): number {
+  const due = Date.parse(paymentDueAt.trim().replace(' ', 'T') + 'Z');
+  if (!Number.isFinite(due)) return 0;
+  return Math.max(0, Math.floor((due - Date.now()) / 1000));
+}
+
+function formatMmSs(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 export default function Perfil() {
   const { profile, logout, canAccessDashboard } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [shopCutoffHours, setShopCutoffHours] = useState(12);
@@ -42,6 +56,13 @@ export default function Perfil() {
   const [rsDate, setRsDate] = useState('');
   const [rsTime, setRsTime] = useState('');
   const [rsSlots, setRsSlots] = useState<string[]>([]);
+  const [senaWallet, setSenaWallet] = useState<{ appointmentId: string; preferenceId: string } | null>(null);
+  const [senaLoadingId, setSenaLoadingId] = useState<string | null>(null);
+  const [senaError, setSenaError] = useState('');
+  const [payTick, setPayTick] = useState(0);
+  const expiryReloadDoneRef = useRef(false);
+
+  const mpPublicKey = import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY as string | undefined;
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -55,6 +76,51 @@ export default function Perfil() {
   useEffect(() => {
     reload();
   }, [reload]);
+
+  useEffect(() => {
+    const checkout = searchParams.get('checkout');
+    if (checkout === 'success') {
+      setActionError('');
+      setSenaWallet(null);
+      setActionSuccess('¡Pago registrado! Tu turno quedó confirmado.');
+      setSearchParams({}, { replace: true });
+      reload();
+    } else if (checkout === 'cancel' || checkout === 'failure') {
+      setActionError('Pago cancelado o rechazado. Podés intentar de nuevo con «Pagar seña».');
+      setSearchParams({}, { replace: true });
+    } else if (checkout === 'pending') {
+      setActionError(
+        'Pago pendiente (ej. efectivo). Cuando Mercado Pago lo acredite, el turno se confirmará solo.'
+      );
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, reload]);
+
+  useEffect(() => {
+    const hasPending = appointments.some(
+      (a) => a.status === 'pending_payment' && !a.depositPaid && a.paymentDueAt
+    );
+    if (!hasPending) return;
+    const id = window.setInterval(() => setPayTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [appointments]);
+
+  useEffect(() => {
+    const overdue = appointments.some(
+      (a) =>
+        a.status === 'pending_payment' &&
+        !a.depositPaid &&
+        a.paymentDueAt &&
+        secondsUntilPaymentDue(a.paymentDueAt) === 0
+    );
+    if (!overdue) {
+      expiryReloadDoneRef.current = false;
+      return;
+    }
+    if (expiryReloadDoneRef.current) return;
+    expiryReloadDoneRef.current = true;
+    void reload();
+  }, [appointments, payTick, reload]);
 
   useEffect(() => {
     api.getShopSettings().then((s) => setShopCutoffHours(s.cutoffHours)).catch(() => {});
@@ -117,6 +183,26 @@ export default function Perfil() {
       setActionError(err instanceof Error ? err.message : 'No se pudo reprogramar');
     } finally {
       setActionBusy(false);
+    }
+  };
+
+  const handlePaySena = async (a: Appointment) => {
+    setSenaError('');
+    const key = mpPublicKey?.trim();
+    if (!key) {
+      setSenaError(
+        'Falta la clave pública de Mercado Pago en el sitio (VITE_MERCADOPAGO_PUBLIC_KEY). Pedile al administrador que la configure.'
+      );
+      return;
+    }
+    setSenaLoadingId(a.id);
+    try {
+      const data = await api.createCheckoutSenaForAppointment(a.id);
+      setSenaWallet({ appointmentId: data.appointmentId, preferenceId: data.preferenceId });
+    } catch (err) {
+      setSenaError(err instanceof Error ? err.message : 'No se pudo iniciar el pago de la seña');
+    } finally {
+      setSenaLoadingId(null);
     }
   };
 
@@ -226,31 +312,68 @@ export default function Perfil() {
             <h2 className="text-base sm:text-lg font-bold text-white">Turnos futuros</h2>
           </div>
           <p className="text-zinc-500 text-xs sm:text-sm mb-3">
-            Podés cancelar hasta el inicio del turno: si cancelás con al menos <strong className="text-zinc-300">2 horas</strong>{' '}
-            de anticipación, la seña se reembolsa por Mercado Pago; con menos tiempo, la seña no se devuelve. Para{' '}
-            <strong className="text-zinc-300">reprogramar</strong> hace falta al menos {shopCutoffHours} horas de anticipación
-            (configurable por el dueño).
+            Al reservar con seña online tenés <strong className="text-zinc-300">15 minutos</strong> para que el pago se
+            apruebe; si no, el turno se libera solo. Podés pagar desde acá mientras no venza ese plazo. Podés cancelar hasta
+            el inicio del turno: si cancelás con al menos <strong className="text-zinc-300">2 horas</strong> de anticipación,
+            la seña se reembolsa por Mercado Pago; con menos tiempo, la seña no se devuelve. Para{' '}
+            <strong className="text-zinc-300">reprogramar</strong> hace falta al menos {shopCutoffHours} horas de
+            anticipación (configurable por el dueño).
           </p>
+          {senaError && (
+            <div className="mb-3 p-3 rounded-xl border border-red-800 bg-red-950/50 text-red-200 text-sm">{senaError}</div>
+          )}
           {loading ? (
             <p className="text-zinc-500 text-sm">Cargando...</p>
           ) : futureAppointments.length === 0 ? (
             <p className="text-zinc-500 text-sm">No tenés turnos programados.</p>
           ) : (
             <ul className="space-y-2 sm:space-y-3">
-              {futureAppointments.map((a) => (
+              {futureAppointments.map((a) => {
+                void payTick;
+                const awaitingSena = a.status === 'pending_payment' && !a.depositPaid;
+                const payLeftSec =
+                  awaitingSena && a.paymentDueAt ? secondsUntilPaymentDue(a.paymentDueAt) : null;
+                return (
                 <li
                   key={a.id}
-                  className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 sm:p-4 bg-zinc-950/50 rounded-lg sm:rounded-xl border border-zinc-800 min-w-0"
+                  className="flex flex-col gap-3 p-3 sm:p-4 bg-zinc-950/50 rounded-lg sm:rounded-xl border border-zinc-800 min-w-0"
                 >
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="font-bold text-white text-sm sm:text-base truncate">{a.service}</p>
                     <p className="text-xs sm:text-sm text-zinc-400 truncate">
                       {format(parseAppointmentDateOnly(a.date), "EEEE d 'de' MMMM", { locale: es })} · {a.time}
                     </p>
                     {a.barber && <p className="text-xs text-zinc-500 mt-1 truncate">Barbero: {a.barber}</p>}
-                    {a.depositPaid && <p className="text-xs text-amber-400/90 mt-1">Seña abonada</p>}
+                    {awaitingSena && (
+                      <p className="text-xs text-amber-400/95 mt-1 font-medium">
+                        Pendiente de pago de la seña
+                        {a.paymentDueAt && payLeftSec != null && payLeftSec > 0 && (
+                          <span className="text-zinc-400 font-normal">
+                            {' '}
+                            · queda {formatMmSs(payLeftSec)}
+                          </span>
+                        )}
+                        {a.paymentDueAt && payLeftSec === 0 && (
+                          <span className="text-zinc-500 font-normal"> · plazo vencido, actualizando…</span>
+                        )}
+                      </p>
+                    )}
+                    {a.depositPaid && !awaitingSena && (
+                      <p className="text-xs text-amber-400/90 mt-1">Seña abonada</p>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                    {awaitingSena && (payLeftSec === null || payLeftSec > 0) ? (
+                      <button
+                        type="button"
+                        disabled={Boolean(senaLoadingId) || actionBusy}
+                        onClick={() => void handlePaySena(a)}
+                        className="px-3 py-2 rounded-lg bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 text-xs font-bold disabled:opacity-50"
+                      >
+                        {senaLoadingId === a.id ? 'Preparando…' : 'Pagar seña'}
+                      </button>
+                    ) : null}
                     {a.canReschedule && a.barberId ? (
                       <button
                         type="button"
@@ -271,14 +394,30 @@ export default function Perfil() {
                         Cancelar
                       </button>
                     ) : null}
-                    {!a.canReschedule && !a.canCancel && (
+                    {!a.canReschedule && !a.canCancel && !awaitingSena && (
                       <p className="text-xs text-zinc-500 max-w-[220px]">
                         Ya no podés modificar este turno (por ejemplo, el horario ya pasó).
                       </p>
                     )}
                   </div>
+                  </div>
+                  {senaWallet?.appointmentId === a.id && (
+                    <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 p-4">
+                      <p className="text-xs text-zinc-400 mb-3 text-center">
+                        Completá el pago con Mercado Pago. Si te redirige al checkout, al volver verás el turno confirmado
+                        acá.
+                      </p>
+                      <Wallet
+                        initialization={{ preferenceId: senaWallet.preferenceId, redirectMode: 'self' }}
+                        locale="es-AR"
+                        customization={{ theme: 'dark' }}
+                        onError={(err) => setSenaError(err.message || 'Error al cargar el botón de pago')}
+                      />
+                    </div>
+                  )}
                 </li>
-              ))}
+              );
+              })}
             </ul>
           )}
         </section>
