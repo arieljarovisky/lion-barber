@@ -11,6 +11,7 @@ import shopSettings from './routes/shopSettings.js';
 import auth from './routes/auth.js';
 import checkout, { logMercadoPagoEnvHint, mercadopagoWebhook } from './routes/checkout.js';
 import afip from './routes/afip.js';
+import users from './routes/users.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -28,6 +29,7 @@ app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 app.use('/api/auth', auth);
+app.use('/api/users', users);
 app.use('/api/appointments', appointments);
 app.use('/api/checkout', checkout);
 app.use('/api/services', services);

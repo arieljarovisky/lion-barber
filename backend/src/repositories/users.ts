@@ -53,3 +53,8 @@ export async function findUserById(id: number): Promise<DbUser | null> {
   const rows = await query<DbUser[]>('SELECT * FROM users WHERE id = ? LIMIT 1', [id]);
   return rows[0] ?? null;
 }
+
+/** Cuentas con rol cliente (para panel admin). */
+export async function findAllClients(): Promise<DbUser[]> {
+  return query<DbUser[]>('SELECT * FROM users WHERE role = ? ORDER BY created_at DESC', ['client']);
+}

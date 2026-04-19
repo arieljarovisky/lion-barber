@@ -187,6 +187,12 @@ export default function Perfil() {
   const appointmentsRef = useRef(appointments);
   appointmentsRef.current = appointments;
 
+  const appointmentsSignature = useMemo(() => appointments.map((a) => a.id).join(','), [appointments]);
+
+  useEffect(() => {
+    setHistoryLimit(8);
+  }, [profile?.id, appointmentsSignature]);
+
   const mpPublicKey = import.meta.env.VITE_MERCADOPAGO_PUBLIC_KEY as string | undefined;
 
   const reload = useCallback(() => {

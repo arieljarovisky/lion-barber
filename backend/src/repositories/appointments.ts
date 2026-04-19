@@ -191,6 +191,26 @@ export async function getAppointmentsByUserId(userId: number): Promise<Appointme
   return rows.map(rowToAppointment);
 }
 
+/** Historial por usuario (panel admin). */
+export async function getAppointmentsByUserIds(userIds: number[]): Promise<Map<number, Appointment[]>> {
+  const map = new Map<number, Appointment[]>();
+  for (const id of userIds) map.set(id, []);
+  if (userIds.length === 0) return map;
+  await expireStalePendingAppointments();
+  const placeholders = userIds.map(() => '?').join(',');
+  const rows = await query<DbAppointment[]>(
+    `SELECT * FROM appointments WHERE user_id IN (${placeholders}) ORDER BY user_id, date DESC, time DESC`,
+    userIds
+  );
+  for (const row of rows) {
+    const uid = row.user_id;
+    if (uid == null) continue;
+    const list = map.get(uid);
+    if (list) list.push(rowToAppointment(row));
+  }
+  return map;
+}
+
 export async function getAppointmentsByBarber(barberId: string, date?: string): Promise<Appointment[]> {
   await expireStalePendingAppointments();
   let sql = 'SELECT * FROM appointments WHERE barber_id = ?';

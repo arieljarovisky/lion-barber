@@ -109,6 +109,16 @@ export interface StaffInviteRow {
   createdAt: string;
 }
 
+/** Respuesta de GET /api/users/clients (solo admin). */
+export interface AdminClientWithHistory {
+  id: number;
+  email: string;
+  name: string;
+  points: number;
+  createdAt: string;
+  appointments: Appointment[];
+}
+
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options?.headers as Record<string, string>) };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
@@ -284,6 +294,10 @@ export const api = {
 
   deleteStaffInvite: (id: number) =>
     fetchApi<void>(`/api/staff-invites/${id}`, { method: 'DELETE' }),
+
+  /** Solo admin: clientes registrados con historial de turnos vinculado a su cuenta. */
+  getAdminClientsWithHistory: () =>
+    fetchApi<{ clients: AdminClientWithHistory[] }>('/api/users/clients'),
 
   auth: {
     postGoogle: (idToken: string) =>
