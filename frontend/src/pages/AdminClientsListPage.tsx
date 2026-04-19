@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Users, ChevronRight, LayoutGrid, List, Plus, X } from 'lucide-react';
+import { Users, ChevronRight, LayoutGrid, List, Plus, X, Search, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api, ApiError } from '../api';
 import type { AdminClientWithHistory } from '../api';
@@ -10,6 +10,27 @@ import type { AdminClientWithHistory } from '../api';
 const VIEW_STORAGE_KEY = 'lion-barber-admin-clients-view';
 
 type LayoutMode = 'grid' | 'rows';
+
+/** Orden de la lista (después de filtros y búsqueda). */
+type ClientSort =
+  | 'recent'
+  | 'name_asc'
+  | 'name_desc'
+  | 'points_desc'
+  | 'bookings_desc';
+
+/** Filtro por “perfil” de cliente. */
+type ClientFilterPreset =
+  | 'all'
+  | 'with_bookings'
+  | 'no_bookings'
+  | 'new_30d'
+  | 'vip_points'
+  | 'frequent_visits';
+
+const VIP_POINTS_MIN = 25;
+const FREQUENT_BOOKINGS_MIN = 3;
+const NEW_CLIENT_DAYS = 30;
 
 function readLayoutMode(): LayoutMode {
   try {
@@ -35,6 +56,9 @@ export default function AdminClientsListPage() {
   const [formPoints, setFormPoints] = useState('0');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<ClientSort>('recent');
+  const [filterPreset, setFilterPreset] = useState<ClientFilterPreset>('all');
 
   const loadClients = useCallback(() => {
     setLoading(true);
@@ -112,6 +136,62 @@ export default function AdminClientsListPage() {
     }
   };
 
+  const filteredClients = useMemo(() => {
+    let list = [...clients];
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)
+      );
+    }
+    const cutoffNew = subDays(new Date(), NEW_CLIENT_DAYS).getTime();
+    switch (filterPreset) {
+      case 'with_bookings':
+        list = list.filter((c) => c.appointments.length > 0);
+        break;
+      case 'no_bookings':
+        list = list.filter((c) => c.appointments.length === 0);
+        break;
+      case 'new_30d':
+        list = list.filter((c) => parseISO(c.createdAt).getTime() >= cutoffNew);
+        break;
+      case 'vip_points':
+        list = list.filter((c) => c.points >= VIP_POINTS_MIN);
+        break;
+      case 'frequent_visits':
+        list = list.filter((c) => c.appointments.length >= FREQUENT_BOOKINGS_MIN);
+        break;
+      default:
+        break;
+    }
+    list.sort((a, b) => {
+      switch (sortBy) {
+        case 'recent':
+          return parseISO(b.createdAt).getTime() - parseISO(a.createdAt).getTime();
+        case 'name_asc':
+          return a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
+        case 'name_desc':
+          return b.name.localeCompare(a.name, 'es', { sensitivity: 'base' });
+        case 'points_desc':
+          return b.points - a.points;
+        case 'bookings_desc':
+          return b.appointments.length - a.appointments.length;
+        default:
+          return 0;
+      }
+    });
+    return list;
+  }, [clients, searchQuery, sortBy, filterPreset]);
+
+  const filtersActive =
+    searchQuery.trim() !== '' || filterPreset !== 'all' || sortBy !== 'recent';
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setFilterPreset('all');
+    setSortBy('recent');
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
       <DashboardPanelShell activePanel="clientes" onNavigate={handlePanelNavigate}>
@@ -179,13 +259,114 @@ export default function AdminClientsListPage() {
           </div>
         </div>
 
+        {!loading && clients.length > 0 && (
+          <div className="mb-6 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-bold text-zinc-800">
+                <SlidersHorizontal size={18} className="text-[#b39055]" aria-hidden />
+                Buscar y filtrar
+              </div>
+              {filtersActive && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-zinc-600 hover:bg-zinc-100"
+                >
+                  <RotateCcw size={14} aria-hidden />
+                  Limpiar
+                </button>
+              )}
+            </div>
+            <div className="relative mb-4">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400"
+                aria-hidden
+              />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar por nombre o email…"
+                className="w-full rounded-xl border border-zinc-200 bg-zinc-50/80 py-2.5 pl-10 pr-4 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-[#e5c185] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#e5c185]/30"
+                autoComplete="off"
+              />
+            </div>
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+              <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wide text-zinc-500">
+                Ordenar por
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as ClientSort)}
+                  className="rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm font-medium text-zinc-900 focus:border-[#e5c185] focus:outline-none focus:ring-2 focus:ring-[#e5c185]/30"
+                >
+                  <option value="recent">Más recientes (fecha de alta)</option>
+                  <option value="name_asc">Nombre A → Z</option>
+                  <option value="name_desc">Nombre Z → A</option>
+                  <option value="points_desc">Más puntos</option>
+                  <option value="bookings_desc">Más turnos (frecuentes)</option>
+                </select>
+              </label>
+            </div>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Filtros rápidos</p>
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { id: 'all' as const, label: 'Todos' },
+                  { id: 'with_bookings' as const, label: 'Con turnos' },
+                  { id: 'no_bookings' as const, label: 'Sin turnos' },
+                  { id: 'new_30d' as const, label: `Nuevos (${NEW_CLIENT_DAYS} días)` },
+                  {
+                    id: 'vip_points' as const,
+                    label: `VIP puntos (≥${VIP_POINTS_MIN})`,
+                  },
+                  {
+                    id: 'frequent_visits' as const,
+                    label: `Frecuentes (≥${FREQUENT_BOOKINGS_MIN} turnos)`,
+                  },
+                ] as const
+              ).map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setFilterPreset(id)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold transition ${
+                    filterPreset === id
+                      ? 'border-zinc-900 bg-zinc-900 text-white'
+                      : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-zinc-300 hover:bg-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-4 text-xs text-zinc-500">
+              Mostrando <strong className="text-zinc-800">{filteredClients.length}</strong> de {clients.length}{' '}
+              cliente{clients.length === 1 ? '' : 's'}
+              {filteredClients.length === 0 && clients.length > 0 && (
+                <span className="ml-1 text-amber-700">· probá otra búsqueda o filtros</span>
+              )}
+            </p>
+          </div>
+        )}
+
         {loading ? (
           <p className="text-zinc-400">Cargando…</p>
         ) : clients.length === 0 ? (
           <p className="text-zinc-500">No hay clientes registrados todavía. Usá «Nuevo cliente» para agregar uno.</p>
+        ) : filteredClients.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 px-6 py-10 text-center">
+            <p className="font-medium text-zinc-700">Ningún cliente coincide con tu búsqueda o filtros.</p>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="mt-3 text-sm font-bold text-[#b39055] hover:underline"
+            >
+              Limpiar búsqueda y filtros
+            </button>
+          </div>
         ) : layout === 'grid' ? (
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {clients.map((c) => (
+            {filteredClients.map((c) => (
               <li key={c.id}>
                 <Link
                   to={`/dashboard/clientes/${c.id}`}
@@ -230,7 +411,7 @@ export default function AdminClientsListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {clients.map((c) => (
+                  {filteredClients.map((c) => (
                     <tr
                       key={c.id}
                       role="link"
