@@ -10,6 +10,7 @@ import staffInvites from './routes/staffInvites.js';
 import shopSettings from './routes/shopSettings.js';
 import auth from './routes/auth.js';
 import checkout, { logMercadoPagoEnvHint, mercadopagoWebhook } from './routes/checkout.js';
+import afip from './routes/afip.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -34,6 +35,7 @@ app.use('/api/barbers', barbers);
 app.use('/api/barber-schedule', barberSchedule);
 app.use('/api/staff-invites', staffInvites);
 app.use('/api/shop-settings', shopSettings);
+app.use('/api/afip', afip);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });

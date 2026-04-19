@@ -19,6 +19,12 @@ export interface Appointment {
   mercadopagoPaymentId?: string;
   paymentDueAt?: string;
   status?: AppointmentStatus;
+  /** Factura electrónica AFIP (wsfe) */
+  afipCae?: string;
+  afipCaeVto?: string;
+  afipCbteNro?: number;
+  afipPtoVta?: number;
+  afipFacturadoAt?: string;
 }
 
 export interface Service {

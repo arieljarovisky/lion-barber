@@ -34,6 +34,7 @@ import {
   Settings,
   CheckCircle2,
   AlertCircle,
+  Receipt,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -240,6 +241,8 @@ export default function Dashboard() {
   const [shopError, setShopError] = useState('');
   const [toast, setToast] = useState<{ message: string; kind: 'ok' | 'err' } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [afipConfigured, setAfipConfigured] = useState(false);
+  const [afipInvoicingId, setAfipInvoicingId] = useState<string | null>(null);
 
   const showToast = useCallback((message: string, kind: 'ok' | 'err' = 'ok') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -296,6 +299,17 @@ export default function Dashboard() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setAfipConfigured(false);
+      return;
+    }
+    api
+      .getAfipStatus()
+      .then((s) => setAfipConfigured(s.configured))
+      .catch(() => setAfipConfigured(false));
+  }, [isAdmin]);
 
   useEffect(() => {
     if (profile?.role === 'staff' && profile.barberId) {
@@ -591,6 +605,26 @@ export default function Dashboard() {
       loadData();
     } catch {
       setError('Error al eliminar');
+    }
+  };
+
+  const handleAfipInvoice = async (app: Appointment) => {
+    if (
+      !confirm(
+        `¿Emitir factura electrónica AFIP (Factura B) por el servicio «${app.service}» según el precio cargado en el catálogo?`
+      )
+    ) {
+      return;
+    }
+    setAfipInvoicingId(app.id);
+    try {
+      const r = await api.createAfipInvoice(app.id);
+      showToast(`Factura AFIP autorizada · Pto. ${r.ptoVta} Nº ${r.cbteNro} · CAE ${r.cae}`, 'ok');
+      await loadData();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'No se pudo facturar con AFIP', 'err');
+    } finally {
+      setAfipInvoicingId(null);
     }
   };
 
@@ -1464,6 +1498,12 @@ export default function Dashboard() {
               {isSingleBarberDayView && (
                 <p className="text-[11px] text-zinc-500 mt-0.5">Orden cronológico para revisar o anotar</p>
               )}
+              {isAdmin && !afipConfigured && (
+                <p className="text-[10px] text-amber-800/90 mt-1 max-w-md">
+                  Facturación AFIP: definí <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_ACCESS_TOKEN</code> y{' '}
+                  <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_CUIT</code> en el servidor (Afip SDK).
+                </p>
+              )}
             </div>
             <span className="bg-[#e5c185]/20 text-[#b39055] text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
               {dayAppointments.length} programados
@@ -1531,6 +1571,31 @@ export default function Dashboard() {
                           {getAppointmentPaymentBadge(app).label}
                         </span>
                       </div>
+                      {isAdmin && afipConfigured && app.status !== 'cancelled' && (
+                        <div className="mt-2 flex flex-col gap-1">
+                          {app.afipCae ? (
+                            <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-800 font-semibold leading-snug">
+                              <Receipt size={12} className="shrink-0" />
+                              <span>
+                                AFIP {app.afipPtoVta}-{app.afipCbteNro} · CAE {app.afipCae}
+                                {app.afipCaeVto ? (
+                                  <span className="font-normal text-zinc-600"> · vto {app.afipCaeVto}</span>
+                                ) : null}
+                              </span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void handleAfipInvoice(app)}
+                              disabled={afipInvoicingId === app.id}
+                              className="inline-flex items-center justify-center gap-1 w-fit px-2.5 py-1.5 rounded-md text-[11px] font-bold bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
+                            >
+                              <Receipt size={12} />
+                              {afipInvoicingId === app.id ? 'Facturando…' : 'Facturar AFIP'}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5">Barbero</p>

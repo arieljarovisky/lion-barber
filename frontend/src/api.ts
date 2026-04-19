@@ -51,6 +51,12 @@ export interface Appointment {
   /** Solo en GET /api/appointments/mine */
   canCancel?: boolean;
   canReschedule?: boolean;
+  /** Factura electrónica (admin / panel) */
+  afipCae?: string;
+  afipCaeVto?: string;
+  afipCbteNro?: number;
+  afipPtoVta?: number;
+  afipFacturadoAt?: string;
 }
 
 export type CancelAppointmentNotice = 'refund_processed' | 'deposit_retained_short_notice' | 'no_deposit';
@@ -177,6 +183,16 @@ export const api = {
     }),
 
   getShopSettings: () => fetchApi<ShopSettings>('/api/shop-settings'),
+
+  /** Solo admin: estado de integración AFIP (Afip SDK). */
+  getAfipStatus: () => fetchApi<{ configured: boolean; production: boolean }>('/api/afip/status'),
+
+  /** Solo admin: emite comprobante electrónico AFIP para un turno. */
+  createAfipInvoice: (appointmentId: string) =>
+    fetchApi<{ cae: string; caeVto: string; cbteNro: number; ptoVta: number }>(
+      `/api/afip/invoice/${encodeURIComponent(appointmentId)}`,
+      { method: 'POST' }
+    ),
 
   updateShopSettings: (data: Partial<Pick<ShopSettings, 'cutoffHours' | 'openWeekdays' | 'depositPercent'>>) =>
     fetchApi<ShopSettings>('/api/shop-settings', { method: 'PATCH', body: JSON.stringify(data) }),

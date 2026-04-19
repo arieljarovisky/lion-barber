@@ -52,6 +52,11 @@ interface DbAppointment {
   mercadopago_payment_id?: string | null;
   payment_due_at?: string | null;
   status?: string | null;
+  afip_cae?: string | null;
+  afip_cae_vto?: string | null;
+  afip_cbte_nro?: number | null;
+  afip_pto_vta?: number | null;
+  afip_facturado_at?: string | null;
 }
 
 function rowToAppointment(row: DbAppointment): Appointment {
@@ -72,6 +77,11 @@ function rowToAppointment(row: DbAppointment): Appointment {
     mercadopagoPaymentId: row.mercadopago_payment_id ?? undefined,
     paymentDueAt: row.payment_due_at ?? undefined,
     status: st,
+    afipCae: row.afip_cae ?? undefined,
+    afipCaeVto: row.afip_cae_vto ? String(row.afip_cae_vto).slice(0, 10) : undefined,
+    afipCbteNro: row.afip_cbte_nro != null ? Number(row.afip_cbte_nro) : undefined,
+    afipPtoVta: row.afip_pto_vta != null ? Number(row.afip_pto_vta) : undefined,
+    afipFacturadoAt: row.afip_facturado_at ?? undefined,
   };
 }
 
@@ -390,4 +400,19 @@ export async function cancelAppointmentByUser(id: string, userId: number): Promi
 export async function deleteAppointment(id: string): Promise<boolean> {
   const [res] = await pool.execute('DELETE FROM appointments WHERE id = ?', [id]);
   return (res as { affectedRows: number }).affectedRows > 0;
+}
+
+export async function setAppointmentAfipInvoice(
+  id: string,
+  data: {
+    cae: string;
+    caeVto: string;
+    cbteNro: number;
+    ptoVta: number;
+  }
+): Promise<void> {
+  await pool.execute(
+    `UPDATE appointments SET afip_cae = ?, afip_cae_vto = ?, afip_cbte_nro = ?, afip_pto_vta = ?, afip_facturado_at = NOW() WHERE id = ?`,
+    [data.cae, data.caeVto, data.cbteNro, data.ptoVta, id]
+  );
 }
