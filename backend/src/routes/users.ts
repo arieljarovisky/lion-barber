@@ -34,6 +34,7 @@ router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
         email: user.email,
         name: user.name,
         points: user.points,
+        avatarUrl: user.avatar_url ?? null,
         createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at),
         appointments: [],
       },
@@ -56,6 +57,7 @@ router.get('/clients', requireAuth, requireAdmin, async (_req, res) => {
       email: c.email,
       name: c.name,
       points: c.points,
+      avatarUrl: c.avatar_url ?? null,
       createdAt: c.created_at instanceof Date ? c.created_at.toISOString() : String(c.created_at),
       appointments: byUser.get(c.id) ?? [],
     }));
@@ -84,6 +86,7 @@ router.get('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
         email: user.email,
         name: user.name,
         points: user.points,
+        avatarUrl: user.avatar_url ?? null,
         createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at),
         appointments,
       },

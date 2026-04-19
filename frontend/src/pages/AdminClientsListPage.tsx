@@ -4,6 +4,7 @@ import { format, parseISO, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Users, ChevronRight, LayoutGrid, List, Plus, X, Search, SlidersHorizontal, RotateCcw } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
+import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
 import type { AdminClientWithHistory } from '../api';
 
@@ -372,12 +373,15 @@ export default function AdminClientsListPage() {
                   to={`/dashboard/clientes/${c.id}`}
                   className="group flex h-full flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-[#e5c185]/80 hover:shadow-md"
                 >
-                  <div>
+                  <div className="flex gap-3">
+                    <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
+                    <div className="min-w-0 flex-1">
                     <p className="font-bold text-zinc-900 group-hover:text-zinc-950 truncate">{c.name}</p>
                     <p className="mt-1 text-xs text-zinc-500 truncate">{c.email}</p>
                     <p className="mt-2 text-[11px] text-zinc-400">
                       Alta {format(parseISO(c.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
                     </p>
+                    </div>
                   </div>
                   <div className="mt-4 flex items-center justify-between border-t border-zinc-100 pt-4">
                     <div className="flex gap-3 text-xs">
@@ -425,7 +429,12 @@ export default function AdminClientsListPage() {
                         }
                       }}
                     >
-                      <td className="px-4 py-3 font-semibold text-zinc-900">{c.name}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
+                          <span className="font-semibold text-zinc-900">{c.name}</span>
+                        </div>
+                      </td>
                       <td className="max-w-[14rem] truncate px-4 py-3 text-zinc-600">{c.email}</td>
                       <td className="px-4 py-3 text-right font-bold text-[#b39055]">{c.points}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-zinc-600">{c.appointments.length}</td>

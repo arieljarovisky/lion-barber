@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, User } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
+import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
 import type { AdminClientWithHistory } from '../api';
 import {
@@ -99,9 +100,7 @@ export default function AdminClientDetailPage() {
               <div className="border-b border-zinc-100 bg-gradient-to-br from-zinc-50 to-white px-5 py-6 sm:px-8 sm:py-8">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex gap-4">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-zinc-900 text-[#e5c185]">
-                      <User size={32} strokeWidth={1.5} />
-                    </div>
+                    <AdminClientAvatar name={client.name} avatarUrl={client.avatarUrl} size="lg" />
                     <div className="min-w-0">
                       <h1 className="text-2xl font-black tracking-tight text-zinc-900 sm:text-3xl">{client.name}</h1>
                       <p className="mt-1 truncate text-sm text-zinc-500">{client.email}</p>

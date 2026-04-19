@@ -12,6 +12,7 @@ export interface UserProfile {
   phone?: string;
   /** Cuenta de barbero (staff): id en la agenda */
   barberId?: string | null;
+  avatarUrl?: string | null;
 }
 
 interface AuthContextType {
@@ -44,6 +45,7 @@ function profileFromBackend(u: {
   role: string;
   points?: number;
   barberId?: string | null;
+  avatarUrl?: string | null;
 }): UserProfile {
   const role =
     u.role === 'admin' ? 'admin' : u.role === 'staff' ? 'staff' : 'client';
@@ -54,6 +56,7 @@ function profileFromBackend(u: {
     points: u.points ?? 0,
     role,
     barberId: u.barberId ?? null,
+    avatarUrl: u.avatarUrl ?? null,
   };
 }
 

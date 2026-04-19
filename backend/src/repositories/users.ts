@@ -8,6 +8,7 @@ export interface DbUser {
   role: string;
   points: number;
   barber_id: string | null;
+  avatar_url: string | null;
   created_at: Date;
 }
 
@@ -48,6 +49,18 @@ export async function updateUserBarberId(id: number, barberId: string | null): P
 
 export async function updateUserGoogleUid(id: number, googleUid: string): Promise<void> {
   await query('UPDATE users SET google_uid = ? WHERE id = ?', [googleUid, id]);
+}
+
+/** Sincroniza nombre y foto desde el perfil de Google en cada login. */
+export async function updateUserProfile(
+  id: number,
+  data: { name: string; avatarUrl: string | null }
+): Promise<void> {
+  await query('UPDATE users SET name = ?, avatar_url = ? WHERE id = ?', [
+    data.name,
+    data.avatarUrl,
+    id,
+  ]);
 }
 
 export async function findUserById(id: number): Promise<DbUser | null> {

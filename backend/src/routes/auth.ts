@@ -16,6 +16,7 @@ router.post('/google', async (req, res) => {
     const googleUid = payload.sub;
     const email = payload.email ?? '';
     const name = payload.name ?? payload.email ?? 'Usuario';
+    const picture = payload.picture?.trim() || null;
     const emailLower = email.toLowerCase();
 
     const invite = await staffInvites.findInviteByEmail(emailLower);
@@ -58,6 +59,9 @@ router.post('/google', async (req, res) => {
       user = (await userRepo.findUserById(user.id))!;
     }
 
+    await userRepo.updateUserProfile(user.id, { name, avatarUrl: picture });
+    user = (await userRepo.findUserById(user.id))!;
+
     const token = signJwt({
       userId: user.id,
       email: user.email,
@@ -73,6 +77,7 @@ router.post('/google', async (req, res) => {
         role: user.role,
         points: user.points ?? 0,
         barberId: user.barber_id ?? null,
+        avatarUrl: user.avatar_url ?? null,
       },
     });
   } catch (err) {
@@ -92,6 +97,7 @@ router.get('/me', requireAuth, async (req, res) => {
     role: user.role,
     points: user.points ?? 0,
     barberId: user.barber_id ?? null,
+    avatarUrl: user.avatar_url ?? null,
   });
 });
 
