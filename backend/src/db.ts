@@ -61,6 +61,11 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE users MODIFY google_uid VARCHAR(128) NULL');
+  } catch {
+    /* ya aplicado o motor distinto */
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS services (
       id VARCHAR(50) PRIMARY KEY,

@@ -303,6 +303,13 @@ export const api = {
   getAdminClient: (clientId: number) =>
     fetchApi<{ client: AdminClientWithHistory }>(`/api/users/clients/${clientId}`),
 
+  /** Solo admin: alta manual (el cliente podrá vincular Google al iniciar sesión con el mismo email). */
+  createAdminClient: (data: { name: string; email: string; points?: number }) =>
+    fetchApi<{ client: AdminClientWithHistory }>('/api/users/clients', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
   auth: {
     postGoogle: (idToken: string) =>
       fetchApi<{

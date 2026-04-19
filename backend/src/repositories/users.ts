@@ -2,7 +2,7 @@ import { query } from '../db.js';
 
 export interface DbUser {
   id: number;
-  google_uid: string;
+  google_uid: string | null;
   email: string;
   name: string;
   role: string;
@@ -17,7 +17,8 @@ export async function findUserByGoogleUid(googleUid: string): Promise<DbUser | n
 }
 
 export async function findUserByEmail(email: string): Promise<DbUser | null> {
-  const rows = await query<DbUser[]>('SELECT * FROM users WHERE email = ? LIMIT 1', [email]);
+  const norm = email.trim().toLowerCase();
+  const rows = await query<DbUser[]>('SELECT * FROM users WHERE LOWER(TRIM(email)) = ? LIMIT 1', [norm]);
   return rows[0] ?? null;
 }
 
@@ -57,4 +58,25 @@ export async function findUserById(id: number): Promise<DbUser | null> {
 /** Cuentas con rol cliente (para panel admin). */
 export async function findAllClients(): Promise<DbUser[]> {
   return query<DbUser[]>('SELECT * FROM users WHERE role = ? ORDER BY created_at DESC', ['client']);
+}
+
+/** Cliente manual (sin cuenta Google aún). `google_uid` queda NULL hasta el primer login con ese email. */
+export async function createManualClient(data: {
+  email: string;
+  name: string;
+  points?: number;
+}): Promise<DbUser> {
+  const email = data.email.trim().toLowerCase();
+  const name = data.name.trim();
+  if (!email || !name) throw new Error('Email y nombre son obligatorios');
+  const dup = await findUserByEmail(email);
+  if (dup) throw new Error('Ya existe un usuario con ese email');
+  const pts = Math.max(0, Math.min(999_999, Math.floor(data.points ?? 0)));
+  await query(
+    'INSERT INTO users (google_uid, email, name, role, points) VALUES (NULL, ?, ?, ?, ?)',
+    [email, name, 'client', pts]
+  );
+  const user = await findUserByEmail(email);
+  if (!user) throw new Error('No se pudo crear el cliente');
+  return user;
 }
