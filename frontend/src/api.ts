@@ -100,6 +100,14 @@ export interface ShopProduct {
   sortOrder?: number;
 }
 
+/** Beneficios canjeables con puntos (visible para clientes en el futuro; se configura en Puntos). */
+export interface PointsRedemptionOption {
+  id: string;
+  label: string;
+  pointsCost: number;
+  sortOrder: number;
+}
+
 export interface Barber {
   id: string;
   name: string;
@@ -301,6 +309,22 @@ export const api = {
     }),
   deleteShopProduct: (id: string) =>
     fetchApi<void>(`/api/shop-products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  getPointsRedemptionOptions: () =>
+    fetchApi<{ options: PointsRedemptionOption[] }>('/api/points-redemption-options'),
+  createPointsRedemptionOption: (data: { label: string; pointsCost: number }) =>
+    fetchApi<PointsRedemptionOption>('/api/points-redemption-options', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updatePointsRedemptionOption: (id: string, data: Partial<{ label: string; pointsCost: number }>) =>
+    fetchApi<PointsRedemptionOption>(`/api/points-redemption-options/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deletePointsRedemptionOption: (id: string) =>
+    fetchApi<void>(`/api/points-redemption-options/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   getBarbers: () => fetchApi<Barber[]>('/api/barbers'),
 
   getBarberSchedule: (barberId: string) =>

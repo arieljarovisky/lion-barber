@@ -39,6 +39,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import PointsProgramPanel from '../components/PointsProgramPanel';
+import PointsRedemptionPanel from '../components/PointsRedemptionPanel';
 import ShopProductsPanel from '../components/ShopProductsPanel';
 import ProductPointsPanel from '../components/ProductPointsPanel';
 import BillingPanel from '../components/BillingPanel';
@@ -53,6 +54,7 @@ import type {
   StaffInviteRow,
   ShopProduct,
   AdminClientWithHistory,
+  type PointsRedemptionOption,
 } from '../api';
 
 const TIME_SLOTS = [
@@ -272,6 +274,8 @@ export default function Dashboard() {
   const [shopProducts, setShopProducts] = useState<ShopProduct[]>([]);
   const [pointsPanelLoading, setPointsPanelLoading] = useState(false);
   const [shopProductsPanelLoading, setShopProductsPanelLoading] = useState(false);
+  const [redemptionOptions, setRedemptionOptions] = useState<PointsRedemptionOption[]>([]);
+  const [redemptionOptionsLoading, setRedemptionOptionsLoading] = useState(false);
   const [afipConfigured, setAfipConfigured] = useState(false);
   const [afipInvoiceApp, setAfipInvoiceApp] = useState<Appointment | null>(null);
   const [afipInvoiceBusy, setAfipInvoiceBusy] = useState(false);
@@ -356,10 +360,27 @@ export default function Dashboard() {
     }
   }, [showToast]);
 
+  const loadRedemptionOptionsPanel = useCallback(async () => {
+    setRedemptionOptionsLoading(true);
+    try {
+      const r = await api.getPointsRedemptionOptions();
+      setRedemptionOptions(r.options);
+    } catch {
+      showToast('No se pudo cargar las opciones de canje', 'err');
+    } finally {
+      setRedemptionOptionsLoading(false);
+    }
+  }, [showToast]);
+
   useEffect(() => {
     if (view !== 'puntos') return;
     void loadServicePointsPanel();
   }, [view, loadServicePointsPanel]);
+
+  useEffect(() => {
+    if (view !== 'puntos') return;
+    void loadRedemptionOptionsPanel();
+  }, [view, loadRedemptionOptionsPanel]);
 
   useEffect(() => {
     if (view !== 'productos' && view !== 'puntos') return;
@@ -2050,17 +2071,25 @@ export default function Dashboard() {
         )}
 
         {view === 'puntos' && (profile?.role === 'admin' || profile?.role === 'staff') && (
-          <div className="space-y-10">
-            <PointsProgramPanel
-              services={services}
-              loading={pointsPanelLoading}
-              onRefresh={loadServicePointsPanel}
-              showToast={showToast}
-            />
-            <ProductPointsPanel
-              shopProducts={shopProducts}
-              loading={shopProductsPanelLoading}
-              onRefresh={loadShopProductsPanel}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_minmax(280px,380px)] gap-8 lg:gap-10 items-start">
+            <div className="space-y-10 min-w-0">
+              <PointsProgramPanel
+                services={services}
+                loading={pointsPanelLoading}
+                onRefresh={loadServicePointsPanel}
+                showToast={showToast}
+              />
+              <ProductPointsPanel
+                shopProducts={shopProducts}
+                loading={shopProductsPanelLoading}
+                onRefresh={loadShopProductsPanel}
+                showToast={showToast}
+              />
+            </div>
+            <PointsRedemptionPanel
+              options={redemptionOptions}
+              loading={redemptionOptionsLoading}
+              onRefresh={loadRedemptionOptionsPanel}
               showToast={showToast}
             />
           </div>

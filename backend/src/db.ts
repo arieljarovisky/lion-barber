@@ -114,6 +114,14 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS points_redemption_options (
+      id VARCHAR(50) PRIMARY KEY,
+      label VARCHAR(255) NOT NULL,
+      points_cost INT NOT NULL,
+      sort_order INT NOT NULL DEFAULT 0
+    )
+  `);
   /**
    * Si sort_order quedó en 0 para todos (migración vieja), se asigna un orden estable por nombre.
    * Se usa tabla temporal con ROW_NUMBER para MySQL 8+.

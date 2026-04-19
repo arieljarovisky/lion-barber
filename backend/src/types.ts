@@ -56,6 +56,16 @@ export interface Service {
   pointsReward?: number;
 }
 
+/** Qué puede obtener el cliente al canjear puntos (configurable en el panel). */
+export interface PointsRedemptionOption {
+  id: string;
+  /** Texto corto: ej. "10% de descuento en el próximo corte". */
+  label: string;
+  /** Puntos necesarios para este canje. */
+  pointsCost: number;
+  sortOrder: number;
+}
+
 /** Productos de la barbería (ej. pomada, shampoo): puntos al comprar. */
 export interface ShopProduct {
   id: string;

@@ -13,6 +13,7 @@ import checkout, { logMercadoPagoEnvHint, mercadopagoWebhook } from './routes/ch
 import afip from './routes/afip.js';
 import users from './routes/users.js';
 import shopProducts from './routes/shopProducts.js';
+import pointsRedemptionOptions from './routes/pointsRedemptionOptions.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -35,6 +36,7 @@ app.use('/api/appointments', appointments);
 app.use('/api/checkout', checkout);
 app.use('/api/services', services);
 app.use('/api/shop-products', shopProducts);
+app.use('/api/points-redemption-options', pointsRedemptionOptions);
 app.use('/api/barbers', barbers);
 app.use('/api/barber-schedule', barberSchedule);
 app.use('/api/staff-invites', staffInvites);
