@@ -1,5 +1,5 @@
 import pool, { query } from '../db.js';
-import type { Appointment, AppointmentStatus } from '../types.js';
+import type { AfipInvoiceDetail, Appointment, AppointmentStatus } from '../types.js';
 import { getBarberById, getAllBarbers } from './barbers.js';
 import { getServiceById } from './services.js';
 import {
@@ -57,6 +57,18 @@ interface DbAppointment {
   afip_cbte_nro?: number | null;
   afip_pto_vta?: number | null;
   afip_facturado_at?: string | null;
+  afip_invoice_detail?: string | null;
+}
+
+function parseAfipDetail(raw: string | null | undefined): AfipInvoiceDetail | undefined {
+  if (!raw || typeof raw !== 'string') return undefined;
+  try {
+    const o = JSON.parse(raw) as AfipInvoiceDetail;
+    if (o && typeof o === 'object' && typeof o.total === 'number') return o;
+  } catch {
+    /* ignore */
+  }
+  return undefined;
 }
 
 function rowToAppointment(row: DbAppointment): Appointment {
@@ -82,6 +94,7 @@ function rowToAppointment(row: DbAppointment): Appointment {
     afipCbteNro: row.afip_cbte_nro != null ? Number(row.afip_cbte_nro) : undefined,
     afipPtoVta: row.afip_pto_vta != null ? Number(row.afip_pto_vta) : undefined,
     afipFacturadoAt: row.afip_facturado_at ?? undefined,
+    afipInvoiceDetail: parseAfipDetail(row.afip_invoice_detail),
   };
 }
 
@@ -429,10 +442,12 @@ export async function setAppointmentAfipInvoice(
     caeVto: string;
     cbteNro: number;
     ptoVta: number;
+    invoiceDetail?: AfipInvoiceDetail;
   }
 ): Promise<void> {
+  const detailJson = data.invoiceDetail ? JSON.stringify(data.invoiceDetail) : null;
   await pool.execute(
-    `UPDATE appointments SET afip_cae = ?, afip_cae_vto = ?, afip_cbte_nro = ?, afip_pto_vta = ?, afip_facturado_at = NOW() WHERE id = ?`,
-    [data.cae, data.caeVto, data.cbteNro, data.ptoVta, id]
+    `UPDATE appointments SET afip_cae = ?, afip_cae_vto = ?, afip_cbte_nro = ?, afip_pto_vta = ?, afip_facturado_at = NOW(), afip_invoice_detail = ? WHERE id = ?`,
+    [data.cae, data.caeVto, data.cbteNro, data.ptoVta, detailJson, id]
   );
 }

@@ -6,6 +6,7 @@ interface DbShopProduct {
   name: string;
   points_reward: number;
   sort_order: number;
+  unit_price?: string | null;
 }
 
 function rowToProduct(r: DbShopProduct): ShopProduct {
@@ -13,6 +14,7 @@ function rowToProduct(r: DbShopProduct): ShopProduct {
     id: r.id,
     name: r.name,
     pointsReward: r.points_reward,
+    unitPrice: r.unit_price != null && String(r.unit_price).trim() !== '' ? String(r.unit_price).trim() : undefined,
     sortOrder: r.sort_order,
   };
 }
@@ -40,7 +42,11 @@ export async function getShopProductById(id: string): Promise<ShopProduct | null
   return r ? rowToProduct(r) : null;
 }
 
-export async function createShopProduct(data: { name: string; pointsReward: number }): Promise<ShopProduct> {
+export async function createShopProduct(data: {
+  name: string;
+  pointsReward: number;
+  unitPrice?: string | null;
+}): Promise<ShopProduct> {
   let id = slugFromName(data.name);
   const existing = await getShopProductById(id);
   if (existing) {
@@ -49,9 +55,11 @@ export async function createShopProduct(data: { name: string; pointsReward: numb
   const maxRows = await query<{ maxOrder: number | null }[]>('SELECT MAX(sort_order) AS maxOrder FROM shop_products');
   const nextOrder = Number(maxRows[0]?.maxOrder ?? 0) + 1;
   const pts = Math.max(0, Math.min(999_999, Math.floor(data.pointsReward)));
+  const up =
+    data.unitPrice != null && String(data.unitPrice).trim() !== '' ? String(data.unitPrice).trim() : null;
   await query(
-    'INSERT INTO shop_products (id, name, points_reward, sort_order) VALUES (?, ?, ?, ?)',
-    [id, data.name.trim(), pts, nextOrder]
+    'INSERT INTO shop_products (id, name, points_reward, sort_order, unit_price) VALUES (?, ?, ?, ?, ?)',
+    [id, data.name.trim(), pts, nextOrder, up]
   );
   const created = await getShopProductById(id);
   if (!created) throw new Error('Producto no creado');
@@ -60,7 +68,7 @@ export async function createShopProduct(data: { name: string; pointsReward: numb
 
 export async function updateShopProduct(
   id: string,
-  data: Partial<Pick<ShopProduct, 'name' | 'pointsReward'>>
+  data: Partial<Pick<ShopProduct, 'name' | 'pointsReward' | 'unitPrice'>>
 ): Promise<ShopProduct | null> {
   const current = await getShopProductById(id);
   if (!current) return null;
@@ -69,7 +77,22 @@ export async function updateShopProduct(
     data.pointsReward !== undefined
       ? Math.max(0, Math.min(999_999, Math.floor(data.pointsReward)))
       : current.pointsReward;
-  await query('UPDATE shop_products SET name = ?, points_reward = ? WHERE id = ?', [name, pointsReward, id]);
+  let unitPrice: string | null;
+  if (data.unitPrice !== undefined) {
+    unitPrice =
+      data.unitPrice != null && String(data.unitPrice).trim() !== '' ? String(data.unitPrice).trim() : null;
+  } else {
+    unitPrice =
+      current.unitPrice != null && String(current.unitPrice).trim() !== ''
+        ? String(current.unitPrice).trim()
+        : null;
+  }
+  await query('UPDATE shop_products SET name = ?, points_reward = ?, unit_price = ? WHERE id = ?', [
+    name,
+    pointsReward,
+    unitPrice,
+    id,
+  ]);
   return getShopProductById(id);
 }
 

@@ -57,6 +57,21 @@ export interface Appointment {
   afipCbteNro?: number;
   afipPtoVta?: number;
   afipFacturadoAt?: string;
+  /** Desglose guardado al emitir AFIP */
+  afipInvoiceDetail?: AfipInvoiceDetail;
+}
+
+export interface AfipInvoiceDetail {
+  serviceAmount: number;
+  serviceLabel: string;
+  productLines: {
+    productId: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+  }[];
+  total: number;
 }
 
 export type CancelAppointmentNotice = 'refund_processed' | 'deposit_retained_short_notice' | 'no_deposit';
@@ -78,6 +93,8 @@ export interface ShopProduct {
   id: string;
   name: string;
   pointsReward: number;
+  /** Precio unitario (texto) para sumar a la factura AFIP. */
+  unitPrice?: string | null;
   sortOrder?: number;
 }
 
@@ -209,11 +226,17 @@ export const api = {
   /** Solo admin: estado de integración AFIP (Afip SDK). */
   getAfipStatus: () => fetchApi<{ configured: boolean; production: boolean }>('/api/afip/status'),
 
-  /** Solo admin: emite comprobante electrónico AFIP para un turno. */
-  createAfipInvoice: (appointmentId: string) =>
+  /** Solo admin: emite comprobante electrónico AFIP para un turno (opcional: productos de venta). */
+  createAfipInvoice: (
+    appointmentId: string,
+    body?: { productLines?: { productId: string; quantity: number }[] }
+  ) =>
     fetchApi<{ cae: string; caeVto: string; cbteNro: number; ptoVta: number }>(
       `/api/afip/invoice/${encodeURIComponent(appointmentId)}`,
-      { method: 'POST' }
+      {
+        method: 'POST',
+        body: body && (body.productLines?.length ?? 0) > 0 ? JSON.stringify(body) : undefined,
+      }
     ),
 
   updateShopSettings: (data: Partial<Pick<ShopSettings, 'cutoffHours' | 'openWeekdays' | 'depositPercent'>>) =>
@@ -261,12 +284,15 @@ export const api = {
     }),
 
   getShopProducts: () => fetchApi<ShopProduct[]>('/api/shop-products'),
-  createShopProduct: (data: { name: string; pointsReward: number }) =>
+  createShopProduct: (data: { name: string; pointsReward: number; unitPrice?: string | null }) =>
     fetchApi<ShopProduct>('/api/shop-products', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateShopProduct: (id: string, data: Partial<{ name: string; pointsReward: number }>) =>
+  updateShopProduct: (
+    id: string,
+    data: Partial<{ name: string; pointsReward: number; unitPrice: string | null }>
+  ) =>
     fetchApi<ShopProduct>(`/api/shop-products/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

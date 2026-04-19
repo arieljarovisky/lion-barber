@@ -9,6 +9,7 @@ import {
   Settings,
   Award,
   ShoppingBag,
+  Receipt,
   LogOut,
   Menu,
   X,
@@ -21,6 +22,7 @@ export type DashboardPanelId =
   | 'horarios'
   | 'puntos'
   | 'productos'
+  | 'facturacion'
   | 'equipo'
   | 'clientes'
   | 'configuracion';
@@ -147,6 +149,20 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             >
               <ShoppingBag size={18} className="flex-shrink-0" />
               Productos
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => go('facturacion')}
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+                activePanel === 'facturacion'
+                  ? 'bg-[#e5c185] text-zinc-950'
+                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              <Receipt size={18} className="flex-shrink-0" />
+              Facturación
             </button>
           )}
           {isAdmin && (

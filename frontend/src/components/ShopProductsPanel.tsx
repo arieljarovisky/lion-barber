@@ -18,10 +18,12 @@ export default function ShopProductsPanel({
 }: ShopProductsPanelProps) {
   const [productName, setProductName] = useState('');
   const [productPoints, setProductPoints] = useState('10');
+  const [productUnitPrice, setProductUnitPrice] = useState('');
   const [savingProduct, setSavingProduct] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editPoints, setEditPoints] = useState('');
+  const [editUnitPrice, setEditUnitPrice] = useState('');
 
   const addProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,9 +39,15 @@ export default function ShopProductsPanel({
     }
     setSavingProduct(true);
     try {
-      await api.createShopProduct({ name, pointsReward: pts });
+      const up = productUnitPrice.trim();
+      await api.createShopProduct({
+        name,
+        pointsReward: pts,
+        unitPrice: up ? up : undefined,
+      });
       setProductName('');
       setProductPoints('10');
+      setProductUnitPrice('');
       showToast('Producto agregado');
       await onRefresh();
     } catch (e) {
@@ -53,6 +61,7 @@ export default function ShopProductsPanel({
     setEditingProductId(p.id);
     setEditName(p.name);
     setEditPoints(String(p.pointsReward));
+    setEditUnitPrice(p.unitPrice ?? '');
   };
 
   const saveEditProduct = async (id: string) => {
@@ -67,7 +76,12 @@ export default function ShopProductsPanel({
       return;
     }
     try {
-      await api.updateShopProduct(id, { name, pointsReward: pts });
+      const up = editUnitPrice.trim();
+      await api.updateShopProduct(id, {
+        name,
+        pointsReward: pts,
+        unitPrice: up ? up : null,
+      });
       setEditingProductId(null);
       showToast('Producto actualizado');
       await onRefresh();
@@ -104,7 +118,8 @@ export default function ShopProductsPanel({
           <h3 className="text-lg font-black text-zinc-900">Puntos por producto</h3>
         </div>
         <p className="mb-4 text-sm text-zinc-500">
-          Agregá productos que vendés en el local (pomadas, shampoos, etc.) y cuántos puntos suma cada compra.
+          Agregá productos que vendés en el local (pomadas, shampoos, etc.), puntos por compra y, si facturás con AFIP,
+          el precio de venta unitario en pesos.
         </p>
 
         <ul className="mb-6 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
@@ -126,6 +141,14 @@ export default function ShopProductsPanel({
                       value={editPoints}
                       onChange={(e) => setEditPoints(e.target.value)}
                       className="w-24 rounded-lg border border-zinc-200 px-2 py-2 text-right font-mono text-sm"
+                      title="Puntos"
+                    />
+                    <input
+                      value={editUnitPrice}
+                      onChange={(e) => setEditUnitPrice(e.target.value)}
+                      placeholder="$ venta"
+                      className="w-28 rounded-lg border border-zinc-200 px-2 py-2 text-sm"
+                      title="Precio venta unitario"
                     />
                     <div className="flex gap-2">
                       <button
@@ -148,6 +171,11 @@ export default function ShopProductsPanel({
                   <>
                     <span className="font-medium text-zinc-900">{p.name}</span>
                     <span className="font-mono text-sm font-bold text-[#b39055]">+{p.pointsReward} pts</span>
+                    {p.unitPrice ? (
+                      <span className="text-xs text-zinc-500">Venta: {p.unitPrice}</span>
+                    ) : (
+                      <span className="text-xs text-zinc-400">Sin precio venta</span>
+                    )}
                     <div className="flex gap-1">
                       <button
                         type="button"
@@ -191,6 +219,15 @@ export default function ShopProductsPanel({
               value={productPoints}
               onChange={(e) => setProductPoints(e.target.value)}
               className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm sm:w-28"
+            />
+          </div>
+          <div className="sm:min-w-[7rem]">
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Precio venta</label>
+            <input
+              value={productUnitPrice}
+              onChange={(e) => setProductUnitPrice(e.target.value)}
+              placeholder="Ej. 15000"
+              className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
             />
           </div>
           <button

@@ -25,6 +25,22 @@ export interface Appointment {
   afipCbteNro?: number;
   afipPtoVta?: number;
   afipFacturadoAt?: string;
+  /** Detalle guardado al emitir (servicio + productos). */
+  afipInvoiceDetail?: AfipInvoiceDetail;
+}
+
+/** Desglose persistido al facturar con AFIP. */
+export interface AfipInvoiceDetail {
+  serviceAmount: number;
+  serviceLabel: string;
+  productLines: {
+    productId: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+  }[];
+  total: number;
 }
 
 export interface Service {
@@ -45,6 +61,8 @@ export interface ShopProduct {
   id: string;
   name: string;
   pointsReward: number;
+  /** Precio unitario en ARS (texto como en servicios) para sumar a la factura AFIP. */
+  unitPrice?: string | null;
   sortOrder?: number;
 }
 

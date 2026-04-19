@@ -13,8 +13,10 @@ router.get('/status', requireAuth, requireAdmin, (_req, res) => {
 
 router.post('/invoice/:appointmentId', requireAuth, requireAdmin, async (req, res) => {
   const id = req.params.appointmentId;
+  const body = req.body as { productLines?: { productId: string; quantity: number }[] };
   try {
-    const result = await invoiceAppointmentAfip(id);
+    const productLines = Array.isArray(body?.productLines) ? body.productLines : undefined;
+    const result = await invoiceAppointmentAfip(id, { productLines });
     res.json(result);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Error al facturar';

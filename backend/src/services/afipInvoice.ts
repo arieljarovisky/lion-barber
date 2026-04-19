@@ -1,7 +1,8 @@
 import { createRequire } from 'node:module';
 import * as repo from '../repositories/appointments.js';
+import { getShopProductById } from '../repositories/shopProducts.js';
 import { getServiceById } from '../repositories/services.js';
-import type { Appointment } from '../types.js';
+import type { AfipInvoiceDetail, Appointment } from '../types.js';
 
 const require = createRequire(import.meta.url);
 // Paquete CommonJS (@afipsdk/afip.js)
@@ -78,6 +79,8 @@ export function isAfipConfigured(): boolean {
   return Boolean(process.env.AFIP_ACCESS_TOKEN?.trim() && process.env.AFIP_CUIT?.trim());
 }
 
+export type InvoiceProductLineInput = { productId: string; quantity: number };
+
 async function resolveAmountArs(app: Appointment): Promise<number> {
   if (app.serviceId) {
     const s = await getServiceById(app.serviceId);
@@ -92,10 +95,13 @@ async function resolveAmountArs(app: Appointment): Promise<number> {
 }
 
 /**
- * Emite Factura B (CbteTipo 6) consumidor final por el monto del servicio (IVA 21 % discriminado).
+ * Emite Factura B (CbteTipo 6) consumidor final por el monto del servicio + productos opcionales (IVA 21 % discriminado).
  * Requiere token de Afip SDK (`https://afipsdk.com`) y CUIT del emisor en variables de entorno.
  */
-export async function invoiceAppointmentAfip(appointmentId: string): Promise<{
+export async function invoiceAppointmentAfip(
+  appointmentId: string,
+  opts?: { productLines?: InvoiceProductLineInput[] }
+): Promise<{
   cae: string;
   caeVto: string;
   cbteNro: number;
@@ -110,11 +116,55 @@ export async function invoiceAppointmentAfip(appointmentId: string): Promise<{
   if (app.status === 'cancelled') throw new Error('No se puede facturar un turno cancelado.');
   if (app.afipCae) throw new Error('Este turno ya tiene factura registrada.');
 
-  const amount = await resolveAmountArs(app);
+  const serviceAmount = await resolveAmountArs(app);
+  const merged = new Map<string, number>();
+  for (const line of opts?.productLines ?? []) {
+    const pid = String(line.productId ?? '').trim();
+    const q = Math.floor(Number(line.quantity));
+    if (!pid || !Number.isFinite(q) || q < 1) {
+      throw new Error('Cada línea de producto debe tener productId válido y cantidad ≥ 1.');
+    }
+    merged.set(pid, (merged.get(pid) ?? 0) + q);
+  }
+
+  const productLines: AfipInvoiceDetail['productLines'] = [];
+  let productsTotal = 0;
+  for (const [productId, quantity] of merged) {
+    const product = await getShopProductById(productId);
+    if (!product) throw new Error(`Producto no encontrado: ${productId}`);
+    const rawPrice = product.unitPrice;
+    if (!rawPrice || !String(rawPrice).trim()) {
+      throw new Error(
+        `El producto «${product.name}» no tiene precio de venta cargado. Cargalo en Productos o quitá la línea.`
+      );
+    }
+    const unit = parseArsAmount(String(rawPrice));
+    if (unit == null || unit <= 0) {
+      throw new Error(`Precio inválido para el producto «${product.name}».`);
+    }
+    const subtotal = Math.round(unit * quantity * 100) / 100;
+    productsTotal += subtotal;
+    productLines.push({
+      productId,
+      name: product.name,
+      quantity,
+      unitPrice: unit,
+      subtotal,
+    });
+  }
+
+  const amount = Math.round((serviceAmount + productsTotal) * 100) / 100;
+  const invoiceDetail: AfipInvoiceDetail = {
+    serviceAmount: Math.round(serviceAmount * 100) / 100,
+    serviceLabel: app.service,
+    productLines,
+    total: amount,
+  };
+
   const ptoVta = Math.min(9999, Math.max(1, parseInt(process.env.AFIP_PTO_VTA ?? '1', 10) || 1));
   const cbteTipo = Math.min(32767, Math.max(1, parseInt(process.env.AFIP_CBTE_TIPO ?? '6', 10) || 6));
 
-  const total = Math.round(amount * 100) / 100;
+  const total = amount;
   const neto = Math.round((total / 1.21) * 100) / 100;
   const iva = Math.round((total - neto) * 100) / 100;
 
@@ -165,6 +215,7 @@ export async function invoiceAppointmentAfip(appointmentId: string): Promise<{
     caeVto,
     cbteNro,
     ptoVta,
+    invoiceDetail,
   });
 
   return { cae, caeVto, cbteNro, ptoVta };

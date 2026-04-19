@@ -39,6 +39,8 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import PointsProgramPanel from '../components/PointsProgramPanel';
 import ShopProductsPanel from '../components/ShopProductsPanel';
+import BillingPanel from '../components/BillingPanel';
+import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import { api } from '../api';
 import type {
   Appointment,
@@ -208,7 +210,14 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [view, setView] = useState<
-    'agenda' | 'servicios' | 'horarios' | 'equipo' | 'puntos' | 'productos' | 'configuracion'
+    | 'agenda'
+    | 'servicios'
+    | 'horarios'
+    | 'equipo'
+    | 'puntos'
+    | 'productos'
+    | 'facturacion'
+    | 'configuracion'
   >('agenda');
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -255,7 +264,10 @@ export default function Dashboard() {
   const [pointsPanelLoading, setPointsPanelLoading] = useState(false);
   const [shopProductsPanelLoading, setShopProductsPanelLoading] = useState(false);
   const [afipConfigured, setAfipConfigured] = useState(false);
-  const [afipInvoicingId, setAfipInvoicingId] = useState<string | null>(null);
+  const [afipInvoiceApp, setAfipInvoiceApp] = useState<Appointment | null>(null);
+  const [afipInvoiceBusy, setAfipInvoiceBusy] = useState(false);
+  const [billingAppointments, setBillingAppointments] = useState<Appointment[]>([]);
+  const [billingLoading, setBillingLoading] = useState(false);
 
   const showToast = useCallback((message: string, kind: 'ok' | 'err' = 'ok') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -309,6 +321,26 @@ export default function Dashboard() {
     if (view !== 'productos') return;
     void loadShopProductsPanel();
   }, [view, loadShopProductsPanel]);
+
+  useEffect(() => {
+    if (view !== 'facturacion' || !isAdmin) return;
+    let cancelled = false;
+    setBillingLoading(true);
+    api
+      .getAppointments()
+      .then((list) => {
+        if (!cancelled) setBillingAppointments(list);
+      })
+      .catch(() => {
+        if (!cancelled) showToast('No se pudo cargar turnos para facturación', 'err');
+      })
+      .finally(() => {
+        if (!cancelled) setBillingLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, isAdmin, showToast]);
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -395,7 +427,7 @@ export default function Dashboard() {
   }, [view, scheduleBarberId, loadSchedule]);
 
   useEffect(() => {
-    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion')) {
+    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion' || view === 'facturacion')) {
       setView('agenda');
     }
   }, [isAdmin, view]);
@@ -585,6 +617,23 @@ export default function Dashboard() {
     setModalOpen(true);
   };
 
+  /** Nuevo turno en fecha/hora concretas (clic en hueco libre del calendario). */
+  const openCreateModalForSlot = (slotDateStr: string, slotTime: string, explicitBarberId?: string) => {
+    setEditingAppointment(null);
+    const defaultBarber =
+      staffBarberId ?? explicitBarberId ?? selectedBarberId ?? barbers[0]?.id ?? '';
+    setForm({
+      name: '',
+      phone: '',
+      service: services[0]?.id ?? '',
+      barberId: defaultBarber,
+      date: slotDateStr,
+      time: slotTime,
+    });
+    setError('');
+    setModalOpen(true);
+  };
+
   const openEditModal = (app: Appointment) => {
     setEditingAppointment(app);
     const barberId = app.barberId ?? barbers.find((b) => b.name === app.barber)?.id ?? '';
@@ -655,25 +704,20 @@ export default function Dashboard() {
     }
   };
 
-  const handleAfipInvoice = async (app: Appointment) => {
-    if (
-      !confirm(
-        `¿Emitir factura electrónica AFIP (Factura B) por el servicio «${app.service}» según el precio cargado en el catálogo?`
-      )
-    ) {
-      return;
+  const openAfipInvoiceModal = useCallback(
+    (app: Appointment) => {
+      setAfipInvoiceApp(app);
+      if (shopProducts.length === 0) void loadShopProductsPanel();
+    },
+    [shopProducts.length, loadShopProductsPanel]
+  );
+
+  const handleAfipInvoiceSuccess = useCallback(() => {
+    void loadData();
+    if (view === 'facturacion') {
+      void api.getAppointments().then(setBillingAppointments).catch(() => {});
     }
-    setAfipInvoicingId(app.id);
-    try {
-      const r = await api.createAfipInvoice(app.id);
-      showToast(`Factura AFIP autorizada · Pto. ${r.ptoVta} Nº ${r.cbteNro} · CAE ${r.cae}`, 'ok');
-      await loadData();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'No se pudo facturar con AFIP', 'err');
-    } finally {
-      setAfipInvoicingId(null);
-    }
-  };
+  }, [loadData, view]);
 
   const openCreateServiceModal = () => {
     setEditingService(null);
@@ -895,7 +939,12 @@ export default function Dashboard() {
                   title: 'Productos',
                   subtitle: 'Artículos que vendés en el local y cuántos puntos suma cada compra.',
                 }
-              : view === 'configuracion'
+              : view === 'facturacion'
+                ? {
+                    title: 'Facturación',
+                    subtitle: 'Facturas electrónicas AFIP por turno; al emitir podés sumar productos de venta.',
+                  }
+                : view === 'configuracion'
               ? {
                   title: 'Configuración del local',
                   subtitle: 'Plazo de gestión, seña online, días abiertos y comisiones por barbero.',
@@ -1209,10 +1258,18 @@ export default function Dashboard() {
                           }
                           return (
                             <td key={dateStr} className="py-2 px-2 align-top border-l border-zinc-100">
-                              <div
-                                className="rounded-lg bg-zinc-50 border border-zinc-100"
+                              <button
+                                type="button"
+                                onClick={() => openCreateModalForSlot(dateStr, slot, selectedBarberId)}
+                                className="group w-full rounded-lg border border-dashed border-zinc-200 bg-zinc-50/80 text-left transition-colors hover:border-[#e5c185] hover:bg-amber-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/50"
                                 style={{ minHeight: `${TIMELINE_ROW_UNIT_REM}rem` }}
-                              />
+                                title={`Nuevo turno · ${format(parseISO(dateStr + 'T12:00:00'), 'EEE d MMM', { locale: es })} ${slot}`}
+                              >
+                                <span className="flex h-full min-h-[2.5rem] w-full items-center justify-center gap-1 px-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400 group-hover:text-[#b39055]">
+                                  <Plus size={14} strokeWidth={2.5} className="opacity-70" aria-hidden />
+                                  <span className="hidden sm:inline">Turno</span>
+                                </span>
+                              </button>
                             </td>
                           );
                         })}
@@ -1243,18 +1300,24 @@ export default function Dashboard() {
                     <ul className="divide-y divide-zinc-100">
                       {buildDayTimelineRows(appointmentsByBarber[0].appointments, TIME_SLOTS).map((row) => {
                         if (row.kind === 'free') {
+                          const bid = appointmentsByBarber[0]?.barber.id;
                           return (
-                            <li
-                              key={row.slot}
-                              className="flex gap-3 sm:gap-5 p-3 sm:p-4 bg-zinc-50/30 min-h-[3.25rem]"
-                            >
+                            <li key={row.slot} className="flex gap-3 sm:gap-5 p-3 sm:p-4 bg-zinc-50/30 min-h-[3.25rem]">
                               <div className="w-16 sm:w-20 shrink-0 text-right pt-0.5">
                                 <span className="font-mono text-sm font-bold text-zinc-900 tabular-nums">
                                   {row.slot}
                                 </span>
                               </div>
                               <div className="flex-1 min-w-0 border-l-2 border-zinc-200 pl-4 sm:pl-5 -ml-px">
-                                <p className="text-sm text-zinc-400 py-2">Libre</p>
+                                <button
+                                  type="button"
+                                  onClick={() => openCreateModalForSlot(dateStr, row.slot, bid)}
+                                  className="flex w-full items-center gap-2 rounded-xl border border-dashed border-zinc-200 bg-white/60 px-3 py-2.5 text-left text-sm text-zinc-500 transition-colors hover:border-[#e5c185] hover:bg-amber-50/50 hover:text-[#b39055] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/50"
+                                  title={`Nuevo turno a las ${row.slot}`}
+                                >
+                                  <Plus size={16} className="shrink-0 opacity-60" aria-hidden />
+                                  <span className="font-semibold">Libre — clic para agendar</span>
+                                </button>
                               </div>
                             </li>
                           );
@@ -1347,12 +1410,21 @@ export default function Dashboard() {
                         {buildDayTimelineRows(barberAppointments, TIME_SLOTS).map((row) => {
                           if (row.kind === 'free') {
                             return (
-                              <div key={row.slot} className="flex items-center gap-2 py-2 text-sm min-h-[2.25rem]">
+                              <button
+                                key={row.slot}
+                                type="button"
+                                onClick={() => openCreateModalForSlot(dateStr, row.slot, barber.id)}
+                                className="flex w-full items-center gap-2 rounded-lg py-2 text-left text-sm min-h-[2.25rem] transition-colors hover:bg-emerald-50/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/40"
+                                title={`Nuevo turno con ${barber.name} · ${row.slot}`}
+                              >
                                 <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold">
                                   {row.slot}
                                 </span>
-                                <span className="text-zinc-300 text-xs">—</span>
-                              </div>
+                                <span className="flex flex-1 items-center gap-1.5 border border-dashed border-zinc-200/80 rounded-md px-2 py-1 text-xs font-medium text-zinc-400 hover:border-[#e5c185] hover:text-[#b39055]">
+                                  <Plus size={12} aria-hidden />
+                                  Libre
+                                </span>
+                              </button>
                             );
                           }
                           const { app, span, slot } = row;
@@ -1513,12 +1585,12 @@ export default function Dashboard() {
                           ) : (
                             <button
                               type="button"
-                              onClick={() => void handleAfipInvoice(app)}
-                              disabled={afipInvoicingId === app.id}
+                              onClick={() => openAfipInvoiceModal(app)}
+                              disabled={afipInvoiceBusy && afipInvoiceApp?.id === app.id}
                               className="inline-flex items-center justify-center gap-1 w-fit px-2.5 py-1.5 rounded-md text-[11px] font-bold bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
                             >
                               <Receipt size={12} />
-                              {afipInvoicingId === app.id ? 'Facturando…' : 'Facturar AFIP'}
+                              {afipInvoiceBusy && afipInvoiceApp?.id === app.id ? 'Facturando…' : 'Facturar AFIP'}
                             </button>
                           )}
                         </div>
@@ -1858,6 +1930,17 @@ export default function Dashboard() {
           />
         )}
 
+        {view === 'facturacion' && isAdmin && (
+          <BillingPanel
+            appointments={billingAppointments}
+            services={services}
+            loading={billingLoading}
+            afipConfigured={afipConfigured}
+            invoicingId={afipInvoiceBusy && afipInvoiceApp ? afipInvoiceApp.id : null}
+            onInvoiceClick={openAfipInvoiceModal}
+          />
+        )}
+
         {view === 'equipo' && isAdmin && (
           <div className="max-w-2xl space-y-6">
             {teamError && (
@@ -2080,6 +2163,18 @@ export default function Dashboard() {
           </div>
         )}
       </DashboardPanelShell>
+
+      {afipInvoiceApp && (
+        <AfipInvoiceModal
+          appointment={afipInvoiceApp}
+          services={services}
+          shopProducts={shopProducts}
+          showToast={showToast}
+          onBusyChange={setAfipInvoiceBusy}
+          onClose={() => setAfipInvoiceApp(null)}
+          onSuccess={handleAfipInvoiceSuccess}
+        />
+      )}
 
       {/* Modal crear/editar cita */}
       {modalOpen && (

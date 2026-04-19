@@ -109,6 +109,11 @@ export async function initDb(): Promise<void> {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  try {
+    await pool.execute('ALTER TABLE shop_products ADD COLUMN unit_price VARCHAR(50) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   /**
    * Si sort_order quedó en 0 para todos (migración vieja), se asigna un orden estable por nombre.
    * Se usa tabla temporal con ROW_NUMBER para MySQL 8+.
@@ -220,6 +225,11 @@ export async function initDb(): Promise<void> {
   }
   try {
     await pool.execute('ALTER TABLE appointments ADD COLUMN afip_facturado_at DATETIME NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN afip_invoice_detail MEDIUMTEXT NULL');
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }

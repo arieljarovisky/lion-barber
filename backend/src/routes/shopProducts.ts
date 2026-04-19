@@ -15,7 +15,11 @@ router.get('/', async (_req, res) => {
 });
 
 router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
-  const { name, pointsReward } = req.body as { name?: string; pointsReward?: unknown };
+  const { name, pointsReward, unitPrice } = req.body as {
+    name?: string;
+    pointsReward?: unknown;
+    unitPrice?: unknown;
+  };
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Se requiere nombre del producto' });
   }
@@ -23,8 +27,10 @@ router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
   if (!Number.isFinite(pr) || pr < 0) {
     return res.status(400).json({ error: 'Los puntos deben ser un número ≥ 0' });
   }
+  const up =
+    unitPrice != null && String(unitPrice).trim() !== '' ? String(unitPrice).trim() : undefined;
   try {
-    const p = await repo.createShopProduct({ name: name.trim(), pointsReward: pr });
+    const p = await repo.createShopProduct({ name: name.trim(), pointsReward: pr, unitPrice: up });
     res.status(201).json(p);
   } catch (err) {
     console.error(err);
@@ -33,8 +39,12 @@ router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
 });
 
 router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
-  const { name, pointsReward } = req.body as { name?: string; pointsReward?: unknown };
-  const updates: { name?: string; pointsReward?: number } = {};
+  const { name, pointsReward, unitPrice } = req.body as {
+    name?: string;
+    pointsReward?: unknown;
+    unitPrice?: unknown;
+  };
+  const updates: { name?: string; pointsReward?: number; unitPrice?: string | null } = {};
   if (name !== undefined) updates.name = String(name);
   if (pointsReward !== undefined) {
     const pr = Number(pointsReward);
@@ -42,6 +52,9 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Los puntos deben ser un número ≥ 0' });
     }
     updates.pointsReward = pr;
+  }
+  if (unitPrice !== undefined) {
+    updates.unitPrice = unitPrice != null && String(unitPrice).trim() !== '' ? String(unitPrice).trim() : null;
   }
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'Nada para actualizar' });
