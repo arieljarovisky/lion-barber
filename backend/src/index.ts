@@ -12,6 +12,7 @@ import auth from './routes/auth.js';
 import checkout, { logMercadoPagoEnvHint, mercadopagoWebhook } from './routes/checkout.js';
 import afip from './routes/afip.js';
 import users from './routes/users.js';
+import shopProducts from './routes/shopProducts.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -33,6 +34,7 @@ app.use('/api/users', users);
 app.use('/api/appointments', appointments);
 app.use('/api/checkout', checkout);
 app.use('/api/services', services);
+app.use('/api/shop-products', shopProducts);
 app.use('/api/barbers', barbers);
 app.use('/api/barber-schedule', barberSchedule);
 app.use('/api/staff-invites', staffInvites);

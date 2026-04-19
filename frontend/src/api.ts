@@ -69,6 +69,16 @@ export interface Service {
   desc: string;
   emoji?: string;
   sortOrder?: number;
+  /** Puntos que suma el cliente al concretar el servicio (programa de fidelidad). */
+  pointsReward?: number;
+}
+
+/** Productos de venta en local: puntos al comprar. */
+export interface ShopProduct {
+  id: string;
+  name: string;
+  pointsReward: number;
+  sortOrder?: number;
 }
 
 export interface Barber {
@@ -115,6 +125,8 @@ export interface AdminClientWithHistory {
   email: string;
   name: string;
   points: number;
+  /** Foto de perfil de Google si el cliente inició sesión al menos una vez. */
+  avatarUrl?: string | null;
   createdAt: string;
   appointments: Appointment[];
 }
@@ -240,6 +252,27 @@ export const api = {
     }),
   deleteService: (id: string) =>
     fetchApi<void>(`/api/services/${id}`, { method: 'DELETE' }),
+
+  /** Admin o barbero: solo puntos del servicio. */
+  updateServicePointsReward: (id: string, pointsReward: number) =>
+    fetchApi<Service>(`/api/services/${encodeURIComponent(id)}/points-reward`, {
+      method: 'PUT',
+      body: JSON.stringify({ pointsReward }),
+    }),
+
+  getShopProducts: () => fetchApi<ShopProduct[]>('/api/shop-products'),
+  createShopProduct: (data: { name: string; pointsReward: number }) =>
+    fetchApi<ShopProduct>('/api/shop-products', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateShopProduct: (id: string, data: Partial<{ name: string; pointsReward: number }>) =>
+    fetchApi<ShopProduct>(`/api/shop-products/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteShopProduct: (id: string) =>
+    fetchApi<void>(`/api/shop-products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   getBarbers: () => fetchApi<Barber[]>('/api/barbers'),
 
   getBarberSchedule: (barberId: string) =>
@@ -321,11 +354,18 @@ export const api = {
           role: string;
           points: number;
           barberId?: string | null;
+          avatarUrl?: string | null;
         };
       }>('/api/auth/google', { method: 'POST', body: JSON.stringify({ idToken }) }),
     getMe: () =>
-      fetchApi<{ id: number; email: string; name: string; role: string; points: number; barberId?: string | null }>(
-        '/api/auth/me'
-      ),
+      fetchApi<{
+        id: number;
+        email: string;
+        name: string;
+        role: string;
+        points: number;
+        barberId?: string | null;
+        avatarUrl?: string | null;
+      }>('/api/auth/me'),
   },
 };

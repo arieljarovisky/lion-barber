@@ -9,6 +9,7 @@ interface DbService {
   desc: string | null;
   emoji: string | null;
   sort_order: number;
+  points_reward?: number;
 }
 
 function rowToService(r: DbService): Service {
@@ -20,6 +21,7 @@ function rowToService(r: DbService): Service {
     desc: r.desc ?? '',
     emoji: r.emoji ?? undefined,
     sortOrder: r.sort_order,
+    pointsReward: r.points_reward != null ? Number(r.points_reward) : 0,
   };
 }
 
@@ -35,13 +37,15 @@ export async function getServiceById(id: string): Promise<Service | null> {
 }
 
 function slugFromName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/\s+/g, '_')
-    .replace(/[^a-z0-9_]/g, '')
-    .slice(0, 40) || 'servicio';
+  return (
+    name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_]/g, '')
+      .slice(0, 40) || 'servicio'
+  );
 }
 
 export async function createService(data: Omit<Service, 'id'>): Promise<Service> {
@@ -54,9 +58,10 @@ export async function createService(data: Omit<Service, 'id'>): Promise<Service>
     'SELECT MAX(sort_order) AS maxOrder FROM services'
   );
   const nextOrder = Number(maxRows[0]?.maxOrder ?? 0) + 1;
+  const pts = Math.max(0, Math.min(999_999, Math.floor(data.pointsReward ?? 0)));
   await query(
-    'INSERT INTO services (id, name, price, duration, `desc`, emoji, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, data.name, data.price, data.duration, data.desc || null, data.emoji || '', nextOrder]
+    'INSERT INTO services (id, name, price, duration, `desc`, emoji, sort_order, points_reward) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, data.name, data.price, data.duration, data.desc || null, data.emoji || '', nextOrder, pts]
   );
   const created = await getServiceById(id);
   if (!created) throw new Error('Servicio no creado');
@@ -67,25 +72,25 @@ export async function updateService(id: string, data: Partial<Service>): Promise
   const current = await getServiceById(id);
   if (!current) return null;
   const updated = { ...current, ...data };
+  const pts = Math.max(0, Math.min(999_999, Math.floor(updated.pointsReward ?? 0)));
   await query(
-    'UPDATE services SET name = ?, price = ?, duration = ?, `desc` = ?, emoji = ? WHERE id = ?',
-    [
-      updated.name,
-      updated.price,
-      updated.duration,
-      updated.desc || null,
-      updated.emoji ?? '',
-      id,
-    ]
+    'UPDATE services SET name = ?, price = ?, duration = ?, `desc` = ?, emoji = ?, points_reward = ? WHERE id = ?',
+    [updated.name, updated.price, updated.duration, updated.desc || null, updated.emoji ?? '', pts, id]
   );
   return getServiceById(id);
 }
 
+/** Solo puntos (admin o barbero). */
+export async function updateServicePointsReward(id: string, pointsReward: number): Promise<Service | null> {
+  const current = await getServiceById(id);
+  if (!current) return null;
+  const pts = Math.max(0, Math.min(999_999, Math.floor(pointsReward)));
+  await query('UPDATE services SET points_reward = ? WHERE id = ?', [pts, id]);
+  return getServiceById(id);
+}
+
 export async function deleteService(id: string): Promise<boolean> {
-  const res = await query<{ affectedRows: number }>(
-    'DELETE FROM services WHERE id = ?',
-    [id]
-  );
+  const res = await query<{ affectedRows: number }>('DELETE FROM services WHERE id = ?', [id]);
   return (res as { affectedRows: number }).affectedRows > 0;
 }
 

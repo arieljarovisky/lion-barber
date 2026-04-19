@@ -36,6 +36,16 @@ export interface Service {
   emoji?: string;
   /** Orden manual en el listado (menor valor = más arriba). */
   sortOrder?: number;
+  /** Puntos de fidelidad que suma el cliente al concretar este servicio (configurable en el panel). */
+  pointsReward?: number;
+}
+
+/** Productos de la barbería (ej. pomada, shampoo): puntos al comprar. */
+export interface ShopProduct {
+  id: string;
+  name: string;
+  pointsReward: number;
+  sortOrder?: number;
 }
 
 export interface Barber {

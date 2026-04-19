@@ -66,6 +66,11 @@ export async function initDb(): Promise<void> {
   } catch {
     /* ya aplicado o motor distinto */
   }
+  try {
+    await pool.execute('ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS services (
       id VARCHAR(50) PRIMARY KEY,
@@ -90,6 +95,20 @@ export async function initDb(): Promise<void> {
   /** Tablas antiguas: emoji a veces quedó VARCHAR corto y falla al guardar SVG/URL largos. */
   await pool.execute('ALTER TABLE services MODIFY COLUMN emoji MEDIUMTEXT NULL');
   await pool.execute('ALTER TABLE services MODIFY COLUMN sort_order INT NOT NULL DEFAULT 0');
+  try {
+    await pool.execute('ALTER TABLE services ADD COLUMN points_reward INT NOT NULL DEFAULT 0');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS shop_products (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      points_reward INT NOT NULL DEFAULT 0,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
   /**
    * Si sort_order quedó en 0 para todos (migración vieja), se asigna un orden estable por nombre.
    * Se usa tabla temporal con ROW_NUMBER para MySQL 8+.

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as repo from '../repositories/services.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import type { Service } from '../types.js';
+import { requireAuth, requireAdmin, requireStaffOrAdmin } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -14,33 +15,31 @@ router.get('/', async (_req, res) => {
   }
 });
 
-router.get('/:id', async (req, res) => {
-  try {
-    const service = await repo.getServiceById(req.params.id);
-    if (!service) {
-      res.status(404).json({ error: 'Servicio no encontrado' });
-      return;
-    }
-    res.json(service);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error al obtener servicio' });
-  }
-});
-
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, price, duration, desc, emoji } = req.body;
+    const { name, price, duration, desc, emoji, pointsReward } = req.body as {
+      name?: string;
+      price?: unknown;
+      duration?: unknown;
+      desc?: unknown;
+      emoji?: unknown;
+      pointsReward?: unknown;
+    };
     if (!name || price == null || duration == null) {
       res.status(400).json({ error: 'Faltan nombre, precio o duración' });
       return;
     }
+    const pr =
+      pointsReward != null && pointsReward !== ''
+        ? Number(pointsReward)
+        : 0;
     const service = await repo.createService({
       name: String(name),
       price: String(price),
       duration: Number(duration),
       desc: desc != null ? String(desc) : '',
       emoji: emoji != null ? String(emoji) : '',
+      pointsReward: Number.isFinite(pr) ? pr : 0,
     });
     res.status(201).json(service);
   } catch (err) {
@@ -63,16 +62,44 @@ router.patch('/reorder/manual', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+router.put('/:id/points-reward', requireAuth, requireStaffOrAdmin, async (req, res) => {
+  const id = req.params.id;
+  const raw = (req.body as { pointsReward?: unknown }).pointsReward;
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? 0), 10);
+  if (!Number.isFinite(n) || n < 0) {
+    return res.status(400).json({ error: 'pointsReward debe ser un número ≥ 0' });
+  }
+  try {
+    const service = await repo.updateServicePointsReward(id, n);
+    if (!service) {
+      res.status(404).json({ error: 'Servicio no encontrado' });
+      return;
+    }
+    res.json(service);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar puntos del servicio' });
+  }
+});
+
 router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, price, duration, desc, emoji } = req.body;
+    const { name, price, duration, desc, emoji, pointsReward } = req.body as {
+      name?: string;
+      price?: string;
+      duration?: number;
+      desc?: string;
+      emoji?: string;
+      pointsReward?: number;
+    };
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = String(name);
     if (price !== undefined) updates.price = String(price);
     if (duration !== undefined) updates.duration = Number(duration);
     if (desc !== undefined) updates.desc = String(desc);
     if (emoji !== undefined) updates.emoji = String(emoji);
-    const service = await repo.updateService(req.params.id, updates);
+    if (pointsReward !== undefined) updates.pointsReward = Number(pointsReward);
+    const service = await repo.updateService(req.params.id, updates as Partial<Service>);
     if (!service) {
       res.status(404).json({ error: 'Servicio no encontrado' });
       return;
@@ -81,6 +108,20 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al actualizar servicio' });
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  try {
+    const service = await repo.getServiceById(req.params.id);
+    if (!service) {
+      res.status(404).json({ error: 'Servicio no encontrado' });
+      return;
+    }
+    res.json(service);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al obtener servicio' });
   }
 });
 

@@ -37,6 +37,7 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
+import PointsProgramPanel from '../components/PointsProgramPanel';
 import { api } from '../api';
 import type {
   Appointment,
@@ -45,6 +46,7 @@ import type {
   BarberFrancoRow,
   BarberTimeBlockRow,
   StaffInviteRow,
+  ShopProduct,
 } from '../api';
 
 const TIME_SLOTS = [
@@ -205,11 +207,18 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [view, setView] = useState<
-    'agenda' | 'servicios' | 'horarios' | 'equipo' | 'configuracion'
+    'agenda' | 'servicios' | 'horarios' | 'equipo' | 'puntos' | 'configuracion'
   >('agenda');
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
-  const [serviceForm, setServiceForm] = useState({ name: '', price: '', duration: 30, desc: '', emoji: '' });
+  const [serviceForm, setServiceForm] = useState({
+    name: '',
+    price: '',
+    duration: 30,
+    desc: '',
+    emoji: '',
+    pointsReward: '0',
+  });
   const [savingService, setSavingService] = useState(false);
   const [sortingServices, setSortingServices] = useState(false);
   const [dragServiceId, setDragServiceId] = useState<string | null>(null);
@@ -241,6 +250,8 @@ export default function Dashboard() {
   const [shopError, setShopError] = useState('');
   const [toast, setToast] = useState<{ message: string; kind: 'ok' | 'err' } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [shopProducts, setShopProducts] = useState<ShopProduct[]>([]);
+  const [pointsPanelLoading, setPointsPanelLoading] = useState(false);
   const [afipConfigured, setAfipConfigured] = useState(false);
   const [afipInvoicingId, setAfipInvoicingId] = useState<string | null>(null);
 
@@ -262,6 +273,24 @@ export default function Dashboard() {
   const { profile, isAdmin, canAccessDashboard } = useAuth();
   const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
   const isStaffBarber = Boolean(staffBarberId);
+
+  const loadPointsProgram = useCallback(async () => {
+    setPointsPanelLoading(true);
+    try {
+      const [s, p] = await Promise.all([api.getServices(), api.getShopProducts()]);
+      setServices(s);
+      setShopProducts(p);
+    } catch {
+      showToast('No se pudo cargar el programa de puntos', 'err');
+    } finally {
+      setPointsPanelLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    if (view !== 'puntos') return;
+    void loadPointsProgram();
+  }, [view, loadPointsProgram]);
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -630,7 +659,7 @@ export default function Dashboard() {
 
   const openCreateServiceModal = () => {
     setEditingService(null);
-    setServiceForm({ name: '', price: '', duration: 30, desc: '', emoji: '✂️' });
+    setServiceForm({ name: '', price: '', duration: 30, desc: '', emoji: '✂️', pointsReward: '0' });
     setServiceError('');
     setServiceModalOpen(true);
   };
@@ -643,6 +672,7 @@ export default function Dashboard() {
       duration: s.duration,
       desc: s.desc ?? '',
       emoji: s.emoji ?? '',
+      pointsReward: String(s.pointsReward ?? 0),
     });
     setServiceError('');
     setServiceModalOpen(true);
@@ -659,6 +689,8 @@ export default function Dashboard() {
     setServiceError('');
     setSavingService(true);
     try {
+      const pr = parseInt(serviceForm.pointsReward, 10);
+      const pointsReward = Number.isFinite(pr) && pr >= 0 ? pr : 0;
       if (editingService) {
         await api.updateService(editingService.id, {
           name: serviceForm.name,
@@ -666,6 +698,7 @@ export default function Dashboard() {
           duration: Number(serviceForm.duration),
           desc: serviceForm.desc,
           emoji: serviceForm.emoji || undefined,
+          pointsReward,
         });
       } else {
         await api.createService({
@@ -674,6 +707,7 @@ export default function Dashboard() {
           duration: Number(serviceForm.duration),
           desc: serviceForm.desc,
           emoji: serviceForm.emoji || undefined,
+          pointsReward,
         });
       }
       closeServiceModal();
@@ -833,12 +867,17 @@ export default function Dashboard() {
                 ? 'Tus francos y bloqueos (solo afectan tu agenda).'
                 : 'Francos semanales y bloqueos por barbero.',
             }
-          : view === 'configuracion'
+          : view === 'puntos'
             ? {
-                title: 'Configuración del local',
-                subtitle: 'Plazo de gestión, seña online, días abiertos y comisiones por barbero.',
+                title: 'Programa de puntos',
+                subtitle: 'Puntos por servicio y por producto; el administrador gestiona servicios en la sección Servicios.',
               }
-            : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
+            : view === 'configuracion'
+              ? {
+                  title: 'Configuración del local',
+                  subtitle: 'Plazo de gestión, seña online, días abiertos y comisiones por barbero.',
+                }
+              : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
@@ -1778,6 +1817,16 @@ export default function Dashboard() {
           </div>
         )}
 
+        {view === 'puntos' && (profile?.role === 'admin' || profile?.role === 'staff') && (
+          <PointsProgramPanel
+            services={services}
+            shopProducts={shopProducts}
+            loading={pointsPanelLoading}
+            onRefresh={loadPointsProgram}
+            showToast={showToast}
+          />
+        )}
+
         {view === 'equipo' && isAdmin && (
           <div className="max-w-2xl space-y-6">
             {teamError && (
@@ -2202,6 +2251,21 @@ export default function Dashboard() {
                     className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                  Puntos de fidelidad (opcional)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={999999}
+                  value={serviceForm.pointsReward}
+                  onChange={(e) => setServiceForm((f) => ({ ...f, pointsReward: e.target.value }))}
+                  className="w-full max-w-xs border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                  placeholder="0"
+                />
+                <p className="mt-1 text-[11px] text-zinc-400">Cuántos puntos suma el cliente al pagar este servicio.</p>
               </div>
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Descripción</label>
