@@ -318,7 +318,7 @@ export default function Dashboard() {
   }, [view, loadServicePointsPanel]);
 
   useEffect(() => {
-    if (view !== 'productos') return;
+    if (view !== 'productos' && view !== 'puntos') return;
     void loadShopProductsPanel();
   }, [view, loadShopProductsPanel]);
 
@@ -932,7 +932,8 @@ export default function Dashboard() {
           : view === 'puntos'
             ? {
                 title: 'Programa de puntos',
-                subtitle: 'Puntos por servicio (el catálogo se edita en Servicios). Los productos de venta van en Productos.',
+                subtitle:
+                  'Puntos por servicio y por producto de venta. El catálogo de servicios se edita en Servicios.',
               }
             : view === 'productos'
               ? {
@@ -1913,12 +1914,20 @@ export default function Dashboard() {
         )}
 
         {view === 'puntos' && (profile?.role === 'admin' || profile?.role === 'staff') && (
-          <PointsProgramPanel
-            services={services}
-            loading={pointsPanelLoading}
-            onRefresh={loadServicePointsPanel}
-            showToast={showToast}
-          />
+          <div className="space-y-10">
+            <PointsProgramPanel
+              services={services}
+              loading={pointsPanelLoading}
+              onRefresh={loadServicePointsPanel}
+              showToast={showToast}
+            />
+            <ShopProductsPanel
+              shopProducts={shopProducts}
+              loading={shopProductsPanelLoading}
+              onRefresh={loadShopProductsPanel}
+              showToast={showToast}
+            />
+          </div>
         )}
 
         {view === 'productos' && (profile?.role === 'admin' || profile?.role === 'staff') && (

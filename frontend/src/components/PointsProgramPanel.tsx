@@ -63,8 +63,8 @@ export default function PointsProgramPanel({
         </div>
         <p className="mb-4 text-sm text-zinc-500">
           Definí cuántos puntos suma cada servicio cuando el cliente lo abona en el local (gestión manual o integración
-          futura). Los valores quedan guardados por servicio. Para productos de venta usá la sección{' '}
-          <strong className="font-bold text-zinc-700">Productos</strong> del menú.
+          futura). Los valores quedan guardados por servicio. Los productos de venta se configuran más abajo en esta
+          misma pantalla.
         </p>
         <div className="overflow-x-auto rounded-xl border border-zinc-100">
           <table className="w-full min-w-[480px] text-left text-sm">
