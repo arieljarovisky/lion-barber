@@ -1,15 +1,16 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   User,
   Clock,
   Calendar,
   Award,
-  CreditCard,
   ChevronLeft,
   LogOut,
   LayoutDashboard,
   X,
+  ChevronDown,
+  Info,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api';
@@ -181,6 +182,7 @@ export default function Perfil() {
   const [senaWallet, setSenaWallet] = useState<{ appointmentId: string; preferenceId: string } | null>(null);
   const [senaLoadingId, setSenaLoadingId] = useState<string | null>(null);
   const [senaError, setSenaError] = useState('');
+  const [historyLimit, setHistoryLimit] = useState(8);
   const expiryReloadDoneRef = useRef(false);
   const appointmentsRef = useRef(appointments);
   appointmentsRef.current = appointments;
@@ -267,6 +269,20 @@ export default function Perfil() {
     return !isBefore(appointmentDateTime(a), now);
   });
   const pastAppointments = appointments.filter((a) => isBefore(appointmentDateTime(a), now));
+
+  const { pastActive, pastCancelled } = useMemo(() => {
+    const active: Appointment[] = [];
+    const cancelled: Appointment[] = [];
+    for (const a of pastAppointments) {
+      if (a.status === 'cancelled') cancelled.push(a);
+      else active.push(a);
+    }
+    return { pastActive: active, pastCancelled: cancelled };
+  }, [pastAppointments]);
+
+  const HISTORY_STEP = 12;
+  const visibleActive = pastActive.slice(0, historyLimit);
+  const hasMoreActive = pastActive.length > visibleActive.length;
 
   if (!profile) return null;
 
@@ -433,14 +449,21 @@ export default function Perfil() {
             </div>
             <h2 className="text-base sm:text-lg font-bold text-white">Turnos futuros</h2>
           </div>
-          <p className="text-zinc-500 text-xs sm:text-sm mb-3">
-            Al reservar con seña online tenés <strong className="text-zinc-300">15 minutos</strong> para que el pago se
-            apruebe; si no, el turno se libera solo. Podés pagar desde acá mientras no venza ese plazo. Podés cancelar hasta
-            el inicio del turno: si cancelás con al menos <strong className="text-zinc-300">2 horas</strong> de anticipación,
-            la seña se reembolsa por Mercado Pago; con menos tiempo, la seña no se devuelve. Para{' '}
-            <strong className="text-zinc-300">reprogramar</strong> hace falta al menos {shopCutoffHours} horas de
-            anticipación (configurable por el dueño).
-          </p>
+          <details className="group mb-3 rounded-lg border border-zinc-800/90 bg-zinc-950/40">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs text-zinc-400 hover:text-zinc-200 [&::-webkit-details-marker]:hidden">
+              <Info size={14} className="shrink-0 text-[#e5c185]" />
+              <span className="font-medium">Condiciones de seña, cancelación y reprogramación</span>
+              <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-zinc-500 transition group-open:rotate-180" />
+            </summary>
+            <p className="border-t border-zinc-800/80 px-3 pb-3 pt-2 text-[11px] leading-relaxed text-zinc-500 sm:text-xs">
+              Al reservar con seña online tenés <strong className="text-zinc-300">15 minutos</strong> para que el pago se
+              apruebe; si no, el turno se libera solo. Podés pagar desde acá mientras no venza ese plazo. Podés cancelar
+              hasta el inicio del turno: si cancelás con al menos <strong className="text-zinc-300">2 horas</strong> de
+              anticipación, la seña se reembolsa por Mercado Pago; con menos tiempo, la seña no se devuelve. Para{' '}
+              <strong className="text-zinc-300">reprogramar</strong> hace falta al menos {shopCutoffHours} horas de
+              anticipación (configurable por el dueño).
+            </p>
+          </details>
           {senaError && (
             <div className="mb-3 p-3 rounded-xl border border-red-800 bg-red-950/50 text-red-200 text-sm">{senaError}</div>
           )}
@@ -449,11 +472,11 @@ export default function Perfil() {
           ) : futureAppointments.length === 0 ? (
             <p className="text-zinc-500 text-sm">No tenés turnos programados.</p>
           ) : (
-            <ul className="space-y-2 sm:space-y-3">
+            <ul className="space-y-2">
               {futureAppointments.map((a) => (
                 <li
                   key={a.id}
-                  className="flex flex-col gap-3 p-3 sm:p-4 bg-zinc-950/50 rounded-lg sm:rounded-xl border border-zinc-800 min-w-0"
+                  className="flex flex-col gap-2.5 p-3 sm:p-3.5 bg-zinc-950/50 rounded-lg border border-zinc-800 min-w-0"
                 >
                   <FutureAppointmentCardBody
                     a={a}
@@ -481,73 +504,90 @@ export default function Perfil() {
           )}
         </section>
 
-        <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0">
-          <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-zinc-600/30 flex items-center justify-center flex-shrink-0">
-              <Clock size={20} className="sm:w-[22px] sm:h-[22px] text-zinc-400" />
+        <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 min-w-0">
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-2 sm:mb-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-zinc-600/30 flex items-center justify-center flex-shrink-0">
+                <Clock size={20} className="sm:w-[22px] sm:h-[22px] text-zinc-400" />
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-white leading-tight">Historial</h2>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Visitas y cancelaciones. La columna «Pago» indica seña online abonada cuando corresponde.
+                </p>
+              </div>
             </div>
-            <h2 className="text-base sm:text-lg font-bold text-white">Turnos anteriores</h2>
+            {pastAppointments.length > 0 && (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 bg-zinc-900/80 px-2 py-1 rounded-md border border-zinc-800">
+                {pastAppointments.length} en total
+              </span>
+            )}
           </div>
           {loading ? (
             <p className="text-zinc-500 text-sm">Cargando...</p>
           ) : pastAppointments.length === 0 ? (
             <p className="text-zinc-500 text-sm">Aún no tenés historial de turnos.</p>
           ) : (
-            <ul className="space-y-2 sm:space-y-3">
-              {pastAppointments.slice(0, 10).map((a) => (
-                <li
-                  key={a.id}
-                  className="flex items-center justify-between gap-3 sm:gap-4 p-3 sm:p-4 bg-zinc-950/50 rounded-lg sm:rounded-xl border border-zinc-800 min-w-0"
+            <div className="space-y-3">
+              <div className="max-h-[min(52vh,400px)] overflow-y-auto overscroll-contain rounded-lg border border-zinc-800/70 bg-zinc-950/30">
+                <ul className="divide-y divide-zinc-800/80">
+                  {visibleActive.map((a) => (
+                    <li key={a.id} className="flex items-center gap-2 sm:gap-3 px-2.5 py-2 sm:px-3 sm:py-2.5">
+                      <div className="w-[4.75rem] sm:w-[5.5rem] shrink-0 text-[10px] sm:text-xs tabular-nums leading-tight">
+                        <div className="text-zinc-500">
+                          {format(parseAppointmentDateOnly(a.date), 'dd/MM/yy', { locale: es })}
+                        </div>
+                        <div className="font-semibold text-zinc-200">{a.time}</div>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white truncate">{a.service}</p>
+                        {a.barber && (
+                          <p className="text-[10px] text-zinc-500 truncate sm:hidden">{a.barber}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-0.5 shrink-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-400/95">
+                          {a.depositPaid ? 'Seña' : '—'}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              {hasMoreActive && (
+                <button
+                  type="button"
+                  onClick={() => setHistoryLimit((n) => n + HISTORY_STEP)}
+                  className="w-full py-2 rounded-lg border border-zinc-700 text-xs font-semibold text-zinc-300 hover:bg-zinc-800/80 transition-colors"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold text-white text-sm sm:text-base truncate">{a.service}</p>
-                    <p className="text-xs sm:text-sm text-zinc-400">
-                      {format(parseAppointmentDateOnly(a.date), "d/MM/yyyy", { locale: es })} · {a.time}
-                    </p>
-                    {a.status === 'cancelled' && (
-                      <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-wider text-red-400">
-                        Cancelado
-                      </span>
-                    )}
-                  </div>
-                </li>
-              ))}
-              {pastAppointments.length > 10 && (
-                <p className="text-zinc-500 text-xs sm:text-sm">y {pastAppointments.length - 10} más</p>
+                  Mostrar más ({pastActive.length - visibleActive.length} restantes)
+                </button>
               )}
-            </ul>
-          )}
-        </section>
 
-        <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 min-w-0">
-          <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
-              <CreditCard size={20} className="sm:w-[22px] sm:h-[22px] text-amber-400" />
-            </div>
-            <h2 className="text-base sm:text-lg font-bold text-white">Pagos</h2>
-          </div>
-          {pastAppointments.length === 0 ? (
-            <p className="text-zinc-500 text-xs sm:text-sm">No hay pagos registrados. Los turnos realizados se muestran aquí.</p>
-          ) : (
-            <ul className="space-y-2 sm:space-y-3">
-              {pastAppointments.slice(0, 5).map((a) => (
-                <li
-                  key={a.id}
-                  className="flex items-center justify-between gap-3 sm:gap-4 p-3 sm:p-4 bg-zinc-950/50 rounded-lg sm:rounded-xl border border-zinc-800 min-w-0"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-bold text-white text-sm sm:text-base truncate">{a.service}</p>
-                    <p className="text-xs sm:text-sm text-zinc-400">{format(parseAppointmentDateOnly(a.date), "d/MM/yyyy", { locale: es })}</p>
-                  </div>
-                  <span className="text-emerald-400 text-xs sm:text-sm font-medium flex-shrink-0">
-                    {a.status === 'cancelled' ? '—' : 'Pagado'}
-                  </span>
-                </li>
-              ))}
-              {pastAppointments.length > 5 && (
-                <p className="text-zinc-500 text-xs sm:text-sm">y {pastAppointments.length - 5} pagos más</p>
+              {pastCancelled.length > 0 && (
+                <details className="group rounded-lg border border-zinc-800/90 bg-zinc-950/50">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-xs text-zinc-400 hover:text-zinc-200 [&::-webkit-details-marker]:hidden">
+                    <span className="font-medium text-zinc-300">
+                      Turnos cancelados{' '}
+                      <span className="text-red-400/90">({pastCancelled.length})</span>
+                    </span>
+                    <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-zinc-500 transition group-open:rotate-180" />
+                  </summary>
+                  <ul className="max-h-[min(40vh,260px)] overflow-y-auto overscroll-contain border-t border-zinc-800/80 divide-y divide-zinc-800/60">
+                    {pastCancelled.map((a) => (
+                      <li key={a.id} className="flex items-center gap-2 px-2.5 py-1.5 sm:px-3 opacity-90">
+                        <div className="w-[4.75rem] sm:w-[5.5rem] shrink-0 text-[10px] tabular-nums text-zinc-500">
+                          {format(parseAppointmentDateOnly(a.date), 'dd/MM/yy', { locale: es })}{' '}
+                          <span className="text-zinc-400">{a.time}</span>
+                        </div>
+                        <p className="min-w-0 flex-1 truncate text-xs text-zinc-400">{a.service}</p>
+                        <span className="text-[9px] font-bold uppercase text-red-400/90 shrink-0">Cancelado</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
-            </ul>
+            </div>
           )}
         </section>
       </main>
