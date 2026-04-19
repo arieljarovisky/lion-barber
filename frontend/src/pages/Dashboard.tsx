@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   format,
   parseISO,
@@ -212,7 +212,8 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   /** Solo admin — modal nueva cita: '' | 'new' | id de cliente */
-  const [clientSelection, setClientSelection] = useState('');
+  /** Cliente elegido desde sugerencias o coincidencia exacta de nombre (solo admin, nueva cita). */
+  const [linkedClientId, setLinkedClientId] = useState<number | null>(null);
   const [newClientEmail, setNewClientEmail] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [adminClientsLoading, setAdminClientsLoading] = useState(false);
@@ -314,6 +315,20 @@ export default function Dashboard() {
       cancelled = true;
     };
   }, [modalOpen, isAdmin, editingAppointment]);
+
+  const clientNameSuggestions = useMemo(() => {
+    if (!isAdmin || editingAppointment || !modalOpen) return [];
+    const q = form.name.trim().toLowerCase();
+    if (q.length < 1) return [];
+    return adminClients
+      .filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.email.toLowerCase().includes(q)
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
+      .slice(0, 8);
+  }, [isAdmin, editingAppointment, modalOpen, form.name, adminClients]);
 
   const loadServicePointsPanel = useCallback(async () => {
     setPointsPanelLoading(true);
@@ -631,7 +646,7 @@ export default function Dashboard() {
 
   const openCreateModal = () => {
     setEditingAppointment(null);
-    setClientSelection('');
+    setLinkedClientId(null);
     setNewClientEmail('');
     const defaultBarber = staffBarberId ?? barbers[0]?.id ?? '';
     setForm({
@@ -649,7 +664,7 @@ export default function Dashboard() {
   /** Nuevo turno en fecha/hora concretas (clic en hueco libre del calendario). */
   const openCreateModalForSlot = (slotDateStr: string, slotTime: string, explicitBarberId?: string) => {
     setEditingAppointment(null);
-    setClientSelection('');
+    setLinkedClientId(null);
     setNewClientEmail('');
     const defaultBarber =
       staffBarberId ?? explicitBarberId ?? selectedBarberId ?? barbers[0]?.id ?? '';
@@ -667,7 +682,7 @@ export default function Dashboard() {
 
   const openEditModal = (app: Appointment) => {
     setEditingAppointment(app);
-    setClientSelection('');
+    setLinkedClientId(null);
     setNewClientEmail('');
     const barberId = app.barberId ?? barbers.find((b) => b.name === app.barber)?.id ?? '';
     setForm({
@@ -685,7 +700,7 @@ export default function Dashboard() {
   const closeModal = () => {
     setModalOpen(false);
     setEditingAppointment(null);
-    setClientSelection('');
+    setLinkedClientId(null);
     setNewClientEmail('');
     setError('');
   };
@@ -711,45 +726,59 @@ export default function Dashboard() {
       } else {
         let userId: number | undefined;
         let nameForApp = form.name.trim();
-        let phoneForApp = form.phone.trim();
+        const phoneForApp = form.phone.trim();
 
-        if (isAdmin && clientSelection === 'new') {
-          const email = newClientEmail.trim().toLowerCase();
-          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            setError('Ingresá un email válido para el nuevo cliente.');
-            setSaving(false);
-            return;
+        if (!nameForApp || !phoneForApp) {
+          setError('Nombre y teléfono son obligatorios.');
+          setSaving(false);
+          return;
+        }
+
+        if (isAdmin && !editingAppointment) {
+          if (linkedClientId != null) {
+            const c = adminClients.find((x) => x.id === linkedClientId);
+            if (c && c.name.trim().toLowerCase() === nameForApp.toLowerCase()) {
+              userId = c.id;
+              nameForApp = c.name;
+            }
           }
-          if (!nameForApp || !phoneForApp) {
-            setError('Nombre y teléfono son obligatorios.');
-            setSaving(false);
-            return;
+          if (userId == null) {
+            const matches = adminClients.filter(
+              (c) => c.name.trim().toLowerCase() === nameForApp.toLowerCase()
+            );
+            if (matches.length > 1) {
+              setError(
+                'Hay varios clientes con ese nombre. Elegí uno en las sugerencias al escribir.'
+              );
+              setSaving(false);
+              return;
+            }
+            if (matches.length === 1) {
+              userId = matches[0].id;
+              nameForApp = matches[0].name;
+            }
           }
-          try {
-            const { client } = await api.createAdminClient({ name: nameForApp, email, points: 0 });
-            userId = client.id;
-          } catch (err) {
-            setError(err instanceof ApiError ? err.message : 'No se pudo crear el cliente');
-            setSaving(false);
-            return;
-          }
-        } else if (isAdmin && clientSelection !== '' && clientSelection !== 'new') {
-          const cid = Number(clientSelection);
-          if (Number.isFinite(cid)) {
-            userId = cid;
-            const c = adminClients.find((x) => x.id === cid);
-            if (c) nameForApp = c.name;
-          }
-          if (!phoneForApp) {
-            setError('El teléfono es obligatorio para el turno.');
-            setSaving(false);
-            return;
-          }
-        } else {
-          if (!nameForApp || !phoneForApp) {
-            setError('Nombre y teléfono son obligatorios.');
-            setSaving(false);
-            return;
+          if (userId == null) {
+            const email = newClientEmail.trim().toLowerCase();
+            if (email) {
+              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                setError('Ingresá un email válido para registrar al cliente nuevo.');
+                setSaving(false);
+                return;
+              }
+              try {
+                const { client } = await api.createAdminClient({
+                  name: nameForApp,
+                  email,
+                  points: 0,
+                });
+                userId = client.id;
+              } catch (err) {
+                setError(err instanceof ApiError ? err.message : 'No se pudo crear el cliente');
+                setSaving(false);
+                return;
+              }
+            }
           }
         }
 
@@ -2279,96 +2308,77 @@ export default function Dashboard() {
             </div>
             <form onSubmit={handleSaveAppointment} className="p-6 space-y-4">
               {error && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
-              {isAdmin && !editingAppointment && (
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                    Cliente del sistema
-                  </label>
-                  <select
-                    value={clientSelection}
-                    disabled={adminClientsLoading}
+              <div>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Nombre</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={form.name}
                     onChange={(e) => {
                       const v = e.target.value;
-                      setClientSelection(v);
-                      if (v && v !== 'new') {
-                        const id = Number(v);
-                        const c = adminClients.find((x) => x.id === id);
-                        if (c) setForm((f) => ({ ...f, name: c.name }));
-                      } else if (v === 'new') {
-                        setForm((f) => ({ ...f, name: '', phone: '' }));
+                      setForm((f) => ({ ...f, name: v }));
+                      setLinkedClientId((prev) => {
+                        if (prev == null) return null;
+                        const c = adminClients.find((x) => x.id === prev);
+                        if (!c) return null;
+                        if (c.name.trim().toLowerCase() === v.trim().toLowerCase()) return prev;
+                        return null;
+                      });
+                    }}
+                    onBlur={() => {
+                      if (!isAdmin || editingAppointment) return;
+                      const t = form.name.trim().toLowerCase();
+                      if (!t) return;
+                      const matches = adminClients.filter(
+                        (c) => c.name.trim().toLowerCase() === t
+                      );
+                      if (matches.length === 1) {
+                        setLinkedClientId(matches[0].id);
+                        setForm((f) => ({ ...f, name: matches[0].name }));
                         setNewClientEmail('');
-                      } else {
-                        setForm((f) => ({ ...f, name: '', phone: '' }));
                       }
                     }}
-                    className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900 disabled:bg-zinc-50"
-                  >
-                    <option value="">Sin vincular (solo este turno)</option>
-                    <option value="new">+ Crear cliente nuevo…</option>
-                    {[...adminClients]
-                      .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
-                      .map((c) => (
-                        <option key={c.id} value={String(c.id)}>
-                          {c.name} — {c.email}
-                        </option>
-                      ))}
-                  </select>
-                  {adminClientsLoading && (
+                    className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                    placeholder="Nombre completo"
+                    autoComplete="name"
+                  />
+                  {isAdmin && !editingAppointment && adminClientsLoading && (
                     <p className="mt-1 text-xs text-zinc-400">Cargando clientes…</p>
                   )}
-                  {clientSelection === 'new' && (
-                    <p className="mt-2 text-xs text-zinc-500">
-                      Se creará el cliente con nombre, email y teléfono; el turno quedará vinculado a su cuenta.
-                    </p>
+                  {isAdmin && !editingAppointment && clientNameSuggestions.length > 0 && (
+                    <ul
+                      className="absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg"
+                      role="listbox"
+                    >
+                      {clientNameSuggestions.map((c) => (
+                        <li key={c.id} role="option">
+                          <button
+                            type="button"
+                            className="w-full px-4 py-2.5 text-left text-sm text-zinc-900 hover:bg-zinc-50"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setForm((f) => ({ ...f, name: c.name }));
+                              setLinkedClientId(c.id);
+                              setNewClientEmail('');
+                            }}
+                          >
+                            <span className="font-medium">{c.name}</span>
+                            <span className="block text-xs text-zinc-500 truncate">{c.email}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </div>
-              )}
-              {isAdmin && !editingAppointment && clientSelection === 'new' && (
-                <div>
-                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                    Email del nuevo cliente
-                  </label>
-                  <input
-                    type="email"
-                    value={newClientEmail}
-                    onChange={(e) => setNewClientEmail(e.target.value)}
-                    className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
-                    placeholder="correo@ejemplo.com"
-                    autoComplete="email"
-                  />
-                </div>
-              )}
-              {isAdmin &&
-                !editingAppointment &&
-                clientSelection !== '' &&
-                clientSelection !== 'new' &&
-                adminClients.find((x) => String(x.id) === clientSelection) && (
-                  <p className="text-xs text-zinc-500">
-                    Email:{' '}
+                {isAdmin && !editingAppointment && linkedClientId != null && (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Vinculado a ficha:{' '}
                     <span className="font-medium text-zinc-700">
-                      {adminClients.find((x) => String(x.id) === clientSelection)?.email}
+                      {adminClients.find((x) => x.id === linkedClientId)?.email}
                     </span>
                   </p>
                 )}
-              <div>
-                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Nombre</label>
-                <input
-                  type="text"
-                  required={
-                    Boolean(editingAppointment) ||
-                    !isAdmin ||
-                    clientSelection === '' ||
-                    clientSelection === 'new' ||
-                    !clientSelection
-                  }
-                  readOnly={
-                    Boolean(isAdmin && !editingAppointment && clientSelection && clientSelection !== 'new')
-                  }
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900 read-only:bg-zinc-50 read-only:text-zinc-700"
-                  placeholder="Nombre completo"
-                />
               </div>
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
@@ -2383,6 +2393,25 @@ export default function Dashboard() {
                   placeholder="Ej. 11 2345 6789"
                 />
               </div>
+              {isAdmin && !editingAppointment && (
+                <div>
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                    Email del cliente <span className="font-normal normal-case text-zinc-400">(opcional)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={newClientEmail}
+                    onChange={(e) => setNewClientEmail(e.target.value)}
+                    className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                    placeholder="Solo para dar de alta un cliente nuevo en el sistema"
+                    autoComplete="email"
+                  />
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Si el nombre no coincide con nadie y completás el email, se crea el cliente y el turno queda
+                    vinculado. Si no completás email, el turno se guarda sin ficha.
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Servicio</label>
                 <select
