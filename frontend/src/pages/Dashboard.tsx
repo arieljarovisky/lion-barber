@@ -39,6 +39,7 @@ import { useAuth } from '../contexts/AuthContext';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import PointsProgramPanel from '../components/PointsProgramPanel';
 import ShopProductsPanel from '../components/ShopProductsPanel';
+import ProductPointsPanel from '../components/ProductPointsPanel';
 import BillingPanel from '../components/BillingPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import { api } from '../api';
@@ -933,12 +934,12 @@ export default function Dashboard() {
             ? {
                 title: 'Programa de puntos',
                 subtitle:
-                  'Puntos por servicio y por producto de venta. El catálogo de servicios se edita en Servicios.',
+                  'Puntos por servicio y por producto. Los catálogos se editan en Servicios y en Productos.',
               }
             : view === 'productos'
               ? {
                   title: 'Productos',
-                  subtitle: 'Artículos que vendés en el local y cuántos puntos suma cada compra.',
+                  subtitle: 'Alta y edición del catálogo de venta (nombre y precio). Los puntos se asignan en Puntos.',
                 }
               : view === 'facturacion'
                 ? {
@@ -1921,7 +1922,7 @@ export default function Dashboard() {
               onRefresh={loadServicePointsPanel}
               showToast={showToast}
             />
-            <ShopProductsPanel
+            <ProductPointsPanel
               shopProducts={shopProducts}
               loading={shopProductsPanelLoading}
               onRefresh={loadShopProductsPanel}
