@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import PointsProgramPanel from '../components/PointsProgramPanel';
 import ShopProductsPanel from '../components/ShopProductsPanel';
@@ -293,6 +294,7 @@ export default function Dashboard() {
   }, []);
 
   const { profile, isAdmin, canAccessDashboard } = useAuth();
+  const confirm = useConfirm();
   const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
   const isStaffBarber = Boolean(staffBarberId);
 
@@ -589,7 +591,13 @@ export default function Dashboard() {
   };
 
   const handleDeleteStaffInvite = async (id: number) => {
-    if (!confirm('¿Eliminar esta invitación pendiente?')) return;
+    const ok = await confirm({
+      title: 'Eliminar invitación',
+      message: '¿Eliminar esta invitación pendiente?',
+      variant: 'danger',
+      confirmLabel: 'Eliminar',
+    });
+    if (!ok) return;
     setTeamError('');
     try {
       await api.deleteStaffInvite(id);
@@ -600,7 +608,14 @@ export default function Dashboard() {
   };
 
   const deleteBlock = async (id: number) => {
-    if (!scheduleBarberId || !canAccessDashboard || !confirm('¿Quitar este bloqueo de horario?')) return;
+    if (!scheduleBarberId || !canAccessDashboard) return;
+    const ok = await confirm({
+      title: 'Quitar bloqueo',
+      message: '¿Quitar este bloqueo de horario?',
+      variant: 'danger',
+      confirmLabel: 'Quitar bloqueo',
+    });
+    if (!ok) return;
     setSavingSchedule(true);
     setScheduleError('');
     try {
@@ -804,7 +819,13 @@ export default function Dashboard() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar esta cita?')) return;
+    const ok = await confirm({
+      title: 'Eliminar cita',
+      message: '¿Eliminar esta cita del calendario?',
+      variant: 'danger',
+      confirmLabel: 'Eliminar',
+    });
+    if (!ok) return;
     try {
       await api.deleteAppointment(id);
       loadData();
@@ -911,7 +932,13 @@ export default function Dashboard() {
   };
 
   const handleDeleteService = async (id: string) => {
-    if (!confirm('¿Eliminar este servicio?')) return;
+    const ok = await confirm({
+      title: 'Eliminar servicio',
+      message: '¿Eliminar este servicio? Esta acción no se puede deshacer.',
+      variant: 'danger',
+      confirmLabel: 'Eliminar',
+    });
+    if (!ok) return;
     try {
       await api.deleteService(id);
       loadData();

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Loader2, Pencil, ShoppingBag, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api';
+import { useConfirm } from '../contexts/ConfirmContext';
 import type { ShopProduct } from '../api';
 
 type ShopProductsPanelProps = {
@@ -17,6 +18,7 @@ export default function ShopProductsPanel({
   onRefresh,
   showToast,
 }: ShopProductsPanelProps) {
+  const confirm = useConfirm();
   const [productName, setProductName] = useState('');
   const [productUnitPrice, setProductUnitPrice] = useState('');
   const [savingProduct, setSavingProduct] = useState(false);
@@ -77,7 +79,13 @@ export default function ShopProductsPanel({
   };
 
   const removeProduct = async (id: string) => {
-    if (!window.confirm('¿Eliminar este producto del catálogo?')) return;
+    const ok = await confirm({
+      title: 'Eliminar producto',
+      message: '¿Eliminar este producto del catálogo?',
+      variant: 'danger',
+      confirmLabel: 'Eliminar',
+    });
+    if (!ok) return;
     try {
       await api.deleteShopProduct(id);
       showToast('Producto eliminado');

@@ -13,6 +13,7 @@ import {
   Info,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { api } from '../api';
 import type { Appointment } from '../api';
 import { Wallet } from '@mercadopago/sdk-react';
@@ -167,6 +168,7 @@ const SenaWalletBrick = React.memo(function SenaWalletBrick({
 
 export default function Perfil() {
   const { profile, logout, canAccessDashboard } = useAuth();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -351,14 +353,16 @@ export default function Perfil() {
   };
 
   const handleCancel = async (a: Appointment) => {
-    if (
-      !confirm(
+    const ok = await confirm({
+      title: 'Cancelar turno',
+      message:
         '¿Cancelar este turno? Si falta menos de 2 horas para el horario, la seña abonada no se reembolsa. ' +
-          'Con al menos 2 horas de anticipación, el reembolso de la seña se procesa automáticamente en Mercado Pago.'
-      )
-    ) {
-      return;
-    }
+        'Con al menos 2 horas de anticipación, el reembolso de la seña se procesa automáticamente en Mercado Pago.',
+      variant: 'danger',
+      confirmLabel: 'Sí, cancelar',
+      cancelLabel: 'Volver',
+    });
+    if (!ok) return;
     setActionBusy(true);
     setActionError('');
     setActionSuccess('');

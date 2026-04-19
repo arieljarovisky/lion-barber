@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Perfil from './pages/Perfil';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 import MercadoPagoInit from './components/MercadoPagoInit';
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
@@ -16,6 +17,7 @@ export default function App() {
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
       <AuthProvider>
+        <ConfirmProvider>
         <BrowserRouter>
         <MercadoPagoInit />
         <Routes>
@@ -56,6 +58,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+        </ConfirmProvider>
       </AuthProvider>
     </GoogleOAuthProvider>
   );
