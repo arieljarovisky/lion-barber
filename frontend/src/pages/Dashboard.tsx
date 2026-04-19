@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   format,
-  parse,
   parseISO,
   addDays,
   subDays,
@@ -23,7 +22,6 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
-  LogOut,
   Plus,
   Pencil,
   Trash2,
@@ -31,15 +29,14 @@ import {
   Package,
   Ban,
   UserPlus,
-  Menu,
   Settings,
   CheckCircle2,
   AlertCircle,
   Receipt,
-  Users,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api } from '../api';
 import type {
   Appointment,
@@ -48,7 +45,6 @@ import type {
   BarberFrancoRow,
   BarberTimeBlockRow,
   StaffInviteRow,
-  AdminClientWithHistory,
 } from '../api';
 
 const TIME_SLOTS = [
@@ -186,25 +182,6 @@ function getAppointmentPaymentBadge(app: Appointment): { label: string; classNam
   };
 }
 
-function formatAppointmentDateYmd(ymd: string): string {
-  const clean = ymd.slice(0, 10);
-  try {
-    return format(parse(clean, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy', { locale: es });
-  } catch {
-    return ymd;
-  }
-}
-
-function adminAppointmentStatusBadge(app: Appointment): { label: string; className: string } {
-  if (app.status === 'cancelled') {
-    return { label: 'Cancelado', className: 'bg-red-50 text-red-800 border-red-200' };
-  }
-  if (app.status === 'pending_payment') {
-    return { label: 'Pago pendiente', className: 'bg-amber-50 text-amber-900 border-amber-200' };
-  }
-  return { label: 'Programado', className: 'bg-emerald-50 text-emerald-900 border-emerald-200' };
-}
-
 const WEEKDAY_SHORT: { value: number; label: string }[] = [
   { value: 1, label: 'Lun' },
   { value: 2, label: 'Mar' },
@@ -228,7 +205,7 @@ export default function Dashboard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [view, setView] = useState<
-    'agenda' | 'servicios' | 'horarios' | 'equipo' | 'clientes' | 'configuracion'
+    'agenda' | 'servicios' | 'horarios' | 'equipo' | 'configuracion'
   >('agenda');
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -251,15 +228,11 @@ export default function Dashboard() {
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [staffInvites, setStaffInvites] = useState<StaffInviteRow[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
-  const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
-  const [clientsLoading, setClientsLoading] = useState(false);
-  const [clientsError, setClientsError] = useState('');
   const [teamError, setTeamError] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [inviteBarberId, setInviteBarberId] = useState('');
   const [savingInvite, setSavingInvite] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [shopCutoff, setShopCutoff] = useState(12);
   const [shopDays, setShopDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [shopDepositPercent, setShopDepositPercent] = useState(30);
@@ -286,7 +259,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  const { profile, logout, isAdmin, canAccessDashboard } = useAuth();
+  const { profile, isAdmin, canAccessDashboard } = useAuth();
   const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
   const isStaffBarber = Boolean(staffBarberId);
 
@@ -375,7 +348,7 @@ export default function Dashboard() {
   }, [view, scheduleBarberId, loadSchedule]);
 
   useEffect(() => {
-    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'clientes' || view === 'configuracion')) {
+    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion')) {
       setView('agenda');
     }
   }, [isAdmin, view]);
@@ -424,30 +397,6 @@ export default function Dashboard() {
       loadStaffInvites();
     }
   }, [view, isAdmin, loadStaffInvites]);
-
-  useEffect(() => {
-    if (view !== 'clientes' || !isAdmin) return;
-    let cancelled = false;
-    setClientsLoading(true);
-    setClientsError('');
-    api
-      .getAdminClientsWithHistory()
-      .then((data) => {
-        if (!cancelled) setAdminClients(data.clients);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setClientsError('No se pudo cargar la base de clientes.');
-          setAdminClients([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setClientsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [view, isAdmin]);
 
   const toggleFranco = async (weekday: number) => {
     if (!scheduleBarberId || !canAccessDashboard) return;
@@ -820,16 +769,22 @@ export default function Dashboard() {
 
   const totalIncome = dayAppointments.reduce((acc, curr) => acc + getPrice(curr.service), 0);
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/', { replace: true });
-  };
+  useEffect(() => {
+    const open = (location.state as { openView?: typeof view } | null)?.openView;
+    if (!open) return;
+    setView(open);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, navigate]);
 
-  const selectView = (v: typeof view) => {
-    setView(v);
-    setMobileNavOpen(false);
-  };
+  const handlePanelNavigate = useCallback((panel: DashboardPanelId) => {
+    if (panel === 'clientes') {
+      navigate('/dashboard/clientes');
+      return;
+    }
+    setView(panel);
+  }, [navigate]);
 
   const toggleShopDay = (day: number) => {
     setShopDays((prev) => {
@@ -883,12 +838,7 @@ export default function Dashboard() {
                 title: 'Configuración del local',
                 subtitle: 'Plazo de gestión, seña online, días abiertos y comisiones por barbero.',
               }
-            : view === 'clientes'
-              ? {
-                  title: 'Base de clientes',
-                  subtitle: 'Cuentas registradas e historial de turnos vinculados a cada usuario.',
-                }
-              : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
+            : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
@@ -914,160 +864,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      {mobileNavOpen && (
-        <button
-          type="button"
-          aria-label="Cerrar menú"
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => setMobileNavOpen(false)}
-        />
-      )}
-
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-zinc-800 bg-zinc-950 text-white shadow-xl lg:static lg:z-auto lg:min-h-screen lg:shadow-none ${
-          mobileNavOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
-      >
-        <div className="flex items-center gap-3 border-b border-zinc-800 p-4">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-800 bg-zinc-900">
-            <img
-              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s"
-              alt="Lion Logo"
-              className="h-full w-full object-cover"
-            />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-sm font-black uppercase tracking-widest">Lion Barber</h1>
-            <p className="text-xs font-bold tracking-wider text-[#e5c185]">PANEL DE CONTROL</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen(false)}
-            className="rounded-lg p-2 hover:bg-zinc-800 lg:hidden"
-            aria-label="Cerrar menú"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          <button
-            type="button"
-            onClick={() => selectView('agenda')}
-            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
-              view === 'agenda' ? 'bg-[#e5c185] text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-            }`}
-          >
-            <CalendarIcon size={18} className="flex-shrink-0" />
-            Agenda
-          </button>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => selectView('servicios')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
-                view === 'servicios' ? 'bg-[#e5c185] text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-              }`}
-            >
-              <Package size={18} className="flex-shrink-0" />
-              Servicios
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => selectView('horarios')}
-            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
-              view === 'horarios' ? 'bg-[#e5c185] text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-            }`}
-          >
-            <Ban size={18} className="flex-shrink-0" />
-            Horarios
-          </button>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => selectView('equipo')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
-                view === 'equipo' ? 'bg-[#e5c185] text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-              }`}
-            >
-              <UserPlus size={18} className="flex-shrink-0" />
-              Equipo
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => selectView('clientes')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
-                view === 'clientes' ? 'bg-[#e5c185] text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-              }`}
-            >
-              <Users size={18} className="flex-shrink-0" />
-              Clientes
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => selectView('configuracion')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
-                view === 'configuracion' ? 'bg-[#e5c185] text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-              }`}
-            >
-              <Settings size={18} className="flex-shrink-0" />
-              Configuración
-            </button>
-          )}
-        </nav>
-
-        <div className="space-y-3 border-t border-zinc-800 p-4">
-          {profile && (
-            <p className="text-sm text-zinc-400">
-              {profile.name}{' '}
-              {profile.role === 'admin' && <span className="text-[#e5c185]">(Admin)</span>}
-              {profile.role === 'staff' && <span className="text-[#e5c185]">(Empleado)</span>}
-            </p>
-          )}
-          <a
-            href="/"
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
-          >
-            Web
-          </a>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
-          >
-            <LogOut size={16} />
-            Cerrar sesión
-          </button>
-        </div>
-      </aside>
-
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-3 text-white lg:hidden">
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen(true)}
-            className="rounded-lg p-2 hover:bg-zinc-800"
-            aria-label="Abrir menú"
-          >
-            <Menu size={22} />
-          </button>
-          <span className="text-sm font-black uppercase tracking-widest">Lion Barber</span>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="ml-auto rounded-lg p-2 hover:bg-zinc-800"
-            aria-label="Cerrar sesión"
-          >
-            <LogOut size={20} />
-          </button>
-        </header>
-
-        <main className="mx-auto w-full min-w-0 flex-1 max-w-7xl p-3 sm:p-4 md:p-8">
+      <DashboardPanelShell activePanel={view as DashboardPanelId} onNavigate={handlePanelNavigate}>
         {profile?.role === 'staff' && !staffBarberId && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             Tu cuenta de empleado no está vinculada a un barbero. Pedile al administrador que te envíe una invitación
@@ -2086,117 +1883,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {view === 'clientes' && isAdmin && (
-          <div className="max-w-4xl space-y-6">
-            {clientsError && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{clientsError}</div>
-            )}
-            <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm">
-              <h3 className="font-black text-lg text-zinc-900 flex items-center gap-2">
-                <Users className="text-[#b39055]" size={22} />
-                Clientes registrados
-              </h3>
-              <p className="text-sm text-zinc-500 mt-2">
-                Cuentas con rol cliente y los turnos asociados a su usuario (reservas hechas iniciando sesión). Los turnos
-                cargados solo con nombre y teléfono sin cuenta no aparecen acá.
-              </p>
-              {clientsLoading ? (
-                <p className="text-zinc-400 mt-6">Cargando...</p>
-              ) : adminClients.length === 0 ? (
-                <p className="text-zinc-500 text-sm mt-6">No hay clientes registrados todavía.</p>
-              ) : (
-                <p className="text-xs text-zinc-500 mt-4">
-                  {adminClients.length} cliente{adminClients.length === 1 ? '' : 's'}
-                </p>
-              )}
-            </div>
-
-            {!clientsLoading &&
-              adminClients.map((c) => (
-                <details
-                  key={c.id}
-                  className="group rounded-2xl border border-zinc-200 bg-white shadow-sm open:ring-1 open:ring-zinc-200"
-                >
-                  <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
-                    <div className="min-w-0">
-                      <p className="font-bold text-zinc-900 truncate">{c.name}</p>
-                      <p className="text-xs text-zinc-500 truncate">{c.email}</p>
-                      <p className="text-[11px] text-zinc-400 mt-1">
-                        Alta:{' '}
-                        {format(parseISO(c.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 text-xs shrink-0">
-                      <span className="font-bold text-[#b39055]">{c.points} pts</span>
-                      <span className="text-zinc-500">
-                        {c.appointments.length} turno{c.appointments.length === 1 ? '' : 's'}
-                      </span>
-                    </div>
-                  </summary>
-                  <div className="border-t border-zinc-100 px-3 pb-4">
-                    {c.appointments.length === 0 ? (
-                      <p className="text-sm text-zinc-500 py-4 px-2">
-                        Sin turnos vinculados. Si reservó sin iniciar sesión, el turno queda solo con nombre y teléfono en
-                        la agenda.
-                      </p>
-                    ) : (
-                      <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-zinc-100">
-                        <table className="w-full text-left text-sm">
-                          <thead className="sticky top-0 bg-zinc-50 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-                            <tr>
-                              <th className="px-3 py-2">Fecha</th>
-                              <th className="px-3 py-2">Hora</th>
-                              <th className="px-3 py-2">Servicio</th>
-                              <th className="px-3 py-2">Barbero</th>
-                              <th className="px-3 py-2">Estado</th>
-                              <th className="px-3 py-2 text-right">Seña</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-zinc-100">
-                            {c.appointments.map((app) => {
-                              const st = adminAppointmentStatusBadge(app);
-                              const pay = getAppointmentPaymentBadge(app);
-                              return (
-                                <tr key={app.id} className="bg-white hover:bg-zinc-50/80">
-                                  <td className="px-3 py-2.5 whitespace-nowrap tabular-nums text-zinc-700">
-                                    {formatAppointmentDateYmd(app.date)}
-                                  </td>
-                                  <td className="px-3 py-2.5 font-mono text-xs text-zinc-800">
-                                    {normalizeAppointmentTime(app.time)}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-zinc-900 max-w-[10rem] sm:max-w-xs truncate">
-                                    {app.service}
-                                  </td>
-                                  <td className="px-3 py-2.5 text-zinc-600 text-xs max-w-[8rem] truncate">
-                                    {app.barber ?? '—'}
-                                  </td>
-                                  <td className="px-3 py-2.5">
-                                    <span
-                                      className={`inline-block rounded-md border px-2 py-0.5 text-[10px] font-bold ${st.className}`}
-                                    >
-                                      {st.label}
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-2.5 text-right">
-                                    <span
-                                      className={`inline-block rounded-md border px-2 py-0.5 text-[10px] font-bold ${pay.className}`}
-                                    >
-                                      {pay.label}
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </details>
-              ))}
-          </div>
-        )}
-
         {view === 'configuracion' && isAdmin && (
           <div className="max-w-3xl space-y-6">
             {shopError && (
@@ -2313,8 +1999,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-      </main>
-      </div>
+      </DashboardPanelShell>
 
       {/* Modal crear/editar cita */}
       {modalOpen && (

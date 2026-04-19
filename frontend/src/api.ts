@@ -299,6 +299,10 @@ export const api = {
   getAdminClientsWithHistory: () =>
     fetchApi<{ clients: AdminClientWithHistory[] }>('/api/users/clients'),
 
+  /** Solo admin: un cliente por id (rol client) con su historial. */
+  getAdminClient: (clientId: number) =>
+    fetchApi<{ client: AdminClientWithHistory }>(`/api/users/clients/${clientId}`),
+
   auth: {
     postGoogle: (idToken: string) =>
       fetchApi<{

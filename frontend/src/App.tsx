@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import ClientView from './pages/ClientView';
 import Dashboard from './pages/Dashboard';
+import AdminClientsListPage from './pages/AdminClientsListPage';
+import AdminClientDetailPage from './pages/AdminClientDetailPage';
 import Login from './pages/Login';
 import Perfil from './pages/Perfil';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -19,6 +21,22 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ClientView />} />
           <Route path="/login" element={<Login />} />
+          <Route
+            path="/dashboard/clientes/:clientId"
+            element={
+              <ProtectedRoute dashboardAccess adminOnly>
+                <AdminClientDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/clientes"
+            element={
+              <ProtectedRoute dashboardAccess adminOnly>
+                <AdminClientsListPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/dashboard"
             element={
