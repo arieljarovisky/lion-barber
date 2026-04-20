@@ -13,6 +13,7 @@ import {
   getAdminAppointmentPaymentBadge,
   normalizeAppointmentTime,
 } from '../utils/adminClientHistory';
+import { displayClientEmail } from '../utils/manualClientEmail';
 
 export default function AdminClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -103,7 +104,10 @@ export default function AdminClientDetailPage() {
                     <AdminClientAvatar name={client.name} avatarUrl={client.avatarUrl} size="lg" />
                     <div className="min-w-0">
                       <h1 className="text-2xl font-black tracking-tight text-zinc-900 sm:text-3xl">{client.name}</h1>
-                      <p className="mt-1 truncate text-sm text-zinc-500">{client.email}</p>
+                      <p className="mt-1 truncate text-sm text-zinc-500">{displayClientEmail(client.email)}</p>
+                      {client.phone?.trim() ? (
+                        <p className="mt-1 truncate text-sm font-medium text-zinc-700">{client.phone.trim()}</p>
+                      ) : null}
                       <p className="mt-2 text-xs text-zinc-400">
                         Cliente desde{' '}
                         {format(parseISO(client.createdAt), "d 'de' MMMM yyyy · HH:mm", { locale: es })}

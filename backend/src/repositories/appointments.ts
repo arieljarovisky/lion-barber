@@ -1,5 +1,6 @@
 import pool, { query } from '../db.js';
 import type { AfipInvoiceDetail, Appointment, AppointmentStatus } from '../types.js';
+import * as userRepo from './users.js';
 import { getBarberById, getAllBarbers } from './barbers.js';
 import { getServiceById } from './services.js';
 import {
@@ -365,6 +366,13 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
   const insertId = (res as { insertId: number }).insertId;
   const created = await getAppointmentById(String(insertId));
   if (!created) throw new Error('Appointment not created');
+  const uid = data.userId;
+  if (uid != null && Number.isFinite(Number(uid))) {
+    const p = String(data.phone ?? '').trim();
+    if (p.length > 0) {
+      await userRepo.setClientPhone(Number(uid), p);
+    }
+  }
   return created;
 }
 
@@ -407,7 +415,12 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       id,
     ]
   );
-  return getAppointmentById(id);
+  const saved = await getAppointmentById(id);
+  if (saved && saved.userId != null) {
+    const p = String(saved.phone ?? '').trim();
+    await userRepo.setClientPhone(saved.userId, p);
+  }
+  return saved;
 }
 
 export async function markAppointmentPaidAndScheduled(

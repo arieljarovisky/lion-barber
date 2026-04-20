@@ -7,6 +7,7 @@ import DashboardPanelShell, { type DashboardPanelId } from '../components/Dashbo
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
 import type { AdminClientWithHistory } from '../api';
+import { displayClientEmail } from '../utils/manualClientEmail';
 
 const VIEW_STORAGE_KEY = 'lion-barber-admin-clients-view';
 
@@ -54,6 +55,7 @@ export default function AdminClientsListPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
+  const [formPhone, setFormPhone] = useState('');
   const [formPoints, setFormPoints] = useState('0');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -101,6 +103,7 @@ export default function AdminClientsListPage() {
     setFormError('');
     setFormName('');
     setFormEmail('');
+    setFormPhone('');
     setFormPoints('0');
     setModalOpen(true);
   };
@@ -114,16 +117,22 @@ export default function AdminClientsListPage() {
     setFormError('');
     const name = formName.trim();
     const email = formEmail.trim();
-    if (!name || !email) {
-      setFormError('Completá nombre y email.');
+    if (!name) {
+      setFormError('Completá el nombre.');
+      return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setFormError('Si cargás email, tiene que ser válido.');
       return;
     }
     const pts = parseInt(formPoints, 10);
     setSaving(true);
     try {
+      const phone = formPhone.trim();
       await api.createAdminClient({
         name,
-        email,
+        ...(email ? { email } : {}),
+        ...(phone ? { phone } : {}),
         points: Number.isFinite(pts) ? pts : 0,
       });
       setModalOpen(false);
@@ -142,7 +151,10 @@ export default function AdminClientsListPage() {
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter(
-        (c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          c.email.toLowerCase().includes(q) ||
+          (c.phone && c.phone.toLowerCase().includes(q))
       );
     }
     const cutoffNew = subDays(new Date(), NEW_CLIENT_DAYS).getTime();
@@ -377,7 +389,10 @@ export default function AdminClientsListPage() {
                     <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
                     <div className="min-w-0 flex-1">
                     <p className="font-bold text-zinc-900 group-hover:text-zinc-950 truncate">{c.name}</p>
-                    <p className="mt-1 text-xs text-zinc-500 truncate">{c.email}</p>
+                    <p className="mt-1 text-xs text-zinc-500 truncate">{displayClientEmail(c.email)}</p>
+                    {c.phone?.trim() ? (
+                      <p className="mt-0.5 text-xs font-medium text-zinc-600 truncate">{c.phone.trim()}</p>
+                    ) : null}
                     <p className="mt-2 text-[11px] text-zinc-400">
                       Alta {format(parseISO(c.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
                     </p>
@@ -403,11 +418,12 @@ export default function AdminClientsListPage() {
         ) : (
           <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
+                <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="border-b border-zinc-100 bg-zinc-50 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
                   <tr>
                     <th className="px-4 py-3">Cliente</th>
                     <th className="px-4 py-3">Email</th>
+                    <th className="px-4 py-3">Teléfono</th>
                     <th className="px-4 py-3 text-right">Puntos</th>
                     <th className="px-4 py-3 text-right">Turnos</th>
                     <th className="px-4 py-3">Alta</th>
@@ -435,7 +451,8 @@ export default function AdminClientsListPage() {
                           <span className="font-semibold text-zinc-900">{c.name}</span>
                         </div>
                       </td>
-                      <td className="max-w-[14rem] truncate px-4 py-3 text-zinc-600">{c.email}</td>
+                      <td className="max-w-[14rem] truncate px-4 py-3 text-zinc-600">{displayClientEmail(c.email)}</td>
+                      <td className="max-w-[10rem] truncate px-4 py-3 text-zinc-600">{c.phone?.trim() || '—'}</td>
                       <td className="px-4 py-3 text-right font-bold text-[#b39055]">{c.points}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-zinc-600">{c.appointments.length}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-xs text-zinc-500">
@@ -496,16 +513,33 @@ export default function AdminClientsListPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Email</label>
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Teléfono <span className="font-normal normal-case text-zinc-400">(opcional)</span>
+                </label>
+                <input
+                  type="tel"
+                  autoComplete="tel"
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-3 text-zinc-900"
+                  placeholder="Ej. 11 2345 6789"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Email <span className="font-normal normal-case text-zinc-400">(opcional)</span>
+                </label>
                 <input
                   type="email"
-                  required
                   autoComplete="email"
                   value={formEmail}
                   onChange={(e) => setFormEmail(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-3 text-zinc-900"
-                  placeholder="mismo email que usará con Google"
+                  placeholder="Si lo dejás vacío, la ficha se crea igual"
                 />
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Si más adelante inicia sesión con Google, podés usar el mismo email para vincular la cuenta.
+                </p>
               </div>
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Puntos iniciales</label>

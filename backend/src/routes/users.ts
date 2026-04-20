@@ -6,16 +6,21 @@ import * as appointmentRepo from '../repositories/appointments.js';
 const router = Router();
 
 router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
-  const { name, email, points } = req.body as { name?: string; email?: string; points?: unknown };
-  if (!name || typeof name !== 'string' || !email || typeof email !== 'string') {
-    return res.status(400).json({ error: 'Se requiere name y email' });
+  const { name, email, points, phone } = req.body as {
+    name?: string;
+    email?: string;
+    points?: unknown;
+    phone?: string;
+  };
+  if (!name || typeof name !== 'string') {
+    return res.status(400).json({ error: 'Se requiere name' });
   }
   const trimmedName = name.trim();
   if (trimmedName.length < 1) {
     return res.status(400).json({ error: 'El nombre no puede estar vacío' });
   }
-  const emailTrim = email.trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+  const emailTrim = typeof email === 'string' ? email.trim() : '';
+  if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
     return res.status(400).json({ error: 'Email inválido' });
   }
   let pts = 0;
@@ -27,12 +32,19 @@ router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
     pts = Math.min(999_999, Math.floor(n));
   }
   try {
-    const user = await userRepo.createManualClient({ name: trimmedName, email: emailTrim, points: pts });
+    const phoneTrim = typeof phone === 'string' ? phone.trim() : '';
+    const user = await userRepo.createManualClient({
+      name: trimmedName,
+      email: emailTrim || undefined,
+      points: pts,
+      phone: phoneTrim || undefined,
+    });
     res.status(201).json({
       client: {
         id: user.id,
         email: user.email,
         name: user.name,
+        phone: user.phone ?? null,
         points: user.points,
         avatarUrl: user.avatar_url ?? null,
         createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at),
@@ -56,6 +68,7 @@ router.get('/clients', requireAuth, requireAdmin, async (_req, res) => {
       id: c.id,
       email: c.email,
       name: c.name,
+      phone: c.phone ?? null,
       points: c.points,
       avatarUrl: c.avatar_url ?? null,
       createdAt: c.created_at instanceof Date ? c.created_at.toISOString() : String(c.created_at),
@@ -85,6 +98,7 @@ router.get('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
         id: user.id,
         email: user.email,
         name: user.name,
+        phone: user.phone ?? null,
         points: user.points,
         avatarUrl: user.avatar_url ?? null,
         createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at),

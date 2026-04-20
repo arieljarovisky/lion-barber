@@ -41,5 +41,10 @@ export function resolveAppointmentServiceAmountArs(app: Appointment, services: S
       if (n != null && n > 0) return n;
     }
   }
+  const byName = services.find((x) => x.name === app.service);
+  if (byName?.price) {
+    const n = parseArsAmount(byName.price);
+    if (n != null && n > 0) return n;
+  }
   return parseArsAmount(app.service);
 }

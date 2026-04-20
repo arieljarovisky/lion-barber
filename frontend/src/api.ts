@@ -1,9 +1,9 @@
-// En producción definir VITE_API_URL en Vercel (ej: https://tu-backend.railway.app)
+// En producci?n definir VITE_API_URL en Vercel (ej: https://tu-backend.railway.app)
 const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? '' : '');
 
 let authToken: string | null = null;
 
-/** Errores HTTP de la API (para no cerrar sesión en fallos de red). */
+/** Errores HTTP de la API (para no cerrar sesi?n en fallos de red). */
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -36,7 +36,7 @@ export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
 export interface Appointment {
   id: string;
-  /** Usuario cliente vinculado (si reservó con cuenta o turno manual enlazado). */
+  /** Usuario cliente vinculado (si reserv? con cuenta o turno manual enlazado). */
   userId?: number;
   name: string;
   phone: string;
@@ -53,7 +53,7 @@ export interface Appointment {
   /** Solo en GET /api/appointments/mine */
   canCancel?: boolean;
   canReschedule?: boolean;
-  /** Factura electrónica (admin / panel) */
+  /** Factura electr?nica (admin / panel) */
   afipCae?: string;
   afipCaeVto?: string;
   afipCbteNro?: number;
@@ -151,8 +151,10 @@ export interface AdminClientWithHistory {
   id: number;
   email: string;
   name: string;
+  /** Tel?fono en la ficha del cliente (tambi?n se guarda en cada turno). */
+  phone?: string | null;
   points: number;
-  /** Foto de perfil de Google si el cliente inició sesión al menos una vez. */
+  /** Foto de perfil de Google si el cliente inici? sesi?n al menos una vez. */
   avatarUrl?: string | null;
   createdAt: string;
   appointments: Appointment[];
@@ -190,7 +192,7 @@ export const api = {
   createAppointment: (data: Omit<Appointment, 'id'> & { userId?: number }) =>
     fetchApi<Appointment>('/api/appointments', { method: 'POST', body: JSON.stringify(data) }),
 
-  /** Crea preferencia de seña; el front usa `preferenceId` con Wallet Brick (y opcionalmente `url` para redirección). */
+  /** Crea preferencia de se?a; el front usa `preferenceId` con Wallet Brick (y opcionalmente `url` para redirecci?n). */
   createCheckoutSena: (data: {
     name: string;
     phone: string;
@@ -206,7 +208,7 @@ export const api = {
       { method: 'POST', body: JSON.stringify(data) }
     ),
 
-  /** Nueva preferencia MP para un turno pending_payment (p. ej. desde el perfil). Requiere sesión. */
+  /** Nueva preferencia MP para un turno pending_payment (p. ej. desde el perfil). Requiere sesi?n. */
   createCheckoutSenaForAppointment: (appointmentId: string) =>
     fetchApi<{ preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }>(
       `/api/checkout/sena/${encodeURIComponent(appointmentId)}`,
@@ -233,10 +235,10 @@ export const api = {
 
   getShopSettings: () => fetchApi<ShopSettings>('/api/shop-settings'),
 
-  /** Solo admin: estado de integración AFIP (Afip SDK). */
+  /** Solo admin: estado de integraci?n AFIP (Afip SDK). */
   getAfipStatus: () => fetchApi<{ configured: boolean; production: boolean }>('/api/afip/status'),
 
-  /** Solo admin: emite comprobante electrónico AFIP para un turno (opcional: productos de venta). */
+  /** Solo admin: emite comprobante electr?nico AFIP para un turno (opcional: productos de venta). */
   createAfipInvoice: (
     appointmentId: string,
     body?: { productLines?: { productId: string; quantity: number }[] }
@@ -388,8 +390,8 @@ export const api = {
   getAdminClient: (clientId: number) =>
     fetchApi<{ client: AdminClientWithHistory }>(`/api/users/clients/${clientId}`),
 
-  /** Solo admin: alta manual (el cliente podrá vincular Google al iniciar sesión con el mismo email). */
-  createAdminClient: (data: { name: string; email: string; points?: number }) =>
+  /** Solo admin: alta manual (el cliente podr? vincular Google al iniciar sesi?n con el mismo email). */
+  createAdminClient: (data: { name: string; email?: string; phone?: string; points?: number }) =>
     fetchApi<{ client: AdminClientWithHistory }>('/api/users/clients', {
       method: 'POST',
       body: JSON.stringify(data),

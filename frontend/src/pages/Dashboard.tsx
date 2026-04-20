@@ -45,6 +45,8 @@ import ProductPointsPanel from '../components/ProductPointsPanel';
 import BillingPanel from '../components/BillingPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import { api, ApiError } from '../api';
+import { resolveAppointmentServiceAmountArs } from '../utils/money';
+import { displayClientEmail } from '../utils/manualClientEmail';
 import type {
   Appointment,
   Barber,
@@ -56,6 +58,17 @@ import type {
   AdminClientWithHistory,
   type PointsRedemptionOption,
 } from '../api';
+
+function normalizePhoneDigits(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
+function adminClientMatchesPhoneDigits(c: AdminClientWithHistory, phoneDigits: string): boolean {
+  if (phoneDigits.length < 6) return false;
+  const onFile = c.phone ? normalizePhoneDigits(c.phone) : '';
+  if (onFile === phoneDigits) return true;
+  return c.appointments.some((a) => normalizePhoneDigits(a.phone || '') === phoneDigits);
+}
 
 const TIME_SLOTS = [
   '10:00', '10:20', '10:40',
@@ -69,20 +82,6 @@ const TIME_SLOTS = [
   '18:00', '18:20', '18:40',
   '19:00', '19:20', '19:40',
 ];
-
-const SERVICE_PRICES: Record<string, number> = {
-  'Corte de cabello': 20000,
-  'Corte de niños 0 a 6': 22000,
-  'Cabellos largos 10cm': 22000,
-  'Arreglo de barba': 10000,
-  'Perfilado de cejas': 1000,
-  'Rapado': 10000,
-  'Afeitado tradicional': 8000,
-};
-
-function getPrice(service: string): number {
-  return SERVICE_PRICES[service] ?? 0;
-}
 
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
   const raw = (icon ?? '').trim();
@@ -325,16 +324,19 @@ export default function Dashboard() {
   const clientNameSuggestions = useMemo(() => {
     if (!isAdmin || editingAppointment || !modalOpen) return [];
     const q = form.name.trim().toLowerCase();
-    if (q.length < 1) return [];
+    const phoneDigits = normalizePhoneDigits(form.phone);
+    if (q.length < 1 && phoneDigits.length < 6) return [];
     return adminClients
-      .filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.email.toLowerCase().includes(q)
-      )
+      .filter((c) => {
+        const nameOrEmail =
+          q.length >= 1 &&
+          (c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q));
+        const byPhone = adminClientMatchesPhoneDigits(c, phoneDigits);
+        return nameOrEmail || byPhone;
+      })
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
       .slice(0, 8);
-  }, [isAdmin, editingAppointment, modalOpen, form.name, adminClients]);
+  }, [isAdmin, editingAppointment, modalOpen, form.name, form.phone, adminClients]);
 
   const loadServicePointsPanel = useCallback(async () => {
     setPointsPanelLoading(true);
@@ -795,25 +797,41 @@ export default function Dashboard() {
             }
           }
           if (userId == null) {
+            const phoneDigits = normalizePhoneDigits(phoneForApp);
+            if (phoneDigits.length >= 6) {
+              const phoneMatches = adminClients.filter((c) => adminClientMatchesPhoneDigits(c, phoneDigits));
+              if (phoneMatches.length > 1) {
+                setError(
+                  'Hay varios clientes con ese teléfono en el historial. Elegí la ficha en las sugerencias.'
+                );
+                setSaving(false);
+                return;
+              }
+              if (phoneMatches.length === 1) {
+                userId = phoneMatches[0].id;
+                nameForApp = phoneMatches[0].name;
+              }
+            }
+          }
+          if (userId == null) {
             const email = newClientEmail.trim().toLowerCase();
-            if (email) {
-              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                setError('Ingresá un email válido para registrar al cliente nuevo.');
-                setSaving(false);
-                return;
-              }
-              try {
-                const { client } = await api.createAdminClient({
-                  name: nameForApp,
-                  email,
-                  points: 0,
-                });
-                userId = client.id;
-              } catch (err) {
-                setError(err instanceof ApiError ? err.message : 'No se pudo crear el cliente');
-                setSaving(false);
-                return;
-              }
+            if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+              setError('Si completás el email, tiene que ser válido.');
+              setSaving(false);
+              return;
+            }
+            try {
+              const { client } = await api.createAdminClient({
+                name: nameForApp,
+                phone: phoneForApp,
+                ...(email ? { email } : {}),
+                points: 0,
+              });
+              userId = client.id;
+            } catch (err) {
+              setError(err instanceof ApiError ? err.message : 'No se pudo crear el cliente');
+              setSaving(false);
+              return;
             }
           }
         }
@@ -1020,7 +1038,10 @@ export default function Dashboard() {
     setDragOverServiceId(null);
   };
 
-  const totalIncome = dayAppointments.reduce((acc, curr) => acc + getPrice(curr.service), 0);
+  const totalIncome = dayAppointments.reduce(
+    (acc, curr) => acc + (resolveAppointmentServiceAmountArs(curr, services) ?? 0),
+    0
+  );
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -2420,7 +2441,7 @@ export default function Dashboard() {
                             }}
                           >
                             <span className="font-medium">{c.name}</span>
-                            <span className="block text-xs text-zinc-500 truncate">{c.email}</span>
+                            <span className="block text-xs text-zinc-500 truncate">{displayClientEmail(c.email)}</span>
                           </button>
                         </li>
                       ))}
@@ -2431,7 +2452,7 @@ export default function Dashboard() {
                   <p className="mt-1 text-xs text-zinc-500">
                     Vinculado a ficha:{' '}
                     <span className="font-medium text-zinc-700">
-                      {adminClients.find((x) => x.id === linkedClientId)?.email}
+                      {displayClientEmail(adminClients.find((x) => x.id === linkedClientId)?.email ?? '')}
                     </span>
                   </p>
                 )}
@@ -2445,6 +2466,18 @@ export default function Dashboard() {
                   required
                   value={form.phone}
                   onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  onBlur={() => {
+                    if (!isAdmin || editingAppointment) return;
+                    if (linkedClientId != null) return;
+                    const d = normalizePhoneDigits(form.phone);
+                    if (d.length < 6) return;
+                    const matches = adminClients.filter((c) => adminClientMatchesPhoneDigits(c, d));
+                    if (matches.length === 1) {
+                      setLinkedClientId(matches[0].id);
+                      setForm((f) => ({ ...f, name: matches[0].name }));
+                      setNewClientEmail('');
+                    }
+                  }}
                   className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                   placeholder="Ej. 11 2345 6789"
                 />
@@ -2463,8 +2496,9 @@ export default function Dashboard() {
                     autoComplete="email"
                   />
                   <p className="mt-1 text-xs text-zinc-500">
-                    Si el nombre no coincide con nadie y completás el email, se crea el cliente y el turno queda
-                    vinculado. Si no completás email, el turno se guarda sin ficha.
+                    Si no hay coincidencia por nombre o teléfono, se crea la ficha automáticamente y el turno queda
+                    vinculado. El email sirve para que después pueda iniciar sesión con Google usando la misma cuenta;
+                    si no lo cargás, la ficha se guarda igual.
                   </p>
                 </div>
               )}
