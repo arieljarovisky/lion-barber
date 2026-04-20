@@ -1,4 +1,5 @@
 import pool, { query } from '../db.js';
+import { dbDateTimeToIsoUtc } from '../dbDateTime.js';
 
 export interface StaffInvite {
   id: number;
@@ -23,7 +24,7 @@ function row(r: DbInvite): StaffInvite {
     email: r.email,
     name: r.name,
     barberId: r.barber_id ?? null,
-    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    createdAt: dbDateTimeToIsoUtc(r.created_at),
   };
 }
 

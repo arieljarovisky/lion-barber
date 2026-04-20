@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { dbDateTimeToIsoUtc } from '../dbDateTime.js';
 import * as userRepo from '../repositories/users.js';
 import * as appointmentRepo from '../repositories/appointments.js';
 
@@ -47,7 +48,7 @@ router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
         phone: user.phone ?? null,
         points: user.points,
         avatarUrl: user.avatar_url ?? null,
-        createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at),
+        createdAt: dbDateTimeToIsoUtc(user.created_at),
         appointments: [],
       },
     });
@@ -71,7 +72,7 @@ router.get('/clients', requireAuth, requireAdmin, async (_req, res) => {
       phone: c.phone ?? null,
       points: c.points,
       avatarUrl: c.avatar_url ?? null,
-      createdAt: c.created_at instanceof Date ? c.created_at.toISOString() : String(c.created_at),
+      createdAt: dbDateTimeToIsoUtc(c.created_at),
       appointments: byUser.get(c.id) ?? [],
     }));
     res.json({ clients: body });
@@ -101,7 +102,7 @@ router.get('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
         phone: user.phone ?? null,
         points: user.points,
         avatarUrl: user.avatar_url ?? null,
-        createdAt: user.created_at instanceof Date ? user.created_at.toISOString() : String(user.created_at),
+        createdAt: dbDateTimeToIsoUtc(user.created_at),
         appointments,
       },
     });
