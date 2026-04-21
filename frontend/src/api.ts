@@ -122,6 +122,7 @@ export interface ShopSettings {
   openWeekdays: number[];
   depositPercent: number;
   closeTime: string;
+  weekdayHours: Record<number, { openTime: string; closeTime: string }>;
 }
 
 export interface BarberFrancoRow {
@@ -252,7 +253,9 @@ export const api = {
       }
     ),
 
-  updateShopSettings: (data: Partial<Pick<ShopSettings, 'cutoffHours' | 'openWeekdays' | 'depositPercent' | 'closeTime'>>) =>
+  updateShopSettings: (
+    data: Partial<Pick<ShopSettings, 'cutoffHours' | 'openWeekdays' | 'depositPercent' | 'closeTime' | 'weekdayHours'>>
+  ) =>
     fetchApi<ShopSettings>('/api/shop-settings', { method: 'PATCH', body: JSON.stringify(data) }),
 
   updateBarber: (barberId: string, data: { name?: string; commissionPercent?: number }) =>

@@ -41,13 +41,32 @@ const TIME_SLOTS = [
   '19:00', '19:20', '19:40'
 ];
 
-function buildTimeSlotsUntilClose(closeTime: string): string[] {
-  const [hRaw, mRaw] = closeTime.split(':').map(Number);
-  const closeMinutes = Number.isFinite(hRaw) && Number.isFinite(mRaw) ? hRaw * 60 + mRaw : 20 * 60;
-  const safeClose = Math.max(10 * 60 + 20, Math.min(24 * 60, closeMinutes));
+type DayHours = { openTime: string; closeTime: string };
+
+const DEFAULT_WEEKDAY_HOURS: Record<number, DayHours> = {
+  1: { openTime: '10:00', closeTime: '20:00' },
+  2: { openTime: '10:00', closeTime: '20:00' },
+  3: { openTime: '10:00', closeTime: '20:00' },
+  4: { openTime: '10:00', closeTime: '20:00' },
+  5: { openTime: '10:00', closeTime: '20:00' },
+  6: { openTime: '10:00', closeTime: '20:00' },
+  7: { openTime: '10:00', closeTime: '20:00' },
+};
+
+function timeToMinutes(hhmm: string): number {
+  const [hRaw, mRaw] = hhmm.split(':').map(Number);
+  if (!Number.isFinite(hRaw) || !Number.isFinite(mRaw)) return NaN;
+  return hRaw * 60 + mRaw;
+}
+
+function buildTimeSlotsInRange(openTime: string, closeTime: string): string[] {
+  const openMinutes = timeToMinutes(openTime);
+  const closeMinutes = timeToMinutes(closeTime);
+  const safeOpen = Number.isFinite(openMinutes) ? Math.max(0, Math.min(24 * 60 - 20, openMinutes)) : 10 * 60;
+  const safeClose = Number.isFinite(closeMinutes) ? Math.max(safeOpen + 20, Math.min(24 * 60, closeMinutes)) : 20 * 60;
   return TIME_SLOTS.filter((slot) => {
-    const [h, m] = slot.split(':').map(Number);
-    return h * 60 + m + 20 <= safeClose;
+    const start = timeToMinutes(slot);
+    return Number.isFinite(start) && start >= safeOpen && start + 20 <= safeClose;
   });
 }
 
@@ -117,6 +136,7 @@ export default function ClientView() {
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [openWeekdays, setOpenWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [shopCloseTime, setShopCloseTime] = useState('20:00');
+  const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
 
   useEffect(() => {
     api.getServices().then(setServices).catch(() => setServices([]));
@@ -126,6 +146,12 @@ export default function ClientView() {
       .then((s) => {
         setOpenWeekdays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
         setShopCloseTime(s.closeTime || '20:00');
+        const next: Record<number, DayHours> = { ...DEFAULT_WEEKDAY_HOURS };
+        for (let d = 1; d <= 7; d++) {
+          const h = s.weekdayHours?.[d];
+          next[d] = { openTime: h?.openTime || '10:00', closeTime: h?.closeTime || (s.closeTime || '20:00') };
+        }
+        setShopWeekdayHours(next);
       })
       .catch(() => {});
   }, []);
@@ -153,7 +179,12 @@ export default function ClientView() {
   const [scrollLeft, setScrollLeft] = useState(0);
   const [dragged, setDragged] = useState(false);
 
-  const businessTimeSlots = useMemo(() => buildTimeSlotsUntilClose(shopCloseTime), [shopCloseTime]);
+  const selectedWeekday = getISODay(parse(selectedDate, 'yyyy-MM-dd', new Date()));
+  const selectedDayHours = shopWeekdayHours[selectedWeekday] ?? { openTime: '10:00', closeTime: shopCloseTime };
+  const businessTimeSlots = useMemo(
+    () => buildTimeSlotsInRange(selectedDayHours.openTime, selectedDayHours.closeTime),
+    [selectedDayHours.openTime, selectedDayHours.closeTime]
+  );
   const [availableSlots, setAvailableSlots] = useState<string[]>(TIME_SLOTS);
   const [earliestAny, setEarliestAny] = useState<{ barberId: string; time: string } | null>(null);
   const [availableBarberIds, setAvailableBarberIds] = useState<string[]>([]);

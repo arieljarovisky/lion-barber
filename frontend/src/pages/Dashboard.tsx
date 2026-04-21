@@ -83,13 +83,24 @@ const TIME_SLOTS = [
   '19:00', '19:20', '19:40',
 ];
 
-function buildTimeSlotsUntilClose(closeTime: string): string[] {
-  const [hRaw, mRaw] = closeTime.split(':').map(Number);
-  const closeMinutes = Number.isFinite(hRaw) && Number.isFinite(mRaw) ? hRaw * 60 + mRaw : 20 * 60;
-  const safeClose = Math.max(10 * 60 + SLOT_STEP_MINUTES, Math.min(24 * 60, closeMinutes));
+type DayHours = { openTime: string; closeTime: string };
+
+function timeToMinutes(hhmm: string): number {
+  const [hRaw, mRaw] = hhmm.split(':').map(Number);
+  if (!Number.isFinite(hRaw) || !Number.isFinite(mRaw)) return NaN;
+  return hRaw * 60 + mRaw;
+}
+
+function buildTimeSlotsInRange(openTime: string, closeTime: string): string[] {
+  const openMinutes = timeToMinutes(openTime);
+  const closeMinutes = timeToMinutes(closeTime);
+  const safeOpen = Number.isFinite(openMinutes) ? Math.max(0, Math.min(24 * 60 - SLOT_STEP_MINUTES, openMinutes)) : 10 * 60;
+  const safeClose = Number.isFinite(closeMinutes)
+    ? Math.max(safeOpen + SLOT_STEP_MINUTES, Math.min(24 * 60, closeMinutes))
+    : 20 * 60;
   return TIME_SLOTS.filter((slot) => {
-    const [h, m] = slot.split(':').map(Number);
-    return h * 60 + m + SLOT_STEP_MINUTES <= safeClose;
+    const start = timeToMinutes(slot);
+    return Number.isFinite(start) && start >= safeOpen && start + SLOT_STEP_MINUTES <= safeClose;
   });
 }
 
@@ -211,6 +222,33 @@ const WEEKDAY_SHORT: { value: number; label: string }[] = [
   { value: 7, label: 'Dom' },
 ];
 
+const DEFAULT_WEEKDAY_HOURS: Record<number, DayHours> = {
+  1: { openTime: '10:00', closeTime: '20:00' },
+  2: { openTime: '10:00', closeTime: '20:00' },
+  3: { openTime: '10:00', closeTime: '20:00' },
+  4: { openTime: '10:00', closeTime: '20:00' },
+  5: { openTime: '10:00', closeTime: '20:00' },
+  6: { openTime: '10:00', closeTime: '20:00' },
+  7: { openTime: '10:00', closeTime: '20:00' },
+};
+
+function getIsoWeekday(date: Date): number {
+  const day = date.getDay();
+  return day === 0 ? 7 : day;
+}
+
+function normalizeWeekdayHours(input: Record<number, DayHours> | undefined, closeTimeFallback = '20:00'): Record<number, DayHours> {
+  const out: Record<number, DayHours> = { ...DEFAULT_WEEKDAY_HOURS };
+  for (let d = 1; d <= 7; d++) {
+    const fromInput = input?.[d];
+    out[d] = {
+      openTime: fromInput?.openTime || DEFAULT_WEEKDAY_HOURS[d].openTime,
+      closeTime: fromInput?.closeTime || closeTimeFallback,
+    };
+  }
+  return out;
+}
+
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedBarberId, setSelectedBarberId] = useState<string | 'all'>('all');
@@ -276,6 +314,7 @@ export default function Dashboard() {
   const [shopDays, setShopDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [shopDepositPercent, setShopDepositPercent] = useState(30);
   const [shopCloseTime, setShopCloseTime] = useState('20:00');
+  const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState('');
@@ -424,7 +463,11 @@ export default function Dashboard() {
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
-  const agendaTimeSlots = useMemo(() => buildTimeSlotsUntilClose(shopCloseTime), [shopCloseTime]);
+  const selectedDayHours = shopWeekdayHours[getIsoWeekday(selectedDate)] ?? { openTime: '10:00', closeTime: shopCloseTime };
+  const agendaTimeSlots = useMemo(
+    () => buildTimeSlotsInRange(selectedDayHours.openTime, selectedDayHours.closeTime),
+    [selectedDayHours.openTime, selectedDayHours.closeTime]
+  );
   /** Vista semana solo para admin (elige un peluquero). Los barberos usan vista por día (día actual / calendario). */
   const isWeekView = selectedBarberId !== 'all' && !isStaffBarber;
   const isDayToday = isSameDay(selectedDate, new Date());
@@ -524,6 +567,7 @@ export default function Dashboard() {
           setShopDays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
           setShopDepositPercent(s.depositPercent);
           setShopCloseTime(s.closeTime || '20:00');
+          setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
         }
       })
       .catch(() => {
@@ -1093,6 +1137,13 @@ export default function Dashboard() {
     });
   };
 
+  const handleDayHoursChange = (day: number, key: 'openTime' | 'closeTime', value: string) => {
+    setShopWeekdayHours((prev) => {
+      const current = prev[day] ?? { openTime: '10:00', closeTime: shopCloseTime };
+      return { ...prev, [day]: { ...current, [key]: value } };
+    });
+  };
+
   const handleSaveShopSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (shopDays.length === 0) {
@@ -1107,6 +1158,7 @@ export default function Dashboard() {
         openWeekdays: shopDays,
         depositPercent: shopDepositPercent,
         closeTime: shopCloseTime,
+        weekdayHours: shopWeekdayHours,
       });
       showToast('Configuración guardada correctamente');
     } catch (err) {
@@ -2320,7 +2372,7 @@ export default function Dashboard() {
                 <h3 className="font-black text-lg text-zinc-900">Días abiertos</h3>
                 <p className="text-sm text-zinc-500 mt-1">Solo los días marcados permiten reservar en la web.</p>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mt-4 mb-1">
-                  Horario de cierre
+                  Cierre general (respaldo)
                 </label>
                 <input
                   type="time"
@@ -2330,7 +2382,7 @@ export default function Dashboard() {
                   className="w-40 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                 />
                 <p className="text-xs text-zinc-500 mt-2">
-                  Ajusta hasta qué hora se ofrecen turnos en la web y en la agenda.
+                  Se usa como respaldo para días sin horario específico.
                 </p>
                 <div className="flex flex-wrap gap-2 mt-4">
                   {WEEKDAY_SHORT.map(({ value, label }) => (
@@ -2347,6 +2399,34 @@ export default function Dashboard() {
                       {label}
                     </button>
                   ))}
+                </div>
+                <div className="mt-5 space-y-2">
+                  {WEEKDAY_SHORT.map(({ value, label }) => {
+                    const dayHours = shopWeekdayHours[value] ?? { openTime: '10:00', closeTime: shopCloseTime };
+                    const disabled = !shopDays.includes(value);
+                    return (
+                      <div key={`hours-${value}`} className="flex items-center gap-3">
+                        <span className="w-12 text-sm font-semibold text-zinc-700">{label}</span>
+                        <input
+                          type="time"
+                          step={1200}
+                          value={dayHours.openTime}
+                          disabled={disabled}
+                          onChange={(e) => handleDayHoursChange(value, 'openTime', e.target.value)}
+                          className="w-32 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400"
+                        />
+                        <span className="text-zinc-400 text-sm">a</span>
+                        <input
+                          type="time"
+                          step={1200}
+                          value={dayHours.closeTime}
+                          disabled={disabled}
+                          onChange={(e) => handleDayHoursChange(value, 'closeTime', e.target.value)}
+                          className="w-32 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-400"
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
               <button

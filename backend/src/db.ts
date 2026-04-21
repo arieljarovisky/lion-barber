@@ -253,7 +253,8 @@ export async function initDb(): Promise<void> {
       cutoff_hours INT NOT NULL DEFAULT 12,
       open_weekdays VARCHAR(64) NOT NULL DEFAULT '1,2,3,4,5,6,7',
       deposit_percent DECIMAL(5,2) NOT NULL DEFAULT 30,
-      close_time VARCHAR(5) NOT NULL DEFAULT '20:00'
+      close_time VARCHAR(5) NOT NULL DEFAULT '20:00',
+      weekday_hours TEXT NULL
     )
   `);
   try {
@@ -267,6 +268,11 @@ export async function initDb(): Promise<void> {
     await pool.execute(
       "ALTER TABLE shop_settings ADD COLUMN close_time VARCHAR(5) NOT NULL DEFAULT '20:00'"
     );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE shop_settings ADD COLUMN weekday_hours TEXT NULL');
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }

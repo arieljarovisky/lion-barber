@@ -44,6 +44,13 @@ export function closeTimeToMinutes(closeTime: string | undefined): number {
   return Math.max(BUSINESS_OPEN_MINUTES + 20, Math.min(24 * 60, n));
 }
 
+export function openTimeToMinutes(openTime: string | undefined): number {
+  if (!openTime) return BUSINESS_OPEN_MINUTES;
+  const n = timeToMinutes(openTime);
+  if (!Number.isFinite(n)) return BUSINESS_OPEN_MINUTES;
+  return Math.max(0, Math.min(24 * 60 - 20, n));
+}
+
 export function intervalOverlapsExisting(
   startMin: number,
   endMin: number,
