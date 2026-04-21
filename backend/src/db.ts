@@ -252,7 +252,8 @@ export async function initDb(): Promise<void> {
       id INT PRIMARY KEY DEFAULT 1,
       cutoff_hours INT NOT NULL DEFAULT 12,
       open_weekdays VARCHAR(64) NOT NULL DEFAULT '1,2,3,4,5,6,7',
-      deposit_percent DECIMAL(5,2) NOT NULL DEFAULT 30
+      deposit_percent DECIMAL(5,2) NOT NULL DEFAULT 30,
+      close_time VARCHAR(5) NOT NULL DEFAULT '20:00'
     )
   `);
   try {
@@ -264,7 +265,14 @@ export async function initDb(): Promise<void> {
   }
   try {
     await pool.execute(
-      "INSERT IGNORE INTO shop_settings (id, cutoff_hours, open_weekdays, deposit_percent) VALUES (1, 12, '1,2,3,4,5,6,7', 30)"
+      "ALTER TABLE shop_settings ADD COLUMN close_time VARCHAR(5) NOT NULL DEFAULT '20:00'"
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      "INSERT IGNORE INTO shop_settings (id, cutoff_hours, open_weekdays, deposit_percent, close_time) VALUES (1, 12, '1,2,3,4,5,6,7', 30, '20:00')"
     );
   } catch {
     /* ya existe */

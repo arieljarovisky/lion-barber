@@ -38,3 +38,30 @@ export async function updateBarberCommission(id: string, commissionPercent: numb
   await pool.execute('UPDATE barbers SET commission_percent = ? WHERE id = ?', [p, id]);
   return getBarberById(id);
 }
+
+export async function updateBarber(
+  id: string,
+  data: { name?: string; commissionPercent?: number }
+): Promise<Barber | null> {
+  const fields: string[] = [];
+  const values: Array<string | number> = [];
+
+  if (data.name != null) {
+    const n = data.name.trim();
+    if (!n) throw new Error('El nombre no puede quedar vacío.');
+    fields.push('name = ?');
+    values.push(n);
+  }
+
+  if (data.commissionPercent != null) {
+    const p = Math.min(100, Math.max(0, Number(data.commissionPercent)));
+    if (!Number.isFinite(p)) throw new Error('Comisión inválida.');
+    fields.push('commission_percent = ?');
+    values.push(p);
+  }
+
+  if (!fields.length) return getBarberById(id);
+
+  await pool.execute(`UPDATE barbers SET ${fields.join(', ')} WHERE id = ?`, [...values, id]);
+  return getBarberById(id);
+}

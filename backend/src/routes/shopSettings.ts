@@ -11,6 +11,7 @@ router.get('/', async (_req, res) => {
       cutoffHours: s.cutoffHours,
       openWeekdays: s.openWeekdays,
       depositPercent: s.depositPercent,
+      closeTime: s.closeTime,
     });
   } catch (err) {
     console.error(err);
@@ -19,16 +20,18 @@ router.get('/', async (_req, res) => {
 });
 
 router.patch('/', requireAuth, requireAdmin, async (req, res) => {
-  const { cutoffHours, openWeekdays, depositPercent } = req.body as {
+  const { cutoffHours, openWeekdays, depositPercent, closeTime } = req.body as {
     cutoffHours?: number;
     openWeekdays?: number[];
     depositPercent?: number;
+    closeTime?: string;
   };
   try {
     const updated = await repo.updateShopSettings({
       ...(cutoffHours != null ? { cutoffHours: Number(cutoffHours) } : {}),
       ...(openWeekdays != null ? { openWeekdays } : {}),
       ...(depositPercent != null ? { depositPercent: Number(depositPercent) } : {}),
+      ...(closeTime != null ? { closeTime: String(closeTime) } : {}),
     });
     res.json(updated);
   } catch (err) {

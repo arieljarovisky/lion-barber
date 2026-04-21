@@ -83,6 +83,16 @@ const TIME_SLOTS = [
   '19:00', '19:20', '19:40',
 ];
 
+function buildTimeSlotsUntilClose(closeTime: string): string[] {
+  const [hRaw, mRaw] = closeTime.split(':').map(Number);
+  const closeMinutes = Number.isFinite(hRaw) && Number.isFinite(mRaw) ? hRaw * 60 + mRaw : 20 * 60;
+  const safeClose = Math.max(10 * 60 + SLOT_STEP_MINUTES, Math.min(24 * 60, closeMinutes));
+  return TIME_SLOTS.filter((slot) => {
+    const [h, m] = slot.split(':').map(Number);
+    return h * 60 + m + SLOT_STEP_MINUTES <= safeClose;
+  });
+}
+
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
   const raw = (icon ?? '').trim();
   if (!raw) return { kind: 'none', value: '' };
@@ -265,6 +275,7 @@ export default function Dashboard() {
   const [shopCutoff, setShopCutoff] = useState(12);
   const [shopDays, setShopDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [shopDepositPercent, setShopDepositPercent] = useState(30);
+  const [shopCloseTime, setShopCloseTime] = useState('20:00');
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState('');
@@ -413,6 +424,7 @@ export default function Dashboard() {
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  const agendaTimeSlots = useMemo(() => buildTimeSlotsUntilClose(shopCloseTime), [shopCloseTime]);
   /** Vista semana solo para admin (elige un peluquero). Los barberos usan vista por día (día actual / calendario). */
   const isWeekView = selectedBarberId !== 'all' && !isStaffBarber;
   const isDayToday = isSameDay(selectedDate, new Date());
@@ -511,6 +523,7 @@ export default function Dashboard() {
           setShopCutoff(s.cutoffHours);
           setShopDays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
           setShopDepositPercent(s.depositPercent);
+          setShopCloseTime(s.closeTime || '20:00');
         }
       })
       .catch(() => {
@@ -566,7 +579,7 @@ export default function Dashboard() {
   const handleAddTimeBlock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scheduleBarberId || !canAccessDashboard) return;
-    if (TIME_SLOTS.indexOf(blockTimeEnd) <= TIME_SLOTS.indexOf(blockTimeStart)) {
+    if (agendaTimeSlots.indexOf(blockTimeEnd) <= agendaTimeSlots.indexOf(blockTimeStart)) {
       setScheduleError('La hora "hasta" debe ser posterior a "desde".');
       return;
     }
@@ -678,8 +691,21 @@ export default function Dashboard() {
       .sort((a, b) => a.time.localeCompare(b.time)),
   }));
 
+  useEffect(() => {
+    if (!agendaTimeSlots.length) return;
+    setBlockTimeStart((prev) => (agendaTimeSlots.includes(prev) ? prev : agendaTimeSlots[0]));
+    setBlockTimeEnd((prev) => {
+      if (agendaTimeSlots.includes(prev)) return prev;
+      return agendaTimeSlots[1] ?? agendaTimeSlots[0];
+    });
+    setForm((prev) => ({
+      ...prev,
+      time: agendaTimeSlots.includes(prev.time) ? prev.time : agendaTimeSlots[0],
+    }));
+  }, [agendaTimeSlots]);
+
   const weekColumnCellsByDay = weekAppointmentsByDay.map(({ appointments: dayApps }) =>
-    buildWeekColumnCells(dayApps, TIME_SLOTS)
+    buildWeekColumnCells(dayApps, agendaTimeSlots)
   );
 
   const openCreateModal = () => {
@@ -693,7 +719,7 @@ export default function Dashboard() {
       service: services[0]?.id ?? '',
       barberId: defaultBarber,
       date: dateStr,
-      time: TIME_SLOTS[0] ?? '10:00',
+      time: agendaTimeSlots[0] ?? '10:00',
     });
     setError('');
     setModalOpen(true);
@@ -1080,6 +1106,7 @@ export default function Dashboard() {
         cutoffHours: shopCutoff,
         openWeekdays: shopDays,
         depositPercent: shopDepositPercent,
+        closeTime: shopCloseTime,
       });
       showToast('Configuración guardada correctamente');
     } catch (err) {
@@ -1377,7 +1404,7 @@ export default function Dashboard() {
               <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)] sm:max-h-[calc(100vh-320px)] -mx-2 sm:mx-0">
                 <table className="w-full min-w-[640px] sm:min-w-[720px] border-collapse table-fixed">
                   <tbody>
-                    {TIME_SLOTS.map((slot, slotIndex) => (
+                    {agendaTimeSlots.map((slot, slotIndex) => (
                       <tr key={slot} className="border-b border-zinc-100 hover:bg-zinc-50/70 transition-colors">
                         <td className="py-2 px-4 font-mono text-sm font-semibold text-zinc-600 sticky left-0 bg-white z-10 border-r border-zinc-100 whitespace-nowrap">
                           {slot}
@@ -1477,7 +1504,7 @@ export default function Dashboard() {
                 <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
                   <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-contain">
                     <ul className="divide-y divide-zinc-100">
-                      {buildDayTimelineRows(appointmentsByBarber[0].appointments, TIME_SLOTS).map((row) => {
+                      {buildDayTimelineRows(appointmentsByBarber[0].appointments, agendaTimeSlots).map((row) => {
                         if (row.kind === 'free') {
                           const bid = appointmentsByBarber[0]?.barber.id;
                           return (
@@ -1586,7 +1613,7 @@ export default function Dashboard() {
                         <p className="font-bold text-base leading-tight">{barber.name}</p>
                       </div>
                       <div className="p-3 divide-y divide-zinc-100 max-h-[300px] overflow-y-auto">
-                        {buildDayTimelineRows(barberAppointments, TIME_SLOTS).map((row) => {
+                        {buildDayTimelineRows(barberAppointments, agendaTimeSlots).map((row) => {
                           if (row.kind === 'free') {
                             return (
                               <button
@@ -2023,7 +2050,7 @@ export default function Dashboard() {
                         className="w-full border border-zinc-200 rounded-xl px-3 py-3 text-zinc-900 text-sm"
                         disabled={!canAccessDashboard}
                       >
-                        {TIME_SLOTS.map((t) => (
+                        {agendaTimeSlots.map((t) => (
                           <option key={t} value={t}>
                             {t}
                           </option>
@@ -2038,7 +2065,7 @@ export default function Dashboard() {
                         className="w-full border border-zinc-200 rounded-xl px-3 py-3 text-zinc-900 text-sm"
                         disabled={!canAccessDashboard}
                       >
-                        {TIME_SLOTS.map((t) => (
+                        {agendaTimeSlots.map((t) => (
                           <option key={t} value={t}>
                             {t}
                           </option>
@@ -2292,6 +2319,19 @@ export default function Dashboard() {
               <div>
                 <h3 className="font-black text-lg text-zinc-900">Días abiertos</h3>
                 <p className="text-sm text-zinc-500 mt-1">Solo los días marcados permiten reservar en la web.</p>
+                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mt-4 mb-1">
+                  Horario de cierre
+                </label>
+                <input
+                  type="time"
+                  step={1200}
+                  value={shopCloseTime}
+                  onChange={(e) => setShopCloseTime(e.target.value)}
+                  className="w-40 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                />
+                <p className="text-xs text-zinc-500 mt-2">
+                  Ajusta hasta qué hora se ofrecen turnos en la web y en la agenda.
+                </p>
                 <div className="flex flex-wrap gap-2 mt-4">
                   {WEEKDAY_SHORT.map(({ value, label }) => (
                     <button
@@ -2318,15 +2358,38 @@ export default function Dashboard() {
               </button>
             </form>
             <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm">
-              <h3 className="font-black text-lg text-zinc-900">Comisiones por barbero</h3>
-              <p className="text-sm text-zinc-500 mt-1">Porcentaje de referencia para el dueño (uso interno).</p>
+              <h3 className="font-black text-lg text-zinc-900">Barberos y comisiones</h3>
+              <p className="text-sm text-zinc-500 mt-1">
+                Podés editar el nombre público y la comisión de referencia de cada barbero.
+              </p>
               {shopLoading ? (
                 <p className="text-zinc-400 mt-4">Cargando...</p>
               ) : (
                 <ul className="mt-4 divide-y divide-zinc-100">
                   {barbers.map((b) => (
                     <li key={b.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                      <span className="font-medium text-zinc-900">{b.name}</span>
+                      <div className="flex items-center gap-2 min-w-[260px]">
+                        <input
+                          type="text"
+                          defaultValue={b.name}
+                          key={`${b.id}-${b.name}`}
+                          onBlur={(e) => {
+                            const next = e.target.value.trim();
+                            if (!next || next === b.name) return;
+                            void api
+                              .updateBarber(b.id, { name: next })
+                              .then(() => {
+                                loadData();
+                                showToast(`Nombre de ${b.name} actualizado`);
+                              })
+                              .catch((err) =>
+                                showToast(err instanceof Error ? err.message : 'No se pudo actualizar el nombre', 'err')
+                              );
+                          }}
+                          className="w-48 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
+                        />
+                        <span className="text-xs text-zinc-500">{b.role}</span>
+                      </div>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
@@ -2339,7 +2402,7 @@ export default function Dashboard() {
                             const v = parseFloat(e.target.value);
                             if (!Number.isFinite(v)) return;
                             void api
-                              .updateBarberCommission(b.id, v)
+                              .updateBarber(b.id, { commissionPercent: v })
                               .then(() => {
                                 loadData();
                                 showToast(`Comisión de ${b.name} guardada`);
@@ -2547,7 +2610,7 @@ export default function Dashboard() {
                     onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
                     className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                   >
-                    {TIME_SLOTS.map((t) => (
+                    {agendaTimeSlots.map((t) => (
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>

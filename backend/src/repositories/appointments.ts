@@ -6,6 +6,7 @@ import { getServiceById } from './services.js';
 import {
   TIME_SLOTS,
   timeToMinutes,
+  closeTimeToMinutes,
   slotFitsBusinessHours,
   intervalOverlapsExisting,
 } from '../slotUtils.js';
@@ -131,10 +132,11 @@ export function isSlotFreeForBarber(
   date: string,
   time: string,
   durationMinutes: number,
-  blocked: { startMin: number; endMin: number }[]
+  blocked: { startMin: number; endMin: number }[],
+  closeMinutes?: number
 ): boolean {
   if (!TIME_SLOTS.includes(time)) return false;
-  if (!slotFitsBusinessHours(time, durationMinutes)) return false;
+  if (!slotFitsBusinessHours(time, durationMinutes, closeMinutes)) return false;
   const startMin = timeToMinutes(time);
   const endMin = startMin + durationMinutes;
   return !intervalOverlapsExisting(startMin, endMin, blocked);
@@ -146,19 +148,20 @@ export async function assertNoOverlap(
   date: string,
   time: string,
   durationMinutes: number,
-  excludeAppointmentId?: string
+  excludeAppointmentId?: string,
+  closeMinutes?: number
 ): Promise<void> {
   const blocked = await getBlockedIntervalsForBarber(barberId, date);
   if (excludeAppointmentId) {
     const apps = await getAppointmentsByBarber(barberId, date);
     const filtered = apps.filter((a) => a.id !== excludeAppointmentId);
     const intervals = appointmentIntervalsForDay(filtered);
-    if (!isSlotFreeForBarber(barberId, date, time, durationMinutes, intervals)) {
+    if (!isSlotFreeForBarber(barberId, date, time, durationMinutes, intervals, closeMinutes)) {
       throw new Error('Ese horario ya está ocupado o se solapa con otro turno');
     }
     return;
   }
-  if (!isSlotFreeForBarber(barberId, date, time, durationMinutes, blocked)) {
+  if (!isSlotFreeForBarber(barberId, date, time, durationMinutes, blocked, closeMinutes)) {
     throw new Error('Ese horario ya está ocupado o se solapa con otro turno');
   }
 }
@@ -168,13 +171,14 @@ export async function resolveBarberForAny(
   time: string,
   durationMinutes: number
 ): Promise<string | null> {
-  const { openWeekdays } = await getShopSettings();
+  const { openWeekdays, closeTime } = await getShopSettings();
+  const closeMinutes = closeTimeToMinutes(closeTime);
   if (!isDateOnOpenWeekday(date, openWeekdays)) return null;
   const barbers = await getAllBarbers();
   const ordered = barbers.sort((a, b) => a.id.localeCompare(b.id));
   for (const b of ordered) {
     const blocked = await getBlockedIntervalsForBarber(b.id, date);
-    if (isSlotFreeForBarber(b.id, date, time, durationMinutes, blocked)) {
+    if (isSlotFreeForBarber(b.id, date, time, durationMinutes, blocked, closeMinutes)) {
       return b.id;
     }
   }
@@ -273,20 +277,25 @@ export async function resolveDurationMinutes(
 }
 
 export async function getAvailableSlots(date: string, barberId: string, durationMinutes = 30): Promise<string[]> {
-  const { openWeekdays } = await getShopSettings();
+  const { openWeekdays, closeTime } = await getShopSettings();
+  const closeMinutes = closeTimeToMinutes(closeTime);
   if (!isDateOnOpenWeekday(date, openWeekdays)) return [];
   const blocked = await getBlockedIntervalsForBarber(barberId, date);
-  return TIME_SLOTS.filter((t) => isSlotFreeForBarber(barberId, date, t, durationMinutes, blocked));
+  return TIME_SLOTS.filter((t) => isSlotFreeForBarber(barberId, date, t, durationMinutes, blocked, closeMinutes));
 }
 
 /** Horarios en los que al menos un barbero puede atender (misma duración). */
 export async function getAvailableSlotsAnyBarber(date: string, durationMinutes: number): Promise<string[]> {
-  const { openWeekdays } = await getShopSettings();
+  const { openWeekdays, closeTime } = await getShopSettings();
+  const closeMinutes = closeTimeToMinutes(closeTime);
   if (!isDateOnOpenWeekday(date, openWeekdays)) return [];
   const barbers = await getAllBarbers();
   const union = new Set<string>();
   for (const b of barbers) {
-    const slots = await getAvailableSlots(date, b.id, durationMinutes);
+    const blocked = await getBlockedIntervalsForBarber(b.id, date);
+    const slots = TIME_SLOTS.filter((t) =>
+      isSlotFreeForBarber(b.id, date, t, durationMinutes, blocked, closeMinutes)
+    );
     for (const s of slots) union.add(s);
   }
   return TIME_SLOTS.filter((t) => union.has(t));
@@ -302,14 +311,15 @@ export async function getEarliestAvailableAnyBarber(
   date: string,
   durationMinutes: number
 ): Promise<EarliestSlot | null> {
-  const { openWeekdays } = await getShopSettings();
+  const { openWeekdays, closeTime } = await getShopSettings();
+  const closeMinutes = closeTimeToMinutes(closeTime);
   if (!isDateOnOpenWeekday(date, openWeekdays)) return null;
   const barbers = await getAllBarbers();
   const orderedBarbers = [...barbers].sort((a, b) => a.id.localeCompare(b.id));
   for (const t of TIME_SLOTS) {
     for (const b of orderedBarbers) {
       const blocked = await getBlockedIntervalsForBarber(b.id, date);
-      if (isSlotFreeForBarber(b.id, date, t, durationMinutes, blocked)) {
+      if (isSlotFreeForBarber(b.id, date, t, durationMinutes, blocked, closeMinutes)) {
         return { barberId: b.id, time: t };
       }
     }
@@ -321,6 +331,8 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
   await expireStalePendingAppointments();
   let barberId = data.barberId;
   const durationMinutes = data.durationMinutes ?? (await resolveDurationMinutes(data.serviceId, data.service));
+  const { closeTime } = await getShopSettings();
+  const closeMinutes = closeTimeToMinutes(closeTime);
 
   if (barberId === ANY_BARBER_ID || !barberId) {
     if (!data.date || !data.time) throw new Error('Fecha y hora requeridas');
@@ -329,7 +341,7 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
     barberId = resolved;
   }
 
-  await assertNoOverlap(barberId!, data.date, data.time, durationMinutes);
+  await assertNoOverlap(barberId!, data.date, data.time, durationMinutes, undefined, closeMinutes);
 
   let barberName = data.barber ?? null;
   if (!barberName && barberId) {
@@ -385,9 +397,11 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
   const date = updated.date ?? current.date;
   const time = updated.time ?? current.time;
   const durationMinutes = updated.durationMinutes ?? current.durationMinutes ?? 30;
+  const { closeTime } = await getShopSettings();
+  const closeMinutes = closeTimeToMinutes(closeTime);
 
   if (barberId && date && time) {
-    await assertNoOverlap(barberId, date, time, durationMinutes, id);
+    await assertNoOverlap(barberId, date, time, durationMinutes, id, closeMinutes);
   }
 
   let barberName = updated.barber;

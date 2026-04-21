@@ -41,6 +41,16 @@ const TIME_SLOTS = [
   '19:00', '19:20', '19:40'
 ];
 
+function buildTimeSlotsUntilClose(closeTime: string): string[] {
+  const [hRaw, mRaw] = closeTime.split(':').map(Number);
+  const closeMinutes = Number.isFinite(hRaw) && Number.isFinite(mRaw) ? hRaw * 60 + mRaw : 20 * 60;
+  const safeClose = Math.max(10 * 60 + 20, Math.min(24 * 60, closeMinutes));
+  return TIME_SLOTS.filter((slot) => {
+    const [h, m] = slot.split(':').map(Number);
+    return h * 60 + m + 20 <= safeClose;
+  });
+}
+
 /** Anticipación mínima para reservar “hoy” (no mostrar turnos que empiezan antes). */
 const BOOKING_LEAD_MINUTES = 15;
 
@@ -71,14 +81,16 @@ function isSlotAlreadyPast(dateStr: string, timeStr: string): boolean {
   return slotStartDate(dateStr, timeStr).getTime() <= minTs;
 }
 
-function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
-  const raw = (icon ?? '').trim();
-  if (!raw) return { kind: 'none', value: '' };
-  const lower = raw.toLowerCase();
-  if (lower.endsWith('.svg') || lower.startsWith('data:image/svg+xml')) {
-    return { kind: 'svg', value: raw };
-  }
-  return { kind: 'emoji', value: raw };
+function getServiceInitials(name?: string): string {
+  const n = (name ?? '').trim();
+  if (!n) return 'SV';
+  const words = n
+    .split(/\s+/)
+    .map((w) => w.replace(/[^A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ]/g, ''))
+    .filter(Boolean);
+  if (words.length === 0) return n.slice(0, 2).toUpperCase();
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
 
 const Logo = ({ className = "w-32 h-32" }) => (
@@ -104,13 +116,17 @@ export default function ClientView() {
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [openWeekdays, setOpenWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [shopCloseTime, setShopCloseTime] = useState('20:00');
 
   useEffect(() => {
     api.getServices().then(setServices).catch(() => setServices([]));
     api.getBarbers().then(setBarbers).catch(() => setBarbers([]));
     api
       .getShopSettings()
-      .then((s) => setOpenWeekdays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]))
+      .then((s) => {
+        setOpenWeekdays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
+        setShopCloseTime(s.closeTime || '20:00');
+      })
       .catch(() => {});
   }, []);
 
@@ -137,6 +153,7 @@ export default function ClientView() {
   const [scrollLeft, setScrollLeft] = useState(0);
   const [dragged, setDragged] = useState(false);
 
+  const businessTimeSlots = useMemo(() => buildTimeSlotsUntilClose(shopCloseTime), [shopCloseTime]);
   const [availableSlots, setAvailableSlots] = useState<string[]>(TIME_SLOTS);
   const [earliestAny, setEarliestAny] = useState<{ barberId: string; time: string } | null>(null);
   const [availableBarberIds, setAvailableBarberIds] = useState<string[]>([]);
@@ -273,7 +290,7 @@ export default function ClientView() {
           setEarliestAny(r.earliest);
         })
         .catch(() => {
-          setAvailableSlots(TIME_SLOTS);
+          setAvailableSlots(businessTimeSlots);
           setEarliestAny(null);
         });
       return;
@@ -281,9 +298,9 @@ export default function ClientView() {
     api
       .getAvailability(selectedDate, selectedBarber, selectedServiceDuration)
       .then((r) => setAvailableSlots(r.slots.length ? r.slots : []))
-      .catch(() => setAvailableSlots(TIME_SLOTS));
+      .catch(() => setAvailableSlots(businessTimeSlots));
     setEarliestAny(null);
-  }, [selectedDate, selectedBarber, selectedService, selectedServiceDuration, services]);
+  }, [selectedDate, selectedBarber, selectedService, selectedServiceDuration, services, businessTimeSlots]);
 
   useEffect(() => {
     if (selectedTime && visibleTimeSlots.length > 0 && !visibleTimeSlots.includes(selectedTime)) {
@@ -588,22 +605,10 @@ export default function ClientView() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
             {services.map((service) => (
               <div key={service.id} className="bg-zinc-900/50 border border-zinc-800 p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl hover:border-[#e5c185]/50 transition-colors group min-w-0">
-                <div className="w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] bg-zinc-950 border border-zinc-800 rounded-lg sm:rounded-xl flex items-center justify-center text-[#e5c185] mb-4 sm:mb-6 group-hover:scale-110 transition-transform text-3xl sm:text-4xl leading-none">
-                  {(() => {
-                    const icon = getServiceIconSource(service.emoji);
-                    if (icon.kind === 'svg') {
-                      return (
-                        <img
-                          src={icon.value}
-                          alt={service.name}
-                          className="w-10 h-10 sm:w-11 sm:h-11 object-contain"
-                          referrerPolicy="no-referrer"
-                        />
-                      );
-                    }
-                    if (icon.kind === 'emoji') return <span className="select-none">{icon.value}</span>;
-                    return <Scissors size={36} className="w-9 h-9 sm:w-10 sm:h-10 shrink-0" strokeWidth={1.75} />;
-                  })()}
+                <div className="w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] bg-zinc-950 border border-zinc-800 rounded-lg sm:rounded-xl flex items-center justify-center text-[#e5c185] mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
+                  <span className="text-xl sm:text-2xl font-black tracking-wider select-none">
+                    {getServiceInitials(service.name)}
+                  </span>
                 </div>
                 <h3 className="text-xl sm:text-2xl font-serif font-bold mb-2 text-white break-words">{service.name}</h3>
                 <p className="text-zinc-400 mb-4 sm:mb-6 min-h-[3rem] sm:min-h-[48px] font-sans font-light text-sm sm:text-base line-clamp-3">{service.desc}</p>

@@ -28,9 +28,20 @@ export function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd
 }
 
 /** El turno [start, start+duration) debe quedar dentro del horario de atención. */
-export function slotFitsBusinessHours(startTime: string, durationMinutes: number): boolean {
+export function slotFitsBusinessHours(
+  startTime: string,
+  durationMinutes: number,
+  closeMinutes = CLOSE_MINUTES
+): boolean {
   const start = timeToMinutes(startTime);
-  return start >= OPEN_MINUTES && start + durationMinutes <= CLOSE_MINUTES;
+  return start >= OPEN_MINUTES && start + durationMinutes <= closeMinutes;
+}
+
+export function closeTimeToMinutes(closeTime: string | undefined): number {
+  if (!closeTime) return BUSINESS_CLOSE_MINUTES;
+  const n = timeToMinutes(closeTime);
+  if (!Number.isFinite(n)) return BUSINESS_CLOSE_MINUTES;
+  return Math.max(BUSINESS_OPEN_MINUTES + 20, Math.min(24 * 60, n));
 }
 
 export function intervalOverlapsExisting(

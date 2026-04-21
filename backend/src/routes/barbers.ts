@@ -15,17 +15,22 @@ router.get('/', async (_req, res) => {
 });
 
 router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
-  const { commissionPercent } = req.body as { commissionPercent?: number };
-  if (commissionPercent == null || Number.isNaN(Number(commissionPercent))) {
-    return res.status(400).json({ error: 'Se requiere commissionPercent' });
+  const { commissionPercent, name } = req.body as { commissionPercent?: number; name?: string };
+  if (commissionPercent == null && (name == null || !String(name).trim())) {
+    return res.status(400).json({ error: 'Se requiere name o commissionPercent' });
   }
   try {
-    const updated = await repo.updateBarberCommission(req.params.id, Number(commissionPercent));
+    const updated = await repo.updateBarber(req.params.id, {
+      ...(name != null ? { name: String(name) } : {}),
+      ...(commissionPercent != null ? { commissionPercent: Number(commissionPercent) } : {}),
+    });
     if (!updated) return res.status(404).json({ error: 'Barbero no encontrado' });
     res.json(updated);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error al actualizar' });
+    const msg = err instanceof Error ? err.message : 'Error al actualizar';
+    const code = /vac[ií]o|inv[aá]lida/i.test(msg) ? 400 : 500;
+    if (code === 500) console.error(err);
+    res.status(code).json({ error: msg });
   }
 });
 
