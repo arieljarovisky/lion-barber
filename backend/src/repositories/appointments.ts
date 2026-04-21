@@ -417,7 +417,15 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
   const barberId = updated.barberId ?? current.barberId;
   const date = updated.date ?? current.date;
   const time = updated.time ?? current.time;
-  const durationMinutes = updated.durationMinutes ?? current.durationMinutes ?? 30;
+  const serviceChanged =
+    (data.serviceId != null && data.serviceId !== current.serviceId) ||
+    (data.service != null && data.service !== current.service);
+  const durationMinutes =
+    data.durationMinutes != null
+      ? Number(data.durationMinutes)
+      : serviceChanged
+        ? await resolveDurationMinutes(updated.serviceId, updated.service)
+        : current.durationMinutes ?? 30;
   const { closeTime, weekdayHours } = await getShopSettings();
   const weekday = new Date(`${date}T12:00:00`).getDay() || 7;
   const dayHours = weekdayHours[weekday] ?? { openTime: '10:00', closeTime };
