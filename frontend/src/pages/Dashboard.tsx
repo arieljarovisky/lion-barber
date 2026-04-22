@@ -864,8 +864,11 @@ export default function Dashboard() {
             if (phoneDigits.length >= 6) {
               const phoneMatches = adminClients.filter((c) => adminClientMatchesPhoneDigits(c, phoneDigits));
               if (phoneMatches.length === 1) {
-                userId = phoneMatches[0].id;
-                nameForApp = phoneMatches[0].name;
+                const only = phoneMatches[0];
+                if (only.name.trim().toLowerCase() === nameForApp.toLowerCase()) {
+                  userId = only.id;
+                  nameForApp = only.name;
+                }
               } else if (phoneMatches.length > 1) {
                 const sameNameMatches = phoneMatches.filter(
                   (c) => c.name.trim().toLowerCase() === nameForApp.toLowerCase()
@@ -2603,18 +2606,6 @@ export default function Dashboard() {
                   required
                   value={form.phone}
                   onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                  onBlur={() => {
-                    if (!isAdmin || editingAppointment) return;
-                    if (linkedClientId != null) return;
-                    const d = normalizePhoneDigits(form.phone);
-                    if (d.length < 6) return;
-                    const matches = adminClients.filter((c) => adminClientMatchesPhoneDigits(c, d));
-                    if (matches.length === 1) {
-                      setLinkedClientId(matches[0].id);
-                      setForm((f) => ({ ...f, name: matches[0].name }));
-                      setNewClientEmail('');
-                    }
-                  }}
                   className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                   placeholder="Ej. 11 2345 6789"
                 />
