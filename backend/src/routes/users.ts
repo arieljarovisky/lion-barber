@@ -127,4 +127,21 @@ router.get('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+router.delete('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  try {
+    const ok = await userRepo.deleteClientById(id);
+    if (!ok) {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+    return res.status(204).end();
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Error al eliminar cliente' });
+  }
+});
+
 export default router;

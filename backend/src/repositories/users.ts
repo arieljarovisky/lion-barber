@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { query } from '../db.js';
+import pool, { query } from '../db.js';
 
 /** Email técnico para fichas sin correo (único, válido para la columna NOT NULL). */
 const PLACEHOLDER_EMAIL_HOST = 'sin-email.lion-barber.internal';
@@ -169,4 +169,14 @@ export async function createManualClient(data: {
   }
   user.phones = phones;
   return user;
+}
+
+/** Elimina un cliente y desvincula sus turnos (mantiene historial en agenda). */
+export async function deleteClientById(userId: number): Promise<boolean> {
+  const existing = await findUserById(userId);
+  if (!existing || existing.role !== 'client') return false;
+  await query('UPDATE appointments SET user_id = NULL WHERE user_id = ?', [userId]);
+  await query('DELETE FROM client_phones WHERE user_id = ?', [userId]);
+  const [res] = await pool.execute('DELETE FROM users WHERE id = ? AND role = ?', [userId, 'client']);
+  return (res as { affectedRows: number }).affectedRows > 0;
 }

@@ -409,6 +409,12 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  /** Solo admin: elimina una ficha de cliente y desvincula sus turnos de la cuenta. */
+  deleteAdminClient: (clientId: number) =>
+    fetchApi<void>(`/api/users/clients/${encodeURIComponent(String(clientId))}`, {
+      method: 'DELETE',
+    }),
+
   auth: {
     postGoogle: (idToken: string) =>
       fetchApi<{

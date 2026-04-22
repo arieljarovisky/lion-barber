@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Trash2 } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
@@ -26,6 +26,7 @@ export default function AdminClientDetailPage() {
   const navigate = useNavigate();
   const [client, setClient] = useState<AdminClientWithHistory | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
   const idNum = Number(clientId);
@@ -71,6 +72,26 @@ export default function AdminClientDetailPage() {
     [navigate]
   );
 
+  const handleDeleteClient = useCallback(async () => {
+    if (!client || deleting) return;
+    const ok = window.confirm(
+      `¿Eliminar la ficha de ${client.name}?\n\nSus turnos se conservarán en la agenda, pero se desvinculan de la cuenta.`
+    );
+    if (!ok) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await api.deleteAdminClient(client.id);
+      navigate('/dashboard/clientes', { replace: true });
+    } catch (e) {
+      const msg =
+        e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'No se pudo eliminar el cliente.';
+      setError(msg);
+    } finally {
+      setDeleting(false);
+    }
+  }, [client, deleting, navigate]);
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
       <DashboardPanelShell activePanel="clientes" onNavigate={handlePanelNavigate}>
@@ -82,13 +103,26 @@ export default function AdminClientDetailPage() {
           <span className="text-zinc-700">{client?.name ?? '…'}</span>
         </nav>
 
-        <Link
-          to="/dashboard/clientes"
-          className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-zinc-600 hover:text-zinc-900"
-        >
-          <ChevronLeft size={18} />
-          Volver al listado
-        </Link>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <Link
+            to="/dashboard/clientes"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-600 hover:text-zinc-900"
+          >
+            <ChevronLeft size={18} />
+            Volver al listado
+          </Link>
+          {!loading && client && (
+            <button
+              type="button"
+              onClick={() => void handleDeleteClient()}
+              disabled={deleting}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold uppercase tracking-wide text-red-700 hover:bg-red-100 disabled:opacity-50"
+            >
+              <Trash2 size={16} />
+              {deleting ? 'Eliminando…' : 'Eliminar cliente'}
+            </button>
+          )}
+        </div>
 
         {invalidId && (
           <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">

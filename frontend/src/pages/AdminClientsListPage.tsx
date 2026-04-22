@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { format, parseISO, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Users, ChevronRight, LayoutGrid, List, Plus, X, Search, SlidersHorizontal, RotateCcw } from 'lucide-react';
+import { Users, ChevronRight, LayoutGrid, List, Plus, X, Search, SlidersHorizontal, RotateCcw, Trash2 } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
@@ -78,6 +78,7 @@ export default function AdminClientsListPage() {
   const [formPhone, setFormPhone] = useState('');
   const [formPoints, setFormPoints] = useState('0');
   const [saving, setSaving] = useState(false);
+  const [deletingClientId, setDeletingClientId] = useState<number | null>(null);
   const [formError, setFormError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<ClientSort>('recent');
@@ -165,6 +166,26 @@ export default function AdminClientsListPage() {
       setFormError(msg);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteClient = async (client: AdminClientWithHistory) => {
+    if (deletingClientId != null) return;
+    const ok = window.confirm(
+      `¿Eliminar la ficha de ${client.name}?\n\nSus turnos se conservarán en la agenda, pero se desvinculan de la cuenta.`
+    );
+    if (!ok) return;
+    setDeletingClientId(client.id);
+    setError('');
+    try {
+      await api.deleteAdminClient(client.id);
+      setClients((prev) => prev.filter((c) => c.id !== client.id));
+    } catch (err) {
+      const msg =
+        err instanceof ApiError ? err.message : err instanceof Error ? err.message : 'No se pudo eliminar el cliente.';
+      setError(msg);
+    } finally {
+      setDeletingClientId(null);
     }
   };
 
@@ -406,7 +427,7 @@ export default function AdminClientsListPage() {
               const mainPhone = phones[0] ?? '';
               const extraPhones = phones.length - 1;
               return (
-                <li key={c.id}>
+                <li key={c.id} className="relative">
                   <Link
                     to={`/dashboard/clientes/${c.id}`}
                     className="group flex h-full flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-[#e5c185]/80 hover:shadow-md"
@@ -441,6 +462,20 @@ export default function AdminClientsListPage() {
                       />
                     </div>
                   </Link>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleDeleteClient(c);
+                    }}
+                    disabled={deletingClientId === c.id}
+                    className="absolute right-3 top-3 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    title="Eliminar cliente"
+                    aria-label={`Eliminar cliente ${c.name}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </li>
               );
             })}
@@ -457,7 +492,7 @@ export default function AdminClientsListPage() {
                     <th className="px-4 py-3 text-right">Puntos</th>
                     <th className="px-4 py-3 text-right">Turnos</th>
                     <th className="px-4 py-3">Alta</th>
-                    <th className="w-10 px-2 py-3" aria-hidden />
+                    <th className="w-24 px-2 py-3 text-right" aria-hidden />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -495,7 +530,22 @@ export default function AdminClientsListPage() {
                           {format(parseISO(c.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
                         </td>
                         <td className="px-2 py-3 text-zinc-400">
-                          <ChevronRight size={18} className="ml-auto" aria-hidden />
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDeleteClient(c);
+                              }}
+                              disabled={deletingClientId === c.id}
+                              className="inline-flex items-center justify-center rounded-md border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                              title="Eliminar cliente"
+                              aria-label={`Eliminar cliente ${c.name}`}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                            <ChevronRight size={18} className="ml-auto" aria-hidden />
+                          </div>
                         </td>
                       </tr>
                     );
