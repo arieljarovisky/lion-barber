@@ -592,13 +592,18 @@ export default function ClientView() {
         <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
           <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-visible">
             <img
-              src="/lion-logo-hero.png"
+              src="/lion-logo-hero-transparent.png"
               alt="Logo Lion Barber"
-              className="w-44 sm:w-56 md:w-64 lg:w-72 h-auto drop-shadow-2xl mb-4 sm:mb-6"
+              className="w-40 sm:w-52 md:w-56 lg:w-64 h-auto drop-shadow-2xl mb-2 sm:mb-3"
             />
-            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
-              Agenda Abierta
-            </h1>
+            <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-visible">
+              <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[6rem] xl:text-[120px] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
+                Agenda
+              </h1>
+              <span className="text-5xl sm:text-7xl md:text-8xl lg:text-[6.5rem] xl:text-[140px] font-script text-[#e5c185] drop-shadow-lg absolute top-1/2 -translate-y-1/2 mt-4 sm:mt-6 md:mt-8 lg:mt-10 leading-none select-none whitespace-nowrap px-3">
+                abierta
+              </span>
+            </div>
           </div>
 
           {/* Hanging OPEN Sign / Booking Button */}
