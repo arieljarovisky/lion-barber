@@ -854,13 +854,6 @@ export default function Dashboard() {
             const matches = adminClients.filter(
               (c) => c.name.trim().toLowerCase() === nameForApp.toLowerCase()
             );
-            if (matches.length > 1) {
-              setError(
-                'Hay varios clientes con ese nombre. Elegí uno en las sugerencias al escribir.'
-              );
-              setSaving(false);
-              return;
-            }
             if (matches.length === 1) {
               userId = matches[0].id;
               nameForApp = matches[0].name;
