@@ -592,7 +592,7 @@ export default function ClientView() {
         <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
           <div className="flex w-full min-w-0 flex-col items-center">
             <img
-              src="/lion-logo-hero-transparent.png"
+              src="/lion-logo-hero-for-ui.png"
               alt="Lion Barber"
               className="h-auto w-[min(92vw,18rem)] object-contain drop-shadow-2xl sm:w-[22rem] md:w-[26rem] lg:w-[30rem]"
             />
