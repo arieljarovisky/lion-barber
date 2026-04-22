@@ -65,8 +65,8 @@ function normalizePhoneDigits(phone: string): string {
 
 function adminClientMatchesPhoneDigits(c: AdminClientWithHistory, phoneDigits: string): boolean {
   if (phoneDigits.length < 6) return false;
-  const onFile = c.phone ? normalizePhoneDigits(c.phone) : '';
-  if (onFile === phoneDigits) return true;
+  const phonesOnFile = Array.isArray(c.phones) && c.phones.length > 0 ? c.phones : c.phone ? [c.phone] : [];
+  if (phonesOnFile.some((p) => normalizePhoneDigits(p) === phoneDigits)) return true;
   return c.appointments.some((a) => normalizePhoneDigits(a.phone || '') === phoneDigits);
 }
 
@@ -870,16 +870,17 @@ export default function Dashboard() {
             const phoneDigits = normalizePhoneDigits(phoneForApp);
             if (phoneDigits.length >= 6) {
               const phoneMatches = adminClients.filter((c) => adminClientMatchesPhoneDigits(c, phoneDigits));
-              if (phoneMatches.length > 1) {
-                setError(
-                  'Hay varios clientes con ese teléfono en el historial. Elegí la ficha en las sugerencias.'
-                );
-                setSaving(false);
-                return;
-              }
               if (phoneMatches.length === 1) {
                 userId = phoneMatches[0].id;
                 nameForApp = phoneMatches[0].name;
+              } else if (phoneMatches.length > 1) {
+                const sameNameMatches = phoneMatches.filter(
+                  (c) => c.name.trim().toLowerCase() === nameForApp.toLowerCase()
+                );
+                if (sameNameMatches.length === 1) {
+                  userId = sameNameMatches[0].id;
+                  nameForApp = sameNameMatches[0].name;
+                }
               }
             }
           }
