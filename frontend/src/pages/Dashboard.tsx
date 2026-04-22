@@ -2570,7 +2570,7 @@ export default function Dashboard() {
                   {isAdmin && !editingAppointment && adminClientsLoading && (
                     <p className="mt-1 text-xs text-zinc-400">Cargando clientes…</p>
                   )}
-                  {isAdmin && !editingAppointment && clientNameSuggestions.length > 0 && (
+                  {isAdmin && !editingAppointment && linkedClientId == null && clientNameSuggestions.length > 0 && (
                     <ul
                       className="absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg"
                       role="listbox"
