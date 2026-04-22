@@ -264,8 +264,6 @@ export default function Dashboard() {
   /** Solo admin — modal nueva cita: '' | 'new' | id de cliente */
   /** Cliente elegido desde sugerencias o coincidencia exacta de nombre (solo admin, nueva cita). */
   const [linkedClientId, setLinkedClientId] = useState<number | null>(null);
-  /** Permite crear una ficha nueva aunque exista coincidencia por nombre/teléfono. */
-  const [forceNewClient, setForceNewClient] = useState(false);
   const [newClientEmail, setNewClientEmail] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [adminClientsLoading, setAdminClientsLoading] = useState(false);
@@ -377,7 +375,6 @@ export default function Dashboard() {
 
   const clientNameSuggestions = useMemo(() => {
     if (!isAdmin || editingAppointment || !modalOpen) return [];
-    if (forceNewClient) return [];
     const q = form.name.trim().toLowerCase();
     const phoneDigits = normalizePhoneDigits(form.phone);
     if (q.length < 1 && phoneDigits.length < 6) return [];
@@ -391,7 +388,7 @@ export default function Dashboard() {
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
       .slice(0, 8);
-  }, [isAdmin, editingAppointment, modalOpen, forceNewClient, form.name, form.phone, adminClients]);
+  }, [isAdmin, editingAppointment, modalOpen, form.name, form.phone, adminClients]);
 
   const loadServicePointsPanel = useCallback(async () => {
     setPointsPanelLoading(true);
@@ -796,7 +793,6 @@ export default function Dashboard() {
   const openCreateModal = () => {
     setEditingAppointment(null);
     setLinkedClientId(null);
-    setForceNewClient(false);
     setNewClientEmail('');
     const defaultBarber = staffBarberId ?? barbers[0]?.id ?? '';
     setForm({
@@ -815,7 +811,6 @@ export default function Dashboard() {
   const openCreateModalForSlot = (slotDateStr: string, slotTime: string, explicitBarberId?: string) => {
     setEditingAppointment(null);
     setLinkedClientId(null);
-    setForceNewClient(false);
     setNewClientEmail('');
     const defaultBarber =
       staffBarberId ?? explicitBarberId ?? selectedBarberId ?? barbers[0]?.id ?? '';
@@ -834,7 +829,6 @@ export default function Dashboard() {
   const openEditModal = (app: Appointment) => {
     setEditingAppointment(app);
     setLinkedClientId(null);
-    setForceNewClient(false);
     setNewClientEmail('');
     const barberId = app.barberId ?? barbers.find((b) => b.name === app.barber)?.id ?? '';
     setForm({
@@ -853,7 +847,6 @@ export default function Dashboard() {
     setModalOpen(false);
     setEditingAppointment(null);
     setLinkedClientId(null);
-    setForceNewClient(false);
     setNewClientEmail('');
     setError('');
   };
@@ -887,7 +880,7 @@ export default function Dashboard() {
           return;
         }
 
-        if (isAdmin && !editingAppointment && !forceNewClient) {
+        if (isAdmin && !editingAppointment) {
           if (linkedClientId != null) {
             const c = adminClients.find((x) => x.id === linkedClientId);
             if (c && c.name.trim().toLowerCase() === nameForApp.toLowerCase()) {
@@ -2633,19 +2626,6 @@ export default function Dashboard() {
               </div>
               {isAdmin && !editingAppointment && (
                 <div>
-                  <label className="mb-2 flex items-center gap-2 text-sm text-zinc-700">
-                    <input
-                      type="checkbox"
-                      checked={forceNewClient}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setForceNewClient(checked);
-                        if (checked) setLinkedClientId(null);
-                      }}
-                      className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-300"
-                    />
-                    Crear cliente nuevo (no vincular sugerencias)
-                  </label>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                     Email del cliente <span className="font-normal normal-case text-zinc-400">(opcional)</span>
                   </label>
