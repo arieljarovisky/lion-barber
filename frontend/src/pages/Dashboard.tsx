@@ -269,6 +269,8 @@ export default function Dashboard() {
   const [newClientEmail, setNewClientEmail] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [adminClientsLoading, setAdminClientsLoading] = useState(false);
+  const [availableFormSlots, setAvailableFormSlots] = useState<string[]>([]);
+  const [availableFormSlotsLoading, setAvailableFormSlotsLoading] = useState(false);
   const [view, setView] = useState<
     | 'agenda'
     | 'servicios'
@@ -751,6 +753,42 @@ export default function Dashboard() {
     }));
   }, [agendaTimeSlots]);
 
+  useEffect(() => {
+    if (!modalOpen || editingAppointment) {
+      setAvailableFormSlots([]);
+      setAvailableFormSlotsLoading(false);
+      return;
+    }
+    const barberId = staffBarberId ?? form.barberId;
+    if (!form.date || !barberId) {
+      setAvailableFormSlots([]);
+      return;
+    }
+    const serviceDuration = services.find((s) => s.id === form.service)?.duration ?? 30;
+    let cancelled = false;
+    setAvailableFormSlotsLoading(true);
+    api
+      .getAvailability(form.date, barberId, serviceDuration)
+      .then((res) => {
+        if (cancelled) return;
+        setAvailableFormSlots(res.slots);
+        setForm((prev) => ({
+          ...prev,
+          time: res.slots.includes(prev.time) ? prev.time : (res.slots[0] ?? ''),
+        }));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAvailableFormSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAvailableFormSlotsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [modalOpen, editingAppointment, staffBarberId, form.barberId, form.date, form.service, services]);
+
   const weekColumnCellsByDay = weekAppointmentsByDay.map(({ appointments: dayApps }) =>
     buildWeekColumnCells(dayApps, agendaTimeSlots)
   );
@@ -855,36 +893,6 @@ export default function Dashboard() {
             if (c && c.name.trim().toLowerCase() === nameForApp.toLowerCase()) {
               userId = c.id;
               nameForApp = c.name;
-            }
-          }
-          if (userId == null) {
-            const matches = adminClients.filter(
-              (c) => c.name.trim().toLowerCase() === nameForApp.toLowerCase()
-            );
-            if (matches.length === 1) {
-              userId = matches[0].id;
-              nameForApp = matches[0].name;
-            }
-          }
-          if (userId == null) {
-            const phoneDigits = normalizePhoneDigits(phoneForApp);
-            if (phoneDigits.length >= 6) {
-              const phoneMatches = adminClients.filter((c) => adminClientMatchesPhoneDigits(c, phoneDigits));
-              if (phoneMatches.length === 1) {
-                const only = phoneMatches[0];
-                if (only.name.trim().toLowerCase() === nameForApp.toLowerCase()) {
-                  userId = only.id;
-                  nameForApp = only.name;
-                }
-              } else if (phoneMatches.length > 1) {
-                const sameNameMatches = phoneMatches.filter(
-                  (c) => c.name.trim().toLowerCase() === nameForApp.toLowerCase()
-                );
-                if (sameNameMatches.length === 1) {
-                  userId = sameNameMatches[0].id;
-                  nameForApp = sameNameMatches[0].name;
-                }
-              }
             }
           }
           if (userId == null) {
@@ -2701,10 +2709,34 @@ export default function Dashboard() {
                     onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
                     className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                   >
-                    {agendaTimeSlots.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
+                  {!editingAppointment && availableFormSlotsLoading ? (
+                    <option value="" disabled>
+                      Cargando horarios…
+                    </option>
+                  ) : null}
+                  {!editingAppointment && !availableFormSlotsLoading
+                    ? availableFormSlots.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))
+                    : null}
+                  {editingAppointment
+                    ? agendaTimeSlots.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))
+                    : null}
+                  {!editingAppointment && !availableFormSlotsLoading && availableFormSlots.length === 0 ? (
+                    <option value="" disabled>
+                      Sin horarios disponibles
+                    </option>
+                  ) : null}
                   </select>
+                {!editingAppointment && !availableFormSlotsLoading && availableFormSlots.length === 0 ? (
+                  <p className="mt-1 text-xs text-amber-700">No hay huecos disponibles para esa fecha/barbero/servicio.</p>
+                ) : null}
                 </div>
               </div>
               <div className="flex gap-3 pt-4">
@@ -2717,7 +2749,7 @@ export default function Dashboard() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || (!editingAppointment && (availableFormSlotsLoading || availableFormSlots.length === 0))}
                   className="flex-1 py-3 rounded-xl bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 font-bold disabled:opacity-50"
                 >
                   {saving ? 'Guardando...' : editingAppointment ? 'Guardar cambios' : 'Crear cita'}
