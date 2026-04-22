@@ -590,19 +590,19 @@ export default function ClientView() {
         </div>
 
         <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
-          <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-visible">
+          <div className="flex w-full min-w-0 flex-col items-center">
             <img
               src="/lion-logo-hero-transparent.png"
-              alt="Logo Lion Barber"
-              className="w-40 sm:w-52 md:w-56 lg:w-64 h-auto drop-shadow-2xl mb-2 sm:mb-3"
+              alt="Lion Barber"
+              className="h-auto w-[min(92vw,18rem)] object-contain drop-shadow-2xl sm:w-[22rem] md:w-[26rem] lg:w-[30rem]"
             />
-            <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-visible">
-              <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[6rem] xl:text-[120px] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
+            <div className="mt-5 sm:mt-6 md:mt-7 flex flex-col items-center gap-0.5 sm:gap-1">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-serif font-black uppercase tracking-tight text-white drop-shadow-md leading-tight">
                 Agenda
               </h1>
-              <span className="text-5xl sm:text-7xl md:text-8xl lg:text-[6.5rem] xl:text-[140px] font-script text-[#e5c185] drop-shadow-lg absolute top-1/2 -translate-y-1/2 mt-4 sm:mt-6 md:mt-8 lg:mt-10 leading-none select-none whitespace-nowrap px-3">
+              <p className="font-script text-3xl sm:text-4xl md:text-5xl text-[#e5c185] drop-shadow leading-none">
                 abierta
-              </span>
+              </p>
             </div>
           </div>
 
