@@ -77,6 +77,27 @@ export async function initDb(): Promise<void> {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
   await pool.execute(`
+    CREATE TABLE IF NOT EXISTS client_phones (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      phone VARCHAR(50) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_client_phone (user_id, phone),
+      KEY idx_client_phone_user (user_id),
+      KEY idx_client_phone_phone (phone)
+    )
+  `);
+  /**
+   * Migración legacy: copia el teléfono principal viejo a la tabla de teléfonos.
+   * Se permite el mismo número entre distintos clientes (solo se evita duplicado exacto por cliente).
+   */
+  await pool.execute(`
+    INSERT IGNORE INTO client_phones (user_id, phone)
+    SELECT id, TRIM(phone)
+    FROM users
+    WHERE role = 'client' AND phone IS NOT NULL AND TRIM(phone) <> ''
+  `);
+  await pool.execute(`
     CREATE TABLE IF NOT EXISTS services (
       id VARCHAR(50) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,

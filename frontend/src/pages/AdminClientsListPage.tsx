@@ -34,6 +34,26 @@ const VIP_POINTS_MIN = 25;
 const FREQUENT_BOOKINGS_MIN = 3;
 const NEW_CLIENT_DAYS = 30;
 
+function parsePhonesInput(raw: string): string[] {
+  const seen = new Set<string>();
+  return raw
+    .split(/\r?\n|,/g)
+    .map((p) => p.trim())
+    .filter((p) => {
+      if (!p) return false;
+      const key = p.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function clientPhones(c: AdminClientWithHistory): string[] {
+  if (Array.isArray(c.phones) && c.phones.length > 0) return c.phones.filter((p) => p.trim().length > 0);
+  if (c.phone?.trim()) return [c.phone.trim()];
+  return [];
+}
+
 function readLayoutMode(): LayoutMode {
   try {
     const v = localStorage.getItem(VIEW_STORAGE_KEY);
@@ -128,11 +148,13 @@ export default function AdminClientsListPage() {
     const pts = parseInt(formPoints, 10);
     setSaving(true);
     try {
-      const phone = formPhone.trim();
+      const phones = parsePhonesInput(formPhone);
+      const phone = phones[0] ?? '';
       await api.createAdminClient({
         name,
         ...(email ? { email } : {}),
         ...(phone ? { phone } : {}),
+        ...(phones.length > 0 ? { phones } : {}),
         points: Number.isFinite(pts) ? pts : 0,
       });
       setModalOpen(false);
@@ -154,7 +176,7 @@ export default function AdminClientsListPage() {
         (c) =>
           c.name.toLowerCase().includes(q) ||
           c.email.toLowerCase().includes(q) ||
-          (c.phone && c.phone.toLowerCase().includes(q))
+          clientPhones(c).some((p) => p.toLowerCase().includes(q))
       );
     }
     const cutoffNew = subDays(new Date(), NEW_CLIENT_DAYS).getTime();
@@ -299,7 +321,7 @@ export default function AdminClientsListPage() {
                 type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por nombre o email…"
+                placeholder="Buscar por nombre, email o teléfono…"
                 className="w-full rounded-xl border border-zinc-200 bg-zinc-50/80 py-2.5 pl-10 pr-4 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-[#e5c185] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#e5c185]/30"
                 autoComplete="off"
               />
@@ -379,41 +401,49 @@ export default function AdminClientsListPage() {
           </div>
         ) : layout === 'grid' ? (
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredClients.map((c) => (
-              <li key={c.id}>
-                <Link
-                  to={`/dashboard/clientes/${c.id}`}
-                  className="group flex h-full flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-[#e5c185]/80 hover:shadow-md"
-                >
-                  <div className="flex gap-3">
-                    <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
-                    <div className="min-w-0 flex-1">
-                    <p className="font-bold text-zinc-900 group-hover:text-zinc-950 truncate">{c.name}</p>
-                    <p className="mt-1 text-xs text-zinc-500 truncate">{displayClientEmail(c.email)}</p>
-                    {c.phone?.trim() ? (
-                      <p className="mt-0.5 text-xs font-medium text-zinc-600 truncate">{c.phone.trim()}</p>
-                    ) : null}
-                    <p className="mt-2 text-[11px] text-zinc-400">
-                      Alta {format(parseISO(c.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
-                    </p>
+            {filteredClients.map((c) => {
+              const phones = clientPhones(c);
+              const mainPhone = phones[0] ?? '';
+              const extraPhones = phones.length - 1;
+              return (
+                <li key={c.id}>
+                  <Link
+                    to={`/dashboard/clientes/${c.id}`}
+                    className="group flex h-full flex-col justify-between rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-[#e5c185]/80 hover:shadow-md"
+                  >
+                    <div className="flex gap-3">
+                      <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-bold text-zinc-900 group-hover:text-zinc-950 truncate">{c.name}</p>
+                        <p className="mt-1 text-xs text-zinc-500 truncate">{displayClientEmail(c.email)}</p>
+                        {mainPhone ? (
+                          <p className="mt-0.5 text-xs font-medium text-zinc-600 truncate">
+                            {mainPhone}
+                            {extraPhones > 0 ? ` +${extraPhones}` : ''}
+                          </p>
+                        ) : null}
+                        <p className="mt-2 text-[11px] text-zinc-400">
+                          Alta {format(parseISO(c.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-4 flex items-center justify-between border-t border-zinc-100 pt-4">
-                    <div className="flex gap-3 text-xs">
-                      <span className="font-bold text-[#b39055]">{c.points} pts</span>
-                      <span className="text-zinc-500">
-                        {c.appointments.length} turno{c.appointments.length === 1 ? '' : 's'}
-                      </span>
+                    <div className="mt-4 flex items-center justify-between border-t border-zinc-100 pt-4">
+                      <div className="flex gap-3 text-xs">
+                        <span className="font-bold text-[#b39055]">{c.points} pts</span>
+                        <span className="text-zinc-500">
+                          {c.appointments.length} turno{c.appointments.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <ChevronRight
+                        size={18}
+                        className="text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-[#b39055]"
+                        aria-hidden
+                      />
                     </div>
-                    <ChevronRight
-                      size={18}
-                      className="text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-[#b39055]"
-                      aria-hidden
-                    />
-                  </div>
-                </Link>
-              </li>
-            ))}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -431,38 +461,45 @@ export default function AdminClientsListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {filteredClients.map((c) => (
-                    <tr
-                      key={c.id}
-                      role="link"
-                      tabIndex={0}
-                      className="cursor-pointer bg-white hover:bg-zinc-50/90"
-                      onClick={() => navigate(`/dashboard/clientes/${c.id}`)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          navigate(`/dashboard/clientes/${c.id}`);
-                        }
-                      }}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
-                          <span className="font-semibold text-zinc-900">{c.name}</span>
-                        </div>
-                      </td>
-                      <td className="max-w-[14rem] truncate px-4 py-3 text-zinc-600">{displayClientEmail(c.email)}</td>
-                      <td className="max-w-[10rem] truncate px-4 py-3 text-zinc-600">{c.phone?.trim() || '—'}</td>
-                      <td className="px-4 py-3 text-right font-bold text-[#b39055]">{c.points}</td>
-                      <td className="px-4 py-3 text-right tabular-nums text-zinc-600">{c.appointments.length}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs text-zinc-500">
-                        {format(parseISO(c.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
-                      </td>
-                      <td className="px-2 py-3 text-zinc-400">
-                        <ChevronRight size={18} className="ml-auto" aria-hidden />
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredClients.map((c) => {
+                    const phones = clientPhones(c);
+                    const mainPhone = phones[0] ?? '';
+                    const extraPhones = phones.length - 1;
+                    return (
+                      <tr
+                        key={c.id}
+                        role="link"
+                        tabIndex={0}
+                        className="cursor-pointer bg-white hover:bg-zinc-50/90"
+                        onClick={() => navigate(`/dashboard/clientes/${c.id}`)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            navigate(`/dashboard/clientes/${c.id}`);
+                          }
+                        }}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
+                            <span className="font-semibold text-zinc-900">{c.name}</span>
+                          </div>
+                        </td>
+                        <td className="max-w-[14rem] truncate px-4 py-3 text-zinc-600">{displayClientEmail(c.email)}</td>
+                        <td className="max-w-[10rem] truncate px-4 py-3 text-zinc-600">
+                          {mainPhone ? `${mainPhone}${extraPhones > 0 ? ` +${extraPhones}` : ''}` : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-[#b39055]">{c.points}</td>
+                        <td className="px-4 py-3 text-right tabular-nums text-zinc-600">{c.appointments.length}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-zinc-500">
+                          {format(parseISO(c.createdAt), "d/MM/yyyy HH:mm", { locale: es })}
+                        </td>
+                        <td className="px-2 py-3 text-zinc-400">
+                          <ChevronRight size={18} className="ml-auto" aria-hidden />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -514,15 +551,14 @@ export default function AdminClientsListPage() {
               </div>
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">
-                  Teléfono <span className="font-normal normal-case text-zinc-400">(opcional)</span>
+                  Teléfonos <span className="font-normal normal-case text-zinc-400">(opcional)</span>
                 </label>
-                <input
-                  type="tel"
-                  autoComplete="tel"
+                <textarea
+                  rows={3}
                   value={formPhone}
                   onChange={(e) => setFormPhone(e.target.value)}
                   className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-3 text-zinc-900"
-                  placeholder="Ej. 11 2345 6789"
+                  placeholder={'Uno por línea o separados por coma.\nEj: 11 2345 6789, 11 8888 7777'}
                 />
               </div>
               <div>

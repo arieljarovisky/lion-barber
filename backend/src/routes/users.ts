@@ -7,11 +7,12 @@ import * as appointmentRepo from '../repositories/appointments.js';
 const router = Router();
 
 router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
-  const { name, email, points, phone } = req.body as {
+  const { name, email, points, phone, phones } = req.body as {
     name?: string;
     email?: string;
     points?: unknown;
     phone?: string;
+    phones?: unknown;
   };
   if (!name || typeof name !== 'string') {
     return res.status(400).json({ error: 'Se requiere name' });
@@ -34,18 +35,28 @@ router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
   }
   try {
     const phoneTrim = typeof phone === 'string' ? phone.trim() : '';
+    const parsedPhones = Array.isArray(phones)
+      ? phones
+          .filter((p): p is string => typeof p === 'string')
+          .map((p) => p.trim())
+          .filter(Boolean)
+      : [];
+    const mergedPhones = [...parsedPhones, ...(phoneTrim ? [phoneTrim] : [])];
     const user = await userRepo.createManualClient({
       name: trimmedName,
       email: emailTrim || undefined,
       points: pts,
       phone: phoneTrim || undefined,
+      phones: mergedPhones,
     });
+    const userPhones = user.phones ?? (await userRepo.getClientPhonesByUserId(user.id));
     res.status(201).json({
       client: {
         id: user.id,
         email: user.email,
         name: user.name,
-        phone: user.phone ?? null,
+        phone: userPhones[0] ?? null,
+        phones: userPhones,
         points: user.points,
         avatarUrl: user.avatar_url ?? null,
         createdAt: dbDateTimeToIsoUtc(user.created_at),
@@ -64,12 +75,14 @@ router.get('/clients', requireAuth, requireAdmin, async (_req, res) => {
   try {
     const clients = await userRepo.findAllClients();
     const ids = clients.map((c) => c.id);
+    const phonesByUser = await userRepo.getClientPhonesByUserIds(ids);
     const byUser = await appointmentRepo.getAppointmentsByUserIds(ids);
     const body = clients.map((c) => ({
       id: c.id,
       email: c.email,
       name: c.name,
-      phone: c.phone ?? null,
+      phone: (phonesByUser.get(c.id) ?? [])[0] ?? null,
+      phones: phonesByUser.get(c.id) ?? [],
       points: c.points,
       avatarUrl: c.avatar_url ?? null,
       createdAt: dbDateTimeToIsoUtc(c.created_at),
@@ -93,13 +106,15 @@ router.get('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
     const map = await appointmentRepo.getAppointmentsByUserIds([id]);
+    const phones = await userRepo.getClientPhonesByUserId(id);
     const appointments = map.get(id) ?? [];
     res.json({
       client: {
         id: user.id,
         email: user.email,
         name: user.name,
-        phone: user.phone ?? null,
+        phone: phones[0] ?? null,
+        phones,
         points: user.points,
         avatarUrl: user.avatar_url ?? null,
         createdAt: dbDateTimeToIsoUtc(user.created_at),

@@ -403,7 +403,7 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
   if (uid != null && Number.isFinite(Number(uid))) {
     const p = String(data.phone ?? '').trim();
     if (p.length > 0) {
-      await userRepo.setClientPhone(Number(uid), p);
+      await userRepo.addClientPhone(Number(uid), p);
     }
   }
   return created;
@@ -464,7 +464,7 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
   const saved = await getAppointmentById(id);
   if (saved && saved.userId != null) {
     const p = String(saved.phone ?? '').trim();
-    await userRepo.setClientPhone(saved.userId, p);
+    await userRepo.addClientPhone(saved.userId, p);
   }
   return saved;
 }

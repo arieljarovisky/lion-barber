@@ -155,6 +155,8 @@ export interface AdminClientWithHistory {
   name: string;
   /** Tel?fono en la ficha del cliente (tambi?n se guarda en cada turno). */
   phone?: string | null;
+  /** Todos los teléfonos de la ficha (pueden repetirse entre clientes). */
+  phones?: string[];
   points: number;
   /** Foto de perfil de Google si el cliente inici? sesi?n al menos una vez. */
   avatarUrl?: string | null;
@@ -401,7 +403,7 @@ export const api = {
     fetchApi<{ client: AdminClientWithHistory }>(`/api/users/clients/${clientId}`),
 
   /** Solo admin: alta manual (el cliente podr? vincular Google al iniciar sesi?n con el mismo email). */
-  createAdminClient: (data: { name: string; email?: string; phone?: string; points?: number }) =>
+  createAdminClient: (data: { name: string; email?: string; phone?: string; phones?: string[]; points?: number }) =>
     fetchApi<{ client: AdminClientWithHistory }>('/api/users/clients', {
       method: 'POST',
       body: JSON.stringify(data),

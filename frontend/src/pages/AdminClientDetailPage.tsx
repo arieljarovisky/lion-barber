@@ -15,6 +15,12 @@ import {
 } from '../utils/adminClientHistory';
 import { displayClientEmail } from '../utils/manualClientEmail';
 
+function clientPhones(client: AdminClientWithHistory): string[] {
+  if (Array.isArray(client.phones) && client.phones.length > 0) return client.phones.filter((p) => p.trim().length > 0);
+  if (client.phone?.trim()) return [client.phone.trim()];
+  return [];
+}
+
 export default function AdminClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
@@ -24,6 +30,7 @@ export default function AdminClientDetailPage() {
 
   const idNum = Number(clientId);
   const invalidId = !Number.isFinite(idNum) || idNum < 1;
+  const phones = client ? clientPhones(client) : [];
 
   useEffect(() => {
     if (invalidId) {
@@ -105,8 +112,14 @@ export default function AdminClientDetailPage() {
                     <div className="min-w-0">
                       <h1 className="text-2xl font-black tracking-tight text-zinc-900 sm:text-3xl">{client.name}</h1>
                       <p className="mt-1 truncate text-sm text-zinc-500">{displayClientEmail(client.email)}</p>
-                      {client.phone?.trim() ? (
-                        <p className="mt-1 truncate text-sm font-medium text-zinc-700">{client.phone.trim()}</p>
+                      {phones.length > 0 ? (
+                        <div className="mt-1 text-sm font-medium text-zinc-700">
+                          {phones.map((phone, idx) => (
+                            <p key={`${phone}-${idx}`} className="truncate">
+                              {phone}
+                            </p>
+                          ))}
+                        </div>
                       ) : null}
                       <p className="mt-2 text-xs text-zinc-400">
                         Cliente desde{' '}
