@@ -591,8 +591,13 @@ export default function ClientView() {
 
         <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
           <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-visible">
-            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[6rem] xl:text-[140px] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
-              Lion Barber
+            <img
+              src="/lion-logo-hero.png"
+              alt="Logo Lion Barber"
+              className="w-44 sm:w-56 md:w-64 lg:w-72 h-auto drop-shadow-2xl mb-4 sm:mb-6"
+            />
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
+              Agenda Abierta
             </h1>
           </div>
 
