@@ -1231,6 +1231,10 @@ export default function Dashboard() {
       navigate('/dashboard/clientes');
       return;
     }
+    if (panel === 'estadisticas') {
+      navigate('/dashboard/estadisticas');
+      return;
+    }
     setView(panel);
   }, [navigate]);
 
