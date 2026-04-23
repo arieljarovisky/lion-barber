@@ -597,17 +597,22 @@ export default function ClientView() {
             Estilo Unico
           </p>
 
-          <a href="#reserva" className="relative z-20 mt-14 sm:mt-16 md:mt-20 lg:mt-24 flex flex-col items-center group w-full max-w-[90vw] sm:max-w-none">
+          <a href="#reserva" className="relative z-20 mt-24 sm:mt-20 md:mt-20 lg:mt-24 flex flex-col items-center group w-full max-w-[90vw] sm:max-w-none">
             <div className="relative z-20 bg-[#e5c185] border-2 sm:border-4 border-black rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[2.5rem] w-full max-w-[250px] sm:w-64 sm:max-w-none md:w-80 lg:w-[27rem] py-3 sm:py-4 md:py-5 shadow-2xl flex items-center justify-center transition-transform duration-200 group-hover:scale-105">
-              {/* Ropes start from the black dots and go behind the title text */}
-              <div className="absolute left-0 right-0 bottom-full h-52 sm:h-60 md:h-72 lg:h-80 pointer-events-none z-0">
-                <div className="absolute left-6 sm:left-10 md:left-14 bottom-0 origin-bottom h-full w-[3px] bg-[#e5c185] -rotate-[20deg] shadow-md"></div>
-                <div className="absolute right-6 sm:right-10 md:right-14 bottom-0 origin-bottom h-full w-[3px] bg-[#e5c185] rotate-[20deg] shadow-md"></div>
-                <div className="absolute left-1/2 -translate-x-1/2 -top-2 sm:-top-3 w-4 h-4 sm:w-5 sm:h-5 bg-[#e5c185] rounded-full"></div>
-              </div>
+              {/* Ropes converge at the top beige point and start at black dots */}
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                className="absolute left-0 right-0 -top-[16rem] sm:-top-[18rem] md:-top-[21rem] lg:-top-[22rem] h-[16rem] sm:h-[18rem] md:h-[21rem] lg:h-[22rem] w-full pointer-events-none z-0 overflow-visible"
+                aria-hidden="true"
+              >
+                <line x1="14" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="1.8" />
+                <line x1="86" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="1.8" />
+                <circle cx="50" cy="8" r="2.6" fill="#e5c185" />
+              </svg>
 
-              <div className="absolute top-2.5 left-6 sm:left-10 md:left-14 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
-              <div className="absolute top-2.5 right-6 sm:right-10 md:right-14 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
+              <div className="absolute top-2.5 left-[14%] -translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
+              <div className="absolute top-2.5 right-[14%] translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
               <div className="absolute inset-1 sm:inset-1.5 md:inset-2 border-2 border-black rounded-[1.2rem] sm:rounded-[1.5rem] md:rounded-[2rem] pointer-events-none"></div>
               <span className="text-black font-sans font-black text-xl sm:text-2xl md:text-3xl tracking-wide uppercase relative z-10 px-3 sm:px-4">
                 Reserva tu turno
