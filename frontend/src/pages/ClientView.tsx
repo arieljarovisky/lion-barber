@@ -593,7 +593,7 @@ export default function ClientView() {
           <h1 className="relative z-30 text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
             Lion Barber
           </h1>
-          <p className="relative z-30 font-script text-4xl sm:text-5xl md:text-6xl text-zinc-100/95 mt-6 sm:mt-7 md:mt-9 drop-shadow-xl">
+          <p className="relative z-30 font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 mt-8 sm:mt-9 md:mt-10 drop-shadow-xl leading-none max-w-[78%]">
             Estilo Unico
           </p>
 
@@ -620,12 +620,6 @@ export default function ClientView() {
             </div>
           </a>
         </div>
-
-        <img
-          src="/lion-head-transparent.png"
-          alt="Lion Barber layer"
-          className="absolute left-1/2 -translate-x-1/2 bottom-8 sm:bottom-10 md:bottom-14 w-36 sm:w-48 md:w-60 lg:w-64 object-contain opacity-20 z-[5] pointer-events-none select-none"
-        />
 
         <img
           src="/lion-head-transparent.png"
