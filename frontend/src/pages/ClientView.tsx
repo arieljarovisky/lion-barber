@@ -591,19 +591,19 @@ export default function ClientView() {
 
         <div className="max-w-5xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
           <h1 className="relative z-30 -translate-y-[20px] text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
-            Lion Barber
+            <span className="typing-title">Lion Barber</span>
           </h1>
           <p className="absolute z-30 -translate-y-[20px] top-[8rem] sm:top-[9.7rem] md:top-[11.8rem] lg:top-[13.2rem] mb-[75px] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
             Estilo Unico
           </p>
 
           <a href="#reserva" className="relative z-20 mt-24 sm:mt-20 md:mt-20 lg:mt-24 flex flex-col items-center w-full max-w-[90vw] sm:max-w-none">
-            <div className="relative z-20 bg-[#e5c185] border-2 sm:border-4 border-black rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[2.5rem] w-full max-w-[250px] sm:w-64 sm:max-w-none md:w-80 lg:w-[27rem] py-3 sm:py-4 md:py-5 shadow-2xl flex items-center justify-center transition-transform duration-200 hover:scale-105">
+            <div className="relative z-20 bg-[#e5c185] border-2 sm:border-4 border-black rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[2.5rem] w-full max-w-[285px] sm:w-64 sm:max-w-none md:w-80 lg:w-[27rem] py-3 sm:py-4 md:py-5 shadow-2xl flex items-center justify-center transition-transform duration-200 hover:scale-105">
               {/* Ropes converge at the top beige point and start at black dots */}
               <svg
                 viewBox="0 0 100 100"
                 preserveAspectRatio="none"
-                className="absolute left-0 right-0 -top-[18rem] sm:-top-[20rem] md:-top-[23rem] lg:-top-[25rem] h-[18rem] sm:h-[20rem] md:h-[23rem] lg:h-[25rem] w-full pointer-events-none z-0 overflow-visible"
+                className="absolute left-0 right-0 -top-[20rem] sm:-top-[20rem] md:-top-[23rem] lg:-top-[25rem] h-[20rem] sm:h-[20rem] md:h-[23rem] lg:h-[25rem] w-full pointer-events-none z-0 overflow-visible"
                 aria-hidden="true"
               >
                 <line x1="14" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="1.6" />

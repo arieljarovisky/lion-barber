@@ -8,6 +8,43 @@
 }
 
 @layer utilities {
+  @keyframes typing-title {
+    from {
+      width: 0;
+    }
+    to {
+      width: 100%;
+    }
+  }
+
+  @keyframes blink-caret {
+    0%,
+    49% {
+      border-right-color: rgba(255, 255, 255, 0.95);
+    }
+    50%,
+    100% {
+      border-right-color: transparent;
+    }
+  }
+
+  .typing-title {
+    display: inline-block;
+    overflow: hidden;
+    white-space: nowrap;
+    border-right: 3px solid rgba(255, 255, 255, 0.95);
+    width: 0;
+    animation: typing-title 1.8s steps(11, end) 0.2s forwards, blink-caret 0.75s step-end infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .typing-title {
+      animation: none;
+      width: auto;
+      border-right: none;
+    }
+  }
+
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
