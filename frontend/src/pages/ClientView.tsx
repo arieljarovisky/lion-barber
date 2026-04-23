@@ -590,10 +590,10 @@ export default function ClientView() {
         </div>
 
         <div className="max-w-5xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
-          <h1 className="relative z-30 text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
+          <h1 className="relative z-30 -translate-y-[20px] text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
             Lion Barber
           </h1>
-          <p className="absolute z-30 top-[8rem] sm:top-[9.7rem] md:top-[11.8rem] lg:top-[13.2rem] mb-[75px] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
+          <p className="absolute z-30 -translate-y-[20px] top-[8rem] sm:top-[9.7rem] md:top-[11.8rem] lg:top-[13.2rem] mb-[75px] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
             Estilo Unico
           </p>
 
