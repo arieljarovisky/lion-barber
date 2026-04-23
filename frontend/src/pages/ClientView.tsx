@@ -590,11 +590,6 @@ export default function ClientView() {
         </div>
 
         <div className="max-w-5xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
-          <img
-            src="/lion-head-transparent.png"
-            alt="Lion Barber"
-            className="absolute top-0 sm:top-2 md:top-4 left-1/2 -translate-x-1/2 w-56 sm:w-72 md:w-80 lg:w-[24rem] opacity-25 pointer-events-none select-none"
-          />
           <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
             Lion Barber
           </h1>
@@ -604,11 +599,11 @@ export default function ClientView() {
 
           <a href="#reserva" className="relative mt-14 sm:mt-16 md:mt-20 lg:mt-24 flex flex-col items-center group w-full max-w-[90vw] sm:max-w-none">
             {/* Hanging point */}
-            <div className="absolute -top-44 sm:-top-52 md:-top-60 w-4 h-4 sm:w-5 sm:h-5 bg-[#e5c185] rounded-full z-10"></div>
+            <div className="absolute -top-56 sm:-top-64 md:-top-72 lg:-top-80 w-4 h-4 sm:w-5 sm:h-5 bg-[#e5c185] rounded-full z-10"></div>
             {/* Triangle strings */}
-            <div className="absolute -top-42 sm:-top-50 md:-top-58 w-64 sm:w-80 md:w-[28rem] h-44 sm:h-52 md:h-60 pointer-events-none">
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 origin-top h-full w-[2px] bg-[#e5c185] rotate-[23deg] shadow-md"></div>
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 origin-top h-full w-[2px] bg-[#e5c185] -rotate-[23deg] shadow-md"></div>
+            <div className="absolute -top-54 sm:-top-62 md:-top-70 lg:-top-[19rem] w-72 sm:w-96 md:w-[30rem] lg:w-[34rem] h-56 sm:h-64 md:h-72 lg:h-80 pointer-events-none">
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 origin-top h-full w-[2px] bg-[#e5c185] rotate-[20deg] shadow-md"></div>
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 origin-top h-full w-[2px] bg-[#e5c185] -rotate-[20deg] shadow-md"></div>
             </div>
 
             <div className="relative z-20 bg-[#e5c185] border-2 sm:border-4 border-black rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[2.5rem] w-full max-w-[250px] sm:w-64 sm:max-w-none md:w-80 lg:w-[27rem] py-3 sm:py-4 md:py-5 shadow-2xl flex items-center justify-center transition-transform duration-200 group-hover:scale-105">
