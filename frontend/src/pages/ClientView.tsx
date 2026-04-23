@@ -174,6 +174,7 @@ export default function ClientView() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const heroSectionRef = useRef<HTMLElement | null>(null);
   const heroWasInViewRef = useRef(false);
+  const lastTypingTriggerAtRef = useRef(Date.now());
   const [titleTypingRun, setTitleTypingRun] = useState(0);
   
   // Drag to scroll state
@@ -228,7 +229,11 @@ export default function ClientView() {
       ([entry]) => {
         if (entry.isIntersecting) {
           if (!heroWasInViewRef.current) {
-            setTitleTypingRun((n) => n + 1);
+            const now = Date.now();
+            if (now - lastTypingTriggerAtRef.current >= 8000) {
+              setTitleTypingRun((n) => n + 1);
+              lastTypingTriggerAtRef.current = now;
+            }
           }
           heroWasInViewRef.current = true;
           return;
