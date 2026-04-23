@@ -593,7 +593,7 @@ export default function ClientView() {
           <h1 className="relative z-30 text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
             Lion Barber
           </h1>
-          <p className="absolute z-30 top-[8.8rem] sm:top-[10.6rem] md:top-[12.8rem] lg:top-[14.2rem] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
+          <p className="absolute z-30 top-[8rem] sm:top-[9.7rem] md:top-[11.8rem] lg:top-[13.2rem] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
             Estilo Unico
           </p>
 
