@@ -593,7 +593,7 @@ export default function ClientView() {
           <h1 className="relative z-30 text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
             Lion Barber
           </h1>
-          <p className="relative z-30 font-script text-4xl sm:text-5xl md:text-6xl text-zinc-100/95 mt-4 sm:mt-6 md:mt-7 drop-shadow-xl">
+          <p className="relative z-30 font-script text-4xl sm:text-5xl md:text-6xl text-zinc-100/95 mt-6 sm:mt-7 md:mt-9 drop-shadow-xl">
             Estilo Unico
           </p>
 
@@ -603,11 +603,11 @@ export default function ClientView() {
               <svg
                 viewBox="0 0 100 100"
                 preserveAspectRatio="none"
-                className="absolute left-0 right-0 -top-[16rem] sm:-top-[18rem] md:-top-[21rem] lg:-top-[22rem] h-[16rem] sm:h-[18rem] md:h-[21rem] lg:h-[22rem] w-full pointer-events-none z-0 overflow-visible"
+                className="absolute left-0 right-0 -top-[18rem] sm:-top-[20rem] md:-top-[23rem] lg:-top-[25rem] h-[18rem] sm:h-[20rem] md:h-[23rem] lg:h-[25rem] w-full pointer-events-none z-0 overflow-visible"
                 aria-hidden="true"
               >
-                <line x1="14" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="1.8" />
-                <line x1="86" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="1.8" />
+                <line x1="14" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="2.2" />
+                <line x1="86" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="2.2" />
                 <circle cx="50" cy="8" r="2.6" fill="#e5c185" />
               </svg>
 
@@ -620,6 +620,12 @@ export default function ClientView() {
             </div>
           </a>
         </div>
+
+        <img
+          src="/lion-head-transparent.png"
+          alt="Lion Barber layer"
+          className="absolute left-1/2 -translate-x-1/2 bottom-8 sm:bottom-10 md:bottom-14 w-36 sm:w-48 md:w-60 lg:w-64 object-contain opacity-20 z-[5] pointer-events-none select-none"
+        />
 
         <img
           src="/lion-head-transparent.png"
