@@ -172,6 +172,10 @@ export default function ClientView() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(startOfToday());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const heroSectionRef = useRef<HTMLElement | null>(null);
+  const heroWasInViewRef = useRef(false);
+  const lastTypingTriggerAtRef = useRef(Date.now());
+  const [titleTypingRun, setTitleTypingRun] = useState(0);
   
   // Drag to scroll state
   const [isDragging, setIsDragging] = useState(false);
@@ -215,6 +219,33 @@ export default function ClientView() {
     const id = window.setInterval(() => setTimeTick((n) => n + 1), 60_000);
     return () => clearInterval(id);
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) return;
+    const el = heroSectionRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          if (!heroWasInViewRef.current) {
+            const now = Date.now();
+            if (now - lastTypingTriggerAtRef.current >= 8000) {
+              setTitleTypingRun((n) => n + 1);
+              lastTypingTriggerAtRef.current = now;
+            }
+          }
+          heroWasInViewRef.current = true;
+          return;
+        }
+        heroWasInViewRef.current = false;
+      },
+      { threshold: 0.45 }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const validateBookingForm = (): boolean => {
     if (!selectedService || !selectedBarber || !selectedDate || !selectedTime || !name || !phone) {
@@ -578,7 +609,7 @@ export default function ClientView() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
+      <section ref={heroSectionRef} className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
         <div className="absolute inset-0 z-0">
           <img 
             src={heroPortada}
@@ -589,40 +620,38 @@ export default function ClientView() {
           <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-zinc-950/55 to-zinc-950/85"></div>
         </div>
 
-        <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
-          <p className="text-xs sm:text-sm md:text-base font-sans tracking-[0.3em] sm:tracking-[0.4em] text-zinc-200 mb-3 sm:mb-6 uppercase">
-            De 10 a 20 hs
+        <div className="max-w-5xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
+          <h1 className="relative z-30 -translate-y-[20px] text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
+            <span key={titleTypingRun} className="typing-title">Lion Barber</span>
+          </h1>
+          <p className="absolute z-30 -translate-y-[20px] top-[8rem] sm:top-[9.7rem] md:top-[11.8rem] lg:top-[13.2rem] mb-[75px] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
+            Estilo Unico
           </p>
-          
-          <div className="relative flex flex-col items-center justify-center w-full min-w-0 overflow-visible">
-            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-[6rem] xl:text-[140px] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
-              Agenda
-            </h1>
-            <span className="text-5xl sm:text-7xl md:text-8xl lg:text-[7rem] xl:text-[160px] font-script text-[#e5c185] drop-shadow-lg absolute top-1/2 -translate-y-1/2 mt-4 sm:mt-6 md:mt-8 lg:mt-16 leading-none select-none whitespace-nowrap px-3">
-              abierta
-            </span>
-          </div>
 
-          {/* Hanging OPEN Sign / Booking Button */}
-          <a href="#reserva" className="relative mt-14 sm:mt-20 md:mt-28 lg:mt-40 flex flex-col items-center group cursor-pointer hover:scale-105 transition-transform w-full max-w-[90vw] sm:max-w-none">
-            {/* Strings */}
-            <div className="flex justify-between w-32 sm:w-40 md:w-56 absolute -top-16 sm:-top-20 md:-top-32 h-20 sm:h-24 md:h-36 z-0">
-              <div className="w-1 bg-[#e5c185] h-full shadow-sm"></div>
-              <div className="w-1 bg-[#e5c185] h-full shadow-sm"></div>
-            </div>
-            {/* Sign */}
-            <div className="relative z-10 bg-[#e5c185] border-2 sm:border-4 border-black rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[2.5rem] w-full max-w-[240px] sm:w-56 sm:max-w-none md:w-64 lg:w-80 py-3 sm:py-4 md:py-5 shadow-2xl flex items-center justify-center">
-              {/* Little holes for strings */}
-              <div className="absolute top-2 left-6 sm:left-8 md:left-12 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
-              <div className="absolute top-2 right-6 sm:right-8 md:right-12 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
-              {/* Inner border line */}
+          <a href="#reserva" className="relative z-20 mt-24 sm:mt-20 md:mt-20 lg:mt-24 flex flex-col items-center w-full max-w-[90vw] sm:max-w-none">
+            <div className="relative z-20 bg-[#e5c185] border-2 sm:border-4 border-black rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[2.5rem] w-full max-w-[285px] sm:w-64 sm:max-w-none md:w-80 lg:w-[27rem] py-3 sm:py-4 md:py-5 shadow-2xl flex items-center justify-center transition-transform duration-200 hover:scale-105">
+              {/* Ropes converge at the top beige point and start at black dots */}
+              <svg
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                className="absolute left-0 right-0 -top-[20rem] sm:-top-[20rem] md:-top-[23rem] lg:-top-[25rem] h-[20rem] sm:h-[20rem] md:h-[23rem] lg:h-[25rem] w-full pointer-events-none z-0 overflow-visible"
+                aria-hidden="true"
+              >
+                <line x1="14" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="1.6" />
+                <line x1="86" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="1.6" />
+                <circle cx="50" cy="8" r="2.6" fill="#e5c185" />
+              </svg>
+
+              <div className="absolute top-1.5 left-[14%] -translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
+              <div className="absolute top-1.5 right-[14%] translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
               <div className="absolute inset-1 sm:inset-1.5 md:inset-2 border-2 border-black rounded-[1.2rem] sm:rounded-[1.5rem] md:rounded-[2rem] pointer-events-none"></div>
-              <span className="text-black font-sans font-black text-lg sm:text-2xl md:text-3xl lg:text-4xl tracking-widest uppercase relative z-10 px-2">
-                Reservar
+              <span className="text-black font-sans font-black text-xl sm:text-2xl md:text-3xl tracking-wide uppercase relative z-10 px-3 sm:px-4">
+                Reserva tu turno
               </span>
             </div>
           </a>
         </div>
+
       </section>
 
       {/* Services Section */}
