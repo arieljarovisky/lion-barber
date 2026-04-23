@@ -578,7 +578,7 @@ export default function ClientView() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 mb-[75px] px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
+      <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
         <div className="absolute inset-0 z-0">
           <img 
             src={heroPortada}
@@ -593,7 +593,7 @@ export default function ClientView() {
           <h1 className="relative z-30 text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
             Lion Barber
           </h1>
-          <p className="absolute z-30 top-[8rem] sm:top-[9.7rem] md:top-[11.8rem] lg:top-[13.2rem] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
+          <p className="absolute z-30 top-[8rem] sm:top-[9.7rem] md:top-[11.8rem] lg:top-[13.2rem] mb-[75px] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
             Estilo Unico
           </p>
 
@@ -621,11 +621,6 @@ export default function ClientView() {
           </a>
         </div>
 
-        <img
-          src="/lion-head-transparent.png"
-          alt="Lion Barber icon"
-          className="absolute right-4 bottom-4 sm:right-6 sm:bottom-6 w-10 h-10 sm:w-14 sm:h-14 object-contain opacity-70 z-10"
-        />
       </section>
 
       {/* Services Section */}
