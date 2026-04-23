@@ -52,9 +52,9 @@ export default function Login() {
         <div className="flex justify-center mb-6 sm:mb-8">
           <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 sm:border-4 border-[#e5c185] flex items-center justify-center overflow-hidden bg-zinc-900 flex-shrink-0">
             <img
-              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s"
+              src="/lion-barber-logo.png"
               alt="Lion Barber"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
             />
           </div>
         </div>
