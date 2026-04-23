@@ -39,6 +39,8 @@ export default function BarberStatsPage() {
   const [fromDate, setFromDate] = useState(monthStartYmd());
   const [toDate, setToDate] = useState(todayYmd());
   const [selectedBarberKey, setSelectedBarberKey] = useState('all');
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   const handlePanelNavigate = useCallback(
     (panel: DashboardPanelId) => {
@@ -125,6 +127,17 @@ export default function BarberStatsPage() {
     if (selectedBarberKey === 'all') return rows;
     return rows.filter((r) => r.barberKey === selectedBarberKey);
   }, [rows, selectedBarberKey]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [fromDate, toDate, selectedBarberKey]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedRows = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRows.slice(start, start + pageSize);
+  }, [filteredRows, currentPage]);
 
   const totals = useMemo(
     () =>
@@ -224,7 +237,7 @@ export default function BarberStatsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {filteredRows.map((r) => (
+                  {paginatedRows.map((r) => (
                     <tr key={r.appointmentId} className="hover:bg-zinc-50/70">
                       <td className="whitespace-nowrap px-4 py-3 text-zinc-700">{r.date}</td>
                       <td className="px-4 py-3 font-mono text-xs text-zinc-800">{r.time}</td>
@@ -237,6 +250,33 @@ export default function BarberStatsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 px-4 py-3">
+              <p className="text-xs text-zinc-500">
+                Mostrando {(currentPage - 1) * pageSize + (paginatedRows.length > 0 ? 1 : 0)}-
+                {(currentPage - 1) * pageSize + paginatedRows.length} de {filteredRows.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Anterior
+                </button>
+                <span className="text-xs font-bold text-zinc-600">
+                  Página {currentPage} de {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Siguiente
+                </button>
+              </div>
             </div>
           </div>
         )}
