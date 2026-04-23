@@ -578,7 +578,7 @@ export default function ClientView() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
+      <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 mb-[75px] px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
         <div className="absolute inset-0 z-0">
           <img 
             src={heroPortada}
