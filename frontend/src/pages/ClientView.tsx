@@ -28,8 +28,6 @@ import { motion } from 'motion/react';
 import { Wallet } from '@mercadopago/sdk-react';
 import heroPortada from '../assets/hero-portada.png';
 
-const BRAND_LOGO_SRC = '/lion-barber-logo.png';
-
 const TIME_SLOTS = [
   '10:00', '10:20', '10:40',
   '11:00', '11:20', '11:40',
@@ -113,6 +111,22 @@ function getServiceInitials(name?: string): string {
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
+
+const Logo = ({ className = "w-32 h-32" }) => (
+  <div className={`bg-white rounded-full border-4 border-zinc-900 flex flex-col items-center justify-center relative shadow-2xl ${className}`}>
+    <div className="absolute inset-1.5 border-2 border-zinc-800 rounded-full"></div>
+    <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full animate-[spin_20s_linear_infinite]">
+      <path id="curve" d="M 20 50 A 30 30 0 1 1 80 50" fill="transparent" />
+      <text className="text-[12px] font-black uppercase tracking-widest" fill="#18181b">
+        <textPath href="#curve" startOffset="50%" textAnchor="middle">Lion Barber</textPath>
+      </text>
+    </svg>
+    <div className="w-12 h-12 z-10 mt-4 rounded-full overflow-hidden border-2 border-zinc-900">
+      <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="w-full h-full object-cover" />
+    </div>
+    <div className="text-zinc-900 text-[8px] font-bold z-10 mt-1 uppercase tracking-widest">BS AS</div>
+  </div>
+);
 
 export default function ClientView() {
   const { profile, logout, canAccessDashboard, loading: authLoading } = useAuth();
@@ -466,12 +480,8 @@ export default function ClientView() {
       <nav className="fixed top-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50">
         <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 h-16 sm:h-20 flex items-center justify-between gap-2 min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-shrink-0">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center flex-shrink-0">
-              <img
-                src={BRAND_LOGO_SRC}
-                alt="Lion Barber"
-                className="w-full h-full object-contain"
-              />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-zinc-900 rounded-full flex items-center justify-center overflow-hidden border border-zinc-800 flex-shrink-0">
+              <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="w-full h-full object-cover" />
             </div>
             <span className="font-serif font-black tracking-widest uppercase text-sm sm:text-base md:text-lg text-white truncate">Lion Barber</span>
           </div>
@@ -580,13 +590,6 @@ export default function ClientView() {
         </div>
 
         <div className="max-w-4xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
-          <div className="mb-4 sm:mb-6 flex justify-center">
-            <img
-              src={BRAND_LOGO_SRC}
-              alt="Lion Barber"
-              className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 object-contain drop-shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
-            />
-          </div>
           <p className="text-xs sm:text-sm md:text-base font-sans tracking-[0.3em] sm:tracking-[0.4em] text-zinc-200 mb-3 sm:mb-6 uppercase">
             De 10 a 20 hs
           </p>
@@ -1051,12 +1054,8 @@ export default function ClientView() {
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 items-center text-center md:text-left">
           <div className="flex flex-col items-center md:items-start gap-3 sm:gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 flex-shrink-0 flex items-center justify-center">
-                <img
-                  src={BRAND_LOGO_SRC}
-                  alt="Lion Barber"
-                  className="w-full h-full object-contain"
-                />
+              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-zinc-900 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden border border-zinc-800">
+                <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="w-full h-full object-cover" />
               </div>
               <span className="font-serif font-black tracking-widest uppercase text-white text-sm sm:text-base">Lion Barber</span>
             </div>
