@@ -611,8 +611,8 @@ export default function ClientView() {
                 <circle cx="50" cy="8" r="2.6" fill="#e5c185" />
               </svg>
 
-              <div className="absolute top-2.5 left-[14%] -translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
-              <div className="absolute top-2.5 right-[14%] translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
+              <div className="absolute top-1.5 left-[14%] -translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
+              <div className="absolute top-1.5 right-[14%] translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
               <div className="absolute inset-1 sm:inset-1.5 md:inset-2 border-2 border-black rounded-[1.2rem] sm:rounded-[1.5rem] md:rounded-[2rem] pointer-events-none"></div>
               <span className="text-black font-sans font-black text-xl sm:text-2xl md:text-3xl tracking-wide uppercase relative z-10 px-3 sm:px-4">
                 Reserva tu turno
