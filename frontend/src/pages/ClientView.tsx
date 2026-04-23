@@ -172,6 +172,9 @@ export default function ClientView() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(startOfToday());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const heroSectionRef = useRef<HTMLElement | null>(null);
+  const heroWasInViewRef = useRef(false);
+  const [titleTypingRun, setTitleTypingRun] = useState(0);
   
   // Drag to scroll state
   const [isDragging, setIsDragging] = useState(false);
@@ -215,6 +218,29 @@ export default function ClientView() {
     const id = window.setInterval(() => setTimeTick((n) => n + 1), 60_000);
     return () => clearInterval(id);
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('IntersectionObserver' in window)) return;
+    const el = heroSectionRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          if (!heroWasInViewRef.current) {
+            setTitleTypingRun((n) => n + 1);
+          }
+          heroWasInViewRef.current = true;
+          return;
+        }
+        heroWasInViewRef.current = false;
+      },
+      { threshold: 0.45 }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   const validateBookingForm = (): boolean => {
     if (!selectedService || !selectedBarber || !selectedDate || !selectedTime || !name || !phone) {
@@ -578,7 +604,7 @@ export default function ClientView() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
+      <section ref={heroSectionRef} className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
         <div className="absolute inset-0 z-0">
           <img 
             src={heroPortada}
@@ -591,7 +617,7 @@ export default function ClientView() {
 
         <div className="max-w-5xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
           <h1 className="relative z-30 -translate-y-[20px] text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
-            <span className="typing-title">Lion Barber</span>
+            <span key={titleTypingRun} className="typing-title">Lion Barber</span>
           </h1>
           <p className="absolute z-30 -translate-y-[20px] top-[8rem] sm:top-[9.7rem] md:top-[11.8rem] lg:top-[13.2rem] mb-[75px] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
             Estilo Unico
