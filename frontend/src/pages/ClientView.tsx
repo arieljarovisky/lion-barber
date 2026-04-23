@@ -578,18 +578,19 @@ export default function ClientView() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-48 md:pb-32 px-4 sm:px-6 overflow-hidden min-h-[80vh] flex flex-col justify-center">
-        <div className="absolute inset-0 z-0">
-          <img 
-            src={heroPortada}
-            alt="Barbershop interior" 
-            className="w-full h-full object-cover object-center opacity-45 brightness-110 contrast-105"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-zinc-950/55 to-zinc-950/85"></div>
-        </div>
+      <section className="relative pt-28 pb-16 sm:pt-32 sm:pb-20 md:pt-40 md:pb-24 px-4 sm:px-6 flex justify-center">
+        <div className="relative w-full max-w-[768px] aspect-[3/4] md:h-[1024px] overflow-hidden rounded-2xl border border-zinc-800/70 shadow-2xl">
+          <div className="absolute inset-0 z-0">
+            <img 
+              src={heroPortada}
+              alt="Barbershop interior" 
+              className="w-full h-full object-cover object-center opacity-45 brightness-110 contrast-105"
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-zinc-950/55 to-zinc-950/85"></div>
+          </div>
 
-        <div className="max-w-5xl mx-auto relative z-10 flex flex-col items-center text-center pt-6 sm:pt-10 w-full min-w-0">
+          <div className="max-w-5xl mx-auto relative z-10 flex flex-col items-center text-center pt-10 sm:pt-14 md:pt-20 w-full min-w-0 px-4 sm:px-6">
           <img
             src="/lion-head-transparent.png"
             alt="Lion Barber"
@@ -602,7 +603,7 @@ export default function ClientView() {
             Estilo Unico
           </p>
 
-          <a href="#reserva" className="relative mt-14 sm:mt-16 md:mt-20 lg:mt-24 flex flex-col items-center group w-full max-w-[90vw] sm:max-w-none">
+            <a href="#reserva" className="relative mt-14 sm:mt-16 md:mt-20 lg:mt-24 flex flex-col items-center group w-full max-w-[90vw] sm:max-w-none">
             {/* Hanging point */}
             <div className="absolute -top-44 sm:-top-52 md:-top-60 w-4 h-4 sm:w-5 sm:h-5 bg-[#e5c185] rounded-full z-10"></div>
             {/* Triangle strings */}
@@ -619,14 +620,15 @@ export default function ClientView() {
                 Reserva tu turno
               </span>
             </div>
-          </a>
-        </div>
+            </a>
+          </div>
 
-        <img
-          src="/lion-head-transparent.png"
-          alt="Lion Barber icon"
-          className="absolute right-4 bottom-4 sm:right-6 sm:bottom-6 w-10 h-10 sm:w-14 sm:h-14 object-contain opacity-70 z-10"
-        />
+          <img
+            src="/lion-head-transparent.png"
+            alt="Lion Barber icon"
+            className="absolute right-4 bottom-4 sm:right-6 sm:bottom-6 w-10 h-10 sm:w-14 sm:h-14 object-contain opacity-70 z-10"
+          />
+        </div>
       </section>
 
       {/* Services Section */}
