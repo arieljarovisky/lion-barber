@@ -1113,10 +1113,11 @@ export default function Dashboard() {
     setDragOverServiceId(null);
   };
 
-  const totalIncome = dayAppointments.reduce(
-    (acc, curr) => acc + (resolveAppointmentServiceAmountArs(curr, services) ?? 0),
-    0
-  );
+  const barberProfileIncomeShare = isStaffBarber ? 0.5 : 1;
+  const totalIncome = dayAppointments.reduce((acc, curr) => {
+    const serviceAmount = resolveAppointmentServiceAmountArs(curr, services) ?? 0;
+    return acc + serviceAmount * barberProfileIncomeShare;
+  }, 0);
   const navigate = useNavigate();
   const location = useLocation();
 
