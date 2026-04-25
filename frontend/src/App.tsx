@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import ClientView from './pages/ClientView';
 import Dashboard from './pages/Dashboard';
+import BarberStatsPage from './pages/BarberStatsPage';
 import AdminClientsListPage from './pages/AdminClientsListPage';
 import AdminClientDetailPage from './pages/AdminClientDetailPage';
 import Login from './pages/Login';
@@ -36,6 +37,14 @@ export default function App() {
             element={
               <ProtectedRoute dashboardAccess adminOnly>
                 <AdminClientsListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/estadisticas"
+            element={
+              <ProtectedRoute dashboardAccess adminOnly>
+                <BarberStatsPage />
               </ProtectedRoute>
             }
           />

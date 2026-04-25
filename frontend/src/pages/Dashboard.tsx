@@ -70,6 +70,16 @@ function adminClientMatchesPhoneDigits(c: AdminClientWithHistory, phoneDigits: s
   return c.appointments.some((a) => normalizePhoneDigits(a.phone || '') === phoneDigits);
 }
 
+function adminClientPrimaryPhone(c: AdminClientWithHistory): string {
+  const byFile = Array.isArray(c.phones) ? c.phones.find((p) => p.trim().length > 0) : null;
+  if (byFile) return byFile.trim();
+  if (c.phone?.trim()) return c.phone.trim();
+  const byHistory = c.appointments
+    .map((a) => (a.phone ?? '').trim())
+    .find((p) => p.length > 0);
+  return byHistory ?? '';
+}
+
 const TIME_SLOTS = [
   '10:00', '10:20', '10:40',
   '11:00', '11:20', '11:40',
@@ -125,6 +135,8 @@ function normalizeAppointmentTime(t: string | undefined): string {
 const SLOT_STEP_MINUTES = 20;
 /** Altura visual mínima por “franja” de 20 min en el timeline (rem). */
 const TIMELINE_ROW_UNIT_REM = 3.75;
+/** Regla fija solicitada: ingreso estimado del barbero = 50% del servicio. */
+const BARBER_ESTIMATED_SHARE = 0.5;
 
 function appointmentSlotSpan(app: Appointment): number {
   const dm = app.durationMinutes ?? 30;
@@ -134,15 +146,18 @@ function appointmentSlotSpan(app: Appointment): number {
 /** Una fila por bloque libre o turno que ocupa N franjas de 20 min. */
 function buildDayTimelineRows(
   apps: Appointment[],
-  slots: string[]
-): Array<{ kind: 'free'; slot: string } | { kind: 'appointment'; slot: string; app: Appointment; span: number }> {
+  slots: string[],
+  blockedSlots?: Set<string>
+): Array<
+  { kind: 'free'; slot: string } | { kind: 'blocked'; slot: string } | { kind: 'appointment'; slot: string; app: Appointment; span: number }
+> {
   const byStart = new Map<string, Appointment>();
   for (const a of apps) {
     const k = normalizeAppointmentTime(a.time);
     if (k) byStart.set(k, a);
   }
   const rows: Array<
-    { kind: 'free'; slot: string } | { kind: 'appointment'; slot: string; app: Appointment; span: number }
+    { kind: 'free'; slot: string } | { kind: 'blocked'; slot: string } | { kind: 'appointment'; slot: string; app: Appointment; span: number }
   > = [];
   let i = 0;
   while (i < slots.length) {
@@ -153,6 +168,9 @@ function buildDayTimelineRows(
       const span = Math.min(rawSpan, slots.length - i);
       rows.push({ kind: 'appointment', slot, app, span });
       i += span;
+    } else if (blockedSlots?.has(slot)) {
+      rows.push({ kind: 'blocked', slot });
+      i += 1;
     } else {
       rows.push({ kind: 'free', slot });
       i += 1;
@@ -164,10 +182,11 @@ function buildDayTimelineRows(
 /** Para tabla semanal: por índice de franja, celda libre, inicio de turno (con rowspan) o skip por rowspan. */
 function buildWeekColumnCells(
   apps: Appointment[],
-  slots: string[]
-): Array<'skip' | { kind: 'free' } | { kind: 'app'; app: Appointment; rowspan: number }> {
-  const result: Array<'skip' | { kind: 'free' } | { kind: 'app'; app: Appointment; rowspan: number }> = slots.map(
-    () => ({ kind: 'free' as const })
+  slots: string[],
+  blockedSlots?: Set<string>
+): Array<'skip' | { kind: 'free' } | { kind: 'blocked' } | { kind: 'app'; app: Appointment; rowspan: number }> {
+  const result: Array<'skip' | { kind: 'free' } | { kind: 'blocked' } | { kind: 'app'; app: Appointment; rowspan: number }> = slots.map(
+    (slot) => (blockedSlots?.has(slot) ? { kind: 'blocked' as const } : { kind: 'free' as const })
   );
   for (const a of apps) {
     const startIdx = slots.indexOf(normalizeAppointmentTime(a.time));
@@ -237,6 +256,10 @@ function getIsoWeekday(date: Date): number {
   return day === 0 ? 7 : day;
 }
 
+function getIsoWeekdayFromYmd(dateStr: string): number {
+  return getIsoWeekday(new Date(`${dateStr}T12:00:00`));
+}
+
 function normalizeWeekdayHours(input: Record<number, DayHours> | undefined, closeTimeFallback = '20:00'): Record<number, DayHours> {
   const out: Record<number, DayHours> = { ...DEFAULT_WEEKDAY_HOURS };
   for (let d = 1; d <= 7; d++) {
@@ -267,6 +290,9 @@ export default function Dashboard() {
   const [newClientEmail, setNewClientEmail] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [adminClientsLoading, setAdminClientsLoading] = useState(false);
+  const [agendaRestrictionsByBarber, setAgendaRestrictionsByBarber] = useState<
+    Record<string, { offWeekdays: Set<number>; blocks: BarberTimeBlockRow[] }>
+  >({});
   const [availableFormSlots, setAvailableFormSlots] = useState<string[]>([]);
   const [availableFormSlotsLoading, setAvailableFormSlotsLoading] = useState(false);
   const [view, setView] = useState<
@@ -460,6 +486,37 @@ export default function Dashboard() {
       cancelled = true;
     };
   }, [view, isAdmin, showToast]);
+
+  useEffect(() => {
+    if (view !== 'agenda' || barbers.length === 0) {
+      setAgendaRestrictionsByBarber({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      barbers.map(async (b) => {
+        const data = await api.getBarberSchedule(b.id);
+        return [b.id, data] as const;
+      })
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        const next: Record<string, { offWeekdays: Set<number>; blocks: BarberTimeBlockRow[] }> = {};
+        for (const [barberId, data] of entries) {
+          next[barberId] = {
+            offWeekdays: new Set(data.francos.map((f) => f.weekday)),
+            blocks: data.blocks,
+          };
+        }
+        setAgendaRestrictionsByBarber(next);
+      })
+      .catch(() => {
+        if (!cancelled) setAgendaRestrictionsByBarber({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, barbers]);
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd');
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -737,6 +794,32 @@ export default function Dashboard() {
       .sort((a, b) => a.time.localeCompare(b.time)),
   }));
 
+  const getBlockedSlotsForBarberDate = useCallback(
+    (barberId: string | undefined, dateStrValue: string): Set<string> => {
+      if (!barberId) return new Set<string>();
+      const cfg = agendaRestrictionsByBarber[barberId];
+      if (!cfg) return new Set<string>();
+      const weekday = getIsoWeekdayFromYmd(dateStrValue);
+      if (cfg.offWeekdays.has(weekday)) return new Set<string>(agendaTimeSlots);
+      const blocked = new Set<string>();
+      for (const slot of agendaTimeSlots) {
+        const slotMin = timeToMinutes(slot);
+        const hit = cfg.blocks.some((b) => {
+          const appliesByDate = b.blockDate != null && b.blockDate === dateStrValue;
+          const appliesByWeekday = b.blockDate == null && b.weekday === weekday;
+          if (!appliesByDate && !appliesByWeekday) return false;
+          const start = timeToMinutes(b.timeStart);
+          const end = timeToMinutes(b.timeEnd);
+          if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+          return slotMin >= start && slotMin < end;
+        });
+        if (hit) blocked.add(slot);
+      }
+      return blocked;
+    },
+    [agendaRestrictionsByBarber, agendaTimeSlots]
+  );
+
   useEffect(() => {
     if (!agendaTimeSlots.length) return;
     setBlockTimeStart((prev) => (agendaTimeSlots.includes(prev) ? prev : agendaTimeSlots[0]));
@@ -786,8 +869,8 @@ export default function Dashboard() {
     };
   }, [modalOpen, editingAppointment, staffBarberId, form.barberId, form.date, form.service, services]);
 
-  const weekColumnCellsByDay = weekAppointmentsByDay.map(({ appointments: dayApps }) =>
-    buildWeekColumnCells(dayApps, agendaTimeSlots)
+  const weekColumnCellsByDay = weekAppointmentsByDay.map(({ dateStr: dayDate, appointments: dayApps }) =>
+    buildWeekColumnCells(dayApps, agendaTimeSlots, getBlockedSlotsForBarberDate(selectedBarberId, dayDate))
   );
 
   const openCreateModal = () => {
@@ -1113,11 +1196,27 @@ export default function Dashboard() {
     setDragOverServiceId(null);
   };
 
-  const barberProfileIncomeShare = isStaffBarber ? 0.5 : 1;
+  const barberProfileIncomeShare = isStaffBarber ? BARBER_ESTIMATED_SHARE : 1;
   const totalIncome = dayAppointments.reduce((acc, curr) => {
     const serviceAmount = resolveAppointmentServiceAmountArs(curr, services) ?? 0;
     return acc + serviceAmount * barberProfileIncomeShare;
   }, 0);
+  const barberStats = useMemo(() => {
+    if (!isAdmin) return [];
+    return barbers
+      .map((b) => {
+        const apps = dayAppointments.filter((a) => a.barberId === b.id || a.barber === b.name);
+        const gross = apps.reduce((acc, curr) => acc + (resolveAppointmentServiceAmountArs(curr, services) ?? 0), 0);
+        const estimatedIncome = Math.round(gross * BARBER_ESTIMATED_SHARE);
+        return {
+          barber: b,
+          appointments: apps.length,
+          gross,
+          estimatedIncome,
+        };
+      })
+      .sort((a, b) => b.estimatedIncome - a.estimatedIncome || b.appointments - a.appointments);
+  }, [isAdmin, barbers, dayAppointments, services]);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1131,6 +1230,10 @@ export default function Dashboard() {
   const handlePanelNavigate = useCallback((panel: DashboardPanelId) => {
     if (panel === 'clientes') {
       navigate('/dashboard/clientes');
+      return;
+    }
+    if (panel === 'estadisticas') {
+      navigate('/dashboard/estadisticas');
       return;
     }
     setView(panel);
@@ -1374,6 +1477,36 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+        {isAdmin && !isSingleBarberDayView && barberStats.length > 0 && (
+          <div className="mb-8 rounded-2xl border border-zinc-200 bg-white p-4 sm:p-5 shadow-sm">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 className="text-base font-black text-zinc-900">Estadísticas por barbero</h3>
+              <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                Ingreso estimado: 50% del servicio
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {barberStats.map((row) => (
+                <article key={row.barber.id} className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3.5">
+                  <p className="font-bold text-zinc-900 truncate">{row.barber.name}</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {row.appointments} turno{row.appointments === 1 ? '' : 's'}
+                  </p>
+                  <div className="mt-3 flex items-end justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Total servicios</p>
+                      <p className="text-sm font-semibold text-zinc-700">${row.gross.toLocaleString('es-AR')}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Ingreso est.</p>
+                      <p className="text-lg font-black text-emerald-700">${row.estimatedIncome.toLocaleString('es-AR')}</p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
 
         {isSingleBarberDayView && barbers[0] && (
           <div className="mb-8 rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-white shadow-xl overflow-hidden">
@@ -1520,6 +1653,21 @@ export default function Dashboard() {
                               </td>
                             );
                           }
+                          if (col.kind === 'blocked') {
+                            return (
+                              <td key={dateStr} className="py-2 px-2 align-top border-l border-zinc-100">
+                                <div
+                                  className="w-full rounded-lg border border-red-200 bg-red-50/80"
+                                  style={{ minHeight: `${TIMELINE_ROW_UNIT_REM}rem` }}
+                                  title={`Bloqueado · ${format(parseISO(dateStr + 'T12:00:00'), 'EEE d MMM', { locale: es })} ${slot}`}
+                                >
+                                  <span className="flex h-full min-h-[2.5rem] w-full items-center justify-center px-1 text-[10px] font-bold uppercase tracking-wide text-red-600">
+                                    Bloqueado
+                                  </span>
+                                </div>
+                              </td>
+                            );
+                          }
                           return (
                             <td key={dateStr} className="py-2 px-2 align-top border-l border-zinc-100">
                               <button
@@ -1562,7 +1710,11 @@ export default function Dashboard() {
                 <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
                   <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-contain">
                     <ul className="divide-y divide-zinc-100">
-                      {buildDayTimelineRows(appointmentsByBarber[0].appointments, agendaTimeSlots).map((row) => {
+                      {buildDayTimelineRows(
+                        appointmentsByBarber[0].appointments,
+                        agendaTimeSlots,
+                        getBlockedSlotsForBarberDate(appointmentsByBarber[0]?.barber.id, dateStr)
+                      ).map((row) => {
                         if (row.kind === 'free') {
                           const bid = appointmentsByBarber[0]?.barber.id;
                           return (
@@ -1582,6 +1734,20 @@ export default function Dashboard() {
                                   <Plus size={16} className="shrink-0 opacity-60" aria-hidden />
                                   <span className="font-semibold">Libre — clic para agendar</span>
                                 </button>
+                              </div>
+                            </li>
+                          );
+                        }
+                        if (row.kind === 'blocked') {
+                          return (
+                            <li key={`blocked-${row.slot}`} className="flex gap-3 sm:gap-5 p-3 sm:p-4 bg-red-50/60 min-h-[3.25rem]">
+                              <div className="w-16 sm:w-20 shrink-0 text-right pt-0.5">
+                                <span className="font-mono text-sm font-bold text-red-700 tabular-nums">{row.slot}</span>
+                              </div>
+                              <div className="flex-1 min-w-0 border-l-2 border-red-200 pl-4 sm:pl-5 -ml-px">
+                                <div className="flex w-full items-center gap-2 rounded-xl border border-red-200 bg-red-100/70 px-3 py-2.5 text-left text-sm text-red-700">
+                                  <span className="font-semibold">Bloqueado</span>
+                                </div>
                               </div>
                             </li>
                           );
@@ -1671,7 +1837,11 @@ export default function Dashboard() {
                         <p className="font-bold text-base leading-tight">{barber.name}</p>
                       </div>
                       <div className="p-3 divide-y divide-zinc-100 max-h-[300px] overflow-y-auto">
-                        {buildDayTimelineRows(barberAppointments, agendaTimeSlots).map((row) => {
+                        {buildDayTimelineRows(
+                          barberAppointments,
+                          agendaTimeSlots,
+                          getBlockedSlotsForBarberDate(barber.id, dateStr)
+                        ).map((row) => {
                           if (row.kind === 'free') {
                             return (
                               <button
@@ -1689,6 +1859,22 @@ export default function Dashboard() {
                                   Libre
                                 </span>
                               </button>
+                            );
+                          }
+                          if (row.kind === 'blocked') {
+                            return (
+                              <div
+                                key={`blocked-${barber.id}-${row.slot}`}
+                                className="flex items-center gap-2 rounded-lg py-2 text-left text-sm min-h-[2.25rem] bg-red-50/70"
+                                title={`Bloqueado · ${barber.name} · ${row.slot}`}
+                              >
+                                <span className="w-14 font-mono text-red-700 flex-shrink-0 text-xs font-semibold">
+                                  {row.slot}
+                                </span>
+                                <span className="flex flex-1 items-center gap-1.5 border border-red-200 rounded-md px-2 py-1 text-xs font-bold uppercase tracking-wide text-red-600">
+                                  Bloqueado
+                                </span>
+                              </div>
                             );
                           }
                           const { app, span, slot } = row;
@@ -2561,7 +2747,11 @@ export default function Dashboard() {
                       );
                       if (matches.length === 1) {
                         setLinkedClientId(matches[0].id);
-                        setForm((f) => ({ ...f, name: matches[0].name }));
+                        setForm((f) => ({
+                          ...f,
+                          name: matches[0].name,
+                          phone: adminClientPrimaryPhone(matches[0]) || f.phone,
+                        }));
                         setNewClientEmail('');
                       }
                     }}
@@ -2584,7 +2774,11 @@ export default function Dashboard() {
                             className="w-full px-4 py-2.5 text-left text-sm text-zinc-900 hover:bg-zinc-50"
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
-                              setForm((f) => ({ ...f, name: c.name }));
+                              setForm((f) => ({
+                                ...f,
+                                name: c.name,
+                                phone: adminClientPrimaryPhone(c) || f.phone,
+                              }));
                               setLinkedClientId(c.id);
                               setNewClientEmail('');
                             }}

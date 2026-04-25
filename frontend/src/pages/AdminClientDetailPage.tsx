@@ -67,6 +67,10 @@ export default function AdminClientDetailPage() {
         navigate('/dashboard/clientes');
         return;
       }
+      if (panel === 'estadisticas') {
+        navigate('/dashboard/estadisticas');
+        return;
+      }
       navigate('/dashboard', { state: { openView: panel } });
     },
     [navigate]
