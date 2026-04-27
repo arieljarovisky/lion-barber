@@ -613,6 +613,23 @@ export default function Dashboard() {
     }
   }, [isAdmin, view]);
 
+  /** Cierre y horario por día de la barbería para la grilla de agenda. Sin esto, solo se aplicaba al abrir Configuración. */
+  useEffect(() => {
+    if (!canAccessDashboard) return;
+    let cancelled = false;
+    api
+      .getShopSettings()
+      .then((s) => {
+        if (cancelled) return;
+        setShopCloseTime(s.closeTime || '20:00');
+        setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [canAccessDashboard]);
+
   useEffect(() => {
     if (view !== 'configuracion' || !isAdmin) return;
     let cancelled = false;
