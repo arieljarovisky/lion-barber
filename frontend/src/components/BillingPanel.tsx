@@ -1,12 +1,13 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { FileDown, Loader2, Receipt, Search, SlidersHorizontal } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileDown, Loader2, Receipt, Search, SlidersHorizontal } from 'lucide-react';
 import type { Appointment, Barber, Service } from '../api';
 import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
 import { printLionBarberInvoice } from '../utils/invoicePrint';
 
 const WINDOW_DAYS = 120;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
 
 type InvoiceFilter = 'all' | 'pending' | 'invoiced';
 
@@ -38,6 +39,8 @@ export default function BillingPanel({
   const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>('all');
   const [barberId, setBarberId] = useState<string>('');
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [page, setPage] = useState(1);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -64,12 +67,27 @@ export default function BillingPanel({
     return list;
   }, [appointments, search, dateFrom, dateTo, invoiceFilter, barberId, barbers]);
 
+  const totalRows = rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const pageClamped = Math.min(page, totalPages);
+  const startIdx = (pageClamped - 1) * pageSize;
+  const pageRows = rows.slice(startIdx, startIdx + pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, dateFrom, dateTo, invoiceFilter, barberId]);
+
+  useEffect(() => {
+    setPage((p) => Math.min(Math.max(1, p), totalPages));
+  }, [totalPages, pageSize]);
+
   const resetFilters = () => {
     setSearch('');
     setDateFrom(format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd'));
     setDateTo(format(new Date(), 'yyyy-MM-dd'));
     setInvoiceFilter('all');
     setBarberId('');
+    setPage(1);
   };
 
   if (!afipConfigured) {
@@ -181,9 +199,28 @@ export default function BillingPanel({
             </button>
           </div>
         </div>
-        <p className="mt-3 text-xs text-zinc-500">
-          Mostrando <strong className="text-zinc-800">{rows.length}</strong> turno(s).
-        </p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-500">
+          <p>
+            <strong className="text-zinc-800">{totalRows}</strong> turno(s) con estos filtros.
+          </p>
+          <label className="flex items-center gap-2 font-medium text-zinc-600">
+            <span className="uppercase tracking-wide">Por página</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="rounded-lg border border-zinc-200 bg-white px-2 py-1 text-sm text-zinc-900"
+            >
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -201,14 +238,14 @@ export default function BillingPanel({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
-              {rows.length === 0 ? (
+              {totalRows === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-zinc-500">
                     No hay turnos con estos filtros.
                   </td>
                 </tr>
               ) : (
-                rows.map((app) => {
+                pageRows.map((app) => {
                   const amt = resolveAppointmentServiceAmountArs(app, services);
                   return (
                     <tr key={app.id} className="bg-white hover:bg-zinc-50/80">
@@ -271,6 +308,40 @@ export default function BillingPanel({
             </tbody>
           </table>
         </div>
+        {totalRows > 0 && (
+          <div className="flex flex-col gap-3 border-t border-zinc-100 bg-zinc-50/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-zinc-600">
+              Mostrando{' '}
+              <strong className="text-zinc-900">
+                {startIdx + 1}–{Math.min(startIdx + pageSize, totalRows)}
+              </strong>{' '}
+              de <strong className="text-zinc-900">{totalRows}</strong>
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={pageClamped <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden />
+                Anterior
+              </button>
+              <span className="min-w-[7rem] text-center text-xs font-semibold text-zinc-700">
+                Página {pageClamped} / {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={pageClamped >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Siguiente
+                <ChevronRight className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

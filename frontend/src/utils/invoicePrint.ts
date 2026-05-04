@@ -45,6 +45,8 @@ function buildDetailRows(detail: AfipInvoiceDetail | undefined, app: Appointment
 /**
  * Abre una ventana con el comprobante estilizado Lion Barber y dispara el diálogo de impresión
  * (el usuario puede elegir «Guardar como PDF» en el navegador).
+ *
+ * Nota: no usar `noopener` en window.open: en Chrome la ventana queda en about:blank y document.write no aplica.
  */
 export function printLionBarberInvoice(opts: {
   appointment: Appointment;
@@ -208,13 +210,36 @@ export function printLionBarberInvoice(opts: {
       <p class="foot">Documento no válido como factura en soporte papel salvo disposición normativa · Lion Barber</p>
     </div>
   </div>
-  <script>window.onload=function(){setTimeout(function(){window.print();},300);};<\/script>
 </body>
 </html>`;
 
-  const w = window.open('', '_blank', 'noopener,noreferrer,width=900,height=1200');
-  if (!w) return;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  /** Sin `noopener`: si no, en varios Chromium document del hijo no queda accesible y la pestaña sigue en about:blank. */
+  const w = window.open(url, '_blank', 'width=980,height=1200');
+  if (!w) {
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  const revokeLater = () => {
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const triggerPrint = () => {
+    try {
+      w.focus();
+      w.print();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  setTimeout(triggerPrint, 450);
+  w.addEventListener('afterprint', revokeLater, { once: true });
+  setTimeout(revokeLater, 5 * 60 * 1000);
 }
