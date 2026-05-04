@@ -25,15 +25,14 @@ router.post('/invoice/:appointmentId', requireAuth, requireAdmin, async (req, re
     res.json(result);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Error al facturar';
-    let status = 502;
+    let status = 400;
     if (msg.includes('no encontrado')) status = 404;
     else if (
-      msg.includes('ya tiene') ||
-      msg.includes('cancelado') ||
-      msg.includes('No se pudo determinar') ||
-      msg.includes('no configurado')
+      /ECONNABORTED|ECONNRESET|ETIMEDOUT|socket hang up|status code 502|status code 503|status code 504/i.test(
+        msg
+      )
     ) {
-      status = 400;
+      status = 502;
     }
     res.status(status).json({ error: msg });
   }

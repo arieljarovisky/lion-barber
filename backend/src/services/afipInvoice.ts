@@ -78,6 +78,39 @@ function todayYyyymmddArgentina(): number {
   return parseInt(`${y}${m}${d}`, 10);
 }
 
+/** Railway / paneles suelen guardar el PEM en una línea con `\n` literales; OpenSSL y el SDK necesitan saltos reales. */
+function normalizePemFromEnv(raw: string): string {
+  const t = raw.trim();
+  if (!t.includes('-----BEGIN')) return t;
+  return t.replace(/\\n/g, '\n');
+}
+
+function formatAfipSdkError(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const ex = e as Error & { status?: number; data?: unknown };
+  let out = ex.message;
+  const d = ex.data;
+  if (d === undefined || d === null) return out;
+  if (typeof d === 'string') {
+    if (d.length) out += `: ${d}`;
+    return out;
+  }
+  if (typeof d === 'object') {
+    const o = d as Record<string, unknown>;
+    if (typeof o.message === 'string' && o.message) out += `: ${o.message}`;
+    else if (typeof o.error === 'string' && o.error) out += `: ${o.error}`;
+    else {
+      try {
+        const j = JSON.stringify(d);
+        if (j && j !== '{}') out += `: ${j}`;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Estado del par cert/clave (opcional con Afip SDK: obligatorio para tu CUIT en producción).
  * - absent: no definiste rutas ni PEM en env
@@ -119,7 +152,7 @@ function loadAfipCertKey(): { cert: string; key: string } | undefined {
       key: readFileSync(kp, 'utf8'),
     };
   }
-  if (ic && ik) return { cert: ic, key: ik };
+  if (ic && ik) return { cert: normalizePemFromEnv(ic), key: normalizePemFromEnv(ik) };
   return undefined;
 }
 
@@ -253,8 +286,7 @@ export async function invoiceAppointmentAfip(
   try {
     res = await afip.ElectronicBilling.createNextVoucher(voucherData);
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`AFIP: ${msg}`);
+    throw new Error(`AFIP: ${formatAfipSdkError(e)}`);
   }
 
   const cae = String(res.CAE ?? '');
