@@ -278,6 +278,7 @@ export default function BillingPanel({
                                 printLionBarberInvoice({
                                   appointment: app,
                                   services,
+                                  barbers,
                                   emitterCuit: afipEmitterCuit,
                                   cbteTipo: afipCbteTipo,
                                 })

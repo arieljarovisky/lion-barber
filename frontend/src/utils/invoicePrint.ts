@@ -1,4 +1,4 @@
-import type { Appointment, AfipInvoiceDetail, Service } from '../api';
+import type { Appointment, AfipInvoiceDetail, Barber, Service } from '../api';
 import { formatInstantInArgentina } from './argentinaTime';
 import { formatArs, resolveAppointmentServiceAmountArs } from './money';
 
@@ -14,6 +14,16 @@ function formatCuitAr(digits: string): string {
   const d = digits.replace(/\D/g, '');
   if (d.length !== 11) return esc(digits);
   return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`;
+}
+
+/** Nombre completo del peluquero según ficha (agenda); si no hay id, el texto guardado en el turno. */
+export function resolveBarberNameForInvoice(app: Appointment, barbers?: Barber[]): string {
+  const bid = app.barberId?.trim();
+  if (bid && barbers?.length) {
+    const b = barbers.find((x) => x.id === bid);
+    if (b?.name?.trim()) return b.name.trim();
+  }
+  return app.barber?.trim() || '—';
 }
 
 function comprobanteTitle(cbteTipo?: number): string {
@@ -52,10 +62,12 @@ function buildDetailRows(detail: AfipInvoiceDetail | undefined, app: Appointment
 export function printLionBarberInvoice(opts: {
   appointment: Appointment;
   services: Service[];
+  barbers?: Barber[];
   emitterCuit?: string | null;
   cbteTipo?: number;
 }): void {
-  const { appointment: app, services, emitterCuit, cbteTipo } = opts;
+  const { appointment: app, services, barbers, emitterCuit, cbteTipo } = opts;
+  const barberLabel = resolveBarberNameForInvoice(app, barbers);
   if (!app.afipCae) return;
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -196,7 +208,7 @@ export function printLionBarberInvoice(opts: {
         <div><dt>Teléfono</dt><dd>${esc(app.phone || '—')}</dd></div>
         <div><dt>Fecha del servicio</dt><dd>${esc(fechaServ)} · ${esc(app.time)}</dd></div>
         <div><dt>Emitido</dt><dd>${esc(emitido)}</dd></div>
-        <div><dt>Barbero</dt><dd>${esc(app.barber || '—')}</dd></div>
+        <div><dt>Barbero</dt><dd>${esc(barberLabel)}</dd></div>
       </dl>
       <table class="lines" aria-label="Detalle">
         <thead><tr><th>Concepto</th><th class="c">Cant. / Precio</th><th class="r">Importe</th></tr></thead>

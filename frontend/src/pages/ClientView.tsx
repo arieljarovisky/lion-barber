@@ -628,27 +628,13 @@ export default function ClientView() {
             Estilo Unico
           </p>
 
-          <a href="#reserva" className="relative z-20 mt-24 sm:mt-20 md:mt-20 lg:mt-24 flex flex-col items-center w-full max-w-[90vw] sm:max-w-none">
-            <div className="relative z-20 bg-[#e5c185] border-2 sm:border-4 border-black rounded-[1.5rem] sm:rounded-[2rem] md:rounded-[2.5rem] w-full max-w-[285px] sm:w-64 sm:max-w-none md:w-80 lg:w-[27rem] py-3 sm:py-4 md:py-5 shadow-2xl flex items-center justify-center transition-transform duration-200 hover:scale-105">
-              {/* Ropes converge at the top beige point and start at black dots */}
-              <svg
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-                className="absolute left-0 right-0 -top-[20rem] sm:-top-[20rem] md:-top-[23rem] lg:-top-[25rem] h-[20rem] sm:h-[20rem] md:h-[23rem] lg:h-[25rem] w-full pointer-events-none z-0 overflow-visible"
-                aria-hidden="true"
-              >
-                <line x1="14" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="1.6" />
-                <line x1="86" y1="100" x2="50" y2="10" stroke="#e5c185" strokeWidth="1.6" />
-                <circle cx="50" cy="8" r="2.6" fill="#e5c185" />
-              </svg>
-
-              <div className="absolute top-1.5 left-[14%] -translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
-              <div className="absolute top-1.5 right-[14%] translate-x-1/2 w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-4 md:h-4 bg-black rounded-full"></div>
-              <div className="absolute inset-1 sm:inset-1.5 md:inset-2 border-2 border-black rounded-[1.2rem] sm:rounded-[1.5rem] md:rounded-[2rem] pointer-events-none"></div>
-              <span className="text-black font-sans font-black text-xl sm:text-2xl md:text-3xl tracking-wide uppercase relative z-10 px-3 sm:px-4">
-                Reserva tu turno
-              </span>
-            </div>
+          <a
+            href="#reserva"
+            className="relative z-20 mt-10 sm:mt-12 md:mt-14 inline-flex w-full max-w-[90vw] sm:max-w-none justify-center"
+          >
+            <span className="inline-flex items-center justify-center rounded-2xl sm:rounded-3xl border-2 sm:border-[3px] border-black bg-[#e5c185] px-8 py-3.5 font-sans text-lg font-black uppercase tracking-wide text-black shadow-2xl transition-transform duration-200 hover:scale-105 hover:bg-[#d4b074] sm:px-12 sm:py-4 sm:text-xl md:px-14 md:py-5 md:text-2xl">
+              Reserva tu turno
+            </span>
           </a>
         </div>
 
