@@ -9,7 +9,6 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const [error, setError] = useState('');
-  const [linkPhone, setLinkPhone] = useState('');
 
   const fromState = (location.state as { from?: { pathname: string; hash?: string } })?.from;
   const fromPath = fromState?.pathname ?? '/perfil';
@@ -33,7 +32,7 @@ export default function Login() {
     }
     setError('');
     try {
-      await loginWithGoogle(idToken, linkPhone.trim() || undefined);
+      await loginWithGoogle(idToken);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión con Google');
     }
@@ -65,24 +64,6 @@ export default function Login() {
         <p className="text-zinc-400 text-center text-xs sm:text-sm mb-6 px-2">
           Iniciá sesión o registrate con tu cuenta de Google para continuar.
         </p>
-
-        <label className="block mb-6 text-left">
-          <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-            Celular (opcional)
-          </span>
-          <input
-            type="tel"
-            inputMode="tel"
-            autoComplete="tel"
-            value={linkPhone}
-            onChange={(e) => setLinkPhone(e.target.value)}
-            placeholder="Si ya te cargaron en el local sin mail, el mismo número"
-            className="w-full rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-600 outline-none focus:border-[#b39055] focus:ring-1 focus:ring-[#b39055]/40"
-          />
-          <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
-            Usamos el mismo criterio que en la agenda (solo números) para unir tu ficha manual y turnos sin cuenta.
-          </p>
-        </label>
 
         {error && (
           <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-950/50 border border-red-500/30 rounded-xl text-red-400 text-xs sm:text-sm text-center break-words">

@@ -624,10 +624,6 @@ export default function ClientView() {
           <h1 className="relative z-30 -translate-y-[20px] text-5xl sm:text-6xl md:text-7xl lg:text-[6.2rem] xl:text-[7rem] font-serif font-black uppercase tracking-tight text-white drop-shadow-2xl leading-none">
             <span key={titleTypingRun} className="typing-title">Lion Barber</span>
           </h1>
-          <p className="absolute z-30 -translate-y-[20px] top-[8rem] sm:top-[9.7rem] md:top-[11.8rem] lg:top-[13.2rem] mb-[75px] font-script text-3xl sm:text-4xl md:text-5xl text-zinc-100/95 drop-shadow-xl leading-none max-w-[78%]">
-            Estilo Unico
-          </p>
-
           <a
             href="#reserva"
             className="relative z-20 mt-10 sm:mt-12 md:mt-14 inline-flex w-full max-w-[90vw] sm:max-w-none justify-center"
