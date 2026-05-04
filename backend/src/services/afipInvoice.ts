@@ -275,6 +275,8 @@ export async function invoiceAppointmentAfip(
 
   const fechaCbte = todayYyyymmddArgentina();
   const fechaServ = yyyymmddFromDateStr(app.date);
+  /** AFIP (10036): FchVtoPago no puede ser anterior a CbteFch; si el turno fue días atrás, el vencimiento de pago alinea al día del comprobante. */
+  const fchVtoPago = Math.max(fechaCbte, fechaServ);
 
   const tls = loadAfipCertKey();
   const afip = new Afip({
@@ -302,7 +304,7 @@ export async function invoiceAppointmentAfip(
     CondicionIVAReceptorId: condIvaReceptor,
     FchServDesde: fechaServ,
     FchServHasta: fechaServ,
-    FchVtoPago: fechaServ,
+    FchVtoPago: fchVtoPago,
   };
 
   if (!isFacturaC) {
