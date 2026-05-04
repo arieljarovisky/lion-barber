@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { isAfipConfigured, invoiceAppointmentAfip } from '../services/afipInvoice.js';
+import {
+  getAfipCertKeyStatus,
+  isAfipConfigured,
+  invoiceAppointmentAfip,
+} from '../services/afipInvoice.js';
 
 const router = Router();
 
@@ -8,6 +12,7 @@ router.get('/status', requireAuth, requireAdmin, (_req, res) => {
   res.json({
     configured: isAfipConfigured(),
     production: process.env.AFIP_PRODUCTION === 'true',
+    certKey: getAfipCertKeyStatus(),
   });
 });
 

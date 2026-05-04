@@ -240,7 +240,10 @@ export const api = {
   getShopSettings: () => fetchApi<ShopSettings>('/api/shop-settings'),
 
   /** Solo admin: estado de integraci?n AFIP (Afip SDK). */
-  getAfipStatus: () => fetchApi<{ configured: boolean; production: boolean }>('/api/afip/status'),
+  getAfipStatus: () =>
+    fetchApi<{ configured: boolean; production: boolean; certKey: 'absent' | 'ok' | 'bad' }>(
+      '/api/afip/status'
+    ),
 
   /** Solo admin: emite comprobante electr?nico AFIP para un turno (opcional: productos de venta). */
   createAfipInvoice: (

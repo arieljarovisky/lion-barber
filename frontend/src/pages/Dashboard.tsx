@@ -1966,8 +1966,10 @@ export default function Dashboard() {
               )}
               {isAdmin && !afipConfigured && (
                 <p className="text-[10px] text-amber-800/90 mt-1 max-w-md">
-                  Facturación AFIP: definí <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_ACCESS_TOKEN</code> y{' '}
-                  <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_CUIT</code> en el servidor (Afip SDK).
+                  Facturación AFIP: <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_ACCESS_TOKEN</code>,{' '}
+                  <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_CUIT</code>; cert/clave opcionales salvo tu CUIT
+                  real (<code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_CERT_PATH</code> +{' '}
+                  <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_KEY_PATH</code>).
                 </p>
               )}
             </div>

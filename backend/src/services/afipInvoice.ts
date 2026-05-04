@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import * as repo from '../repositories/appointments.js';
 import { getShopProductById } from '../repositories/shopProducts.js';
@@ -11,6 +12,8 @@ const Afip = require('@afipsdk/afip.js') as new (opts: {
   access_token: string;
   CUIT: number | string;
   production?: boolean;
+  cert?: string;
+  key?: string;
 }) => {
   ElectronicBilling: {
     createNextVoucher: (data: Record<string, unknown>) => Promise<{
@@ -75,8 +78,54 @@ function todayYyyymmddArgentina(): number {
   return parseInt(`${y}${m}${d}`, 10);
 }
 
+/**
+ * Estado del par cert/clave (opcional con Afip SDK: obligatorio para tu CUIT en producción).
+ * - absent: no definiste rutas ni PEM en env
+ * - ok: par completo y archivos legibles (si usás rutas)
+ * - bad: definición incompleta, mezcla rutas+PEM, o archivos ilegibles
+ */
+export function getAfipCertKeyStatus(): 'absent' | 'ok' | 'bad' {
+  const cp = process.env.AFIP_CERT_PATH?.trim();
+  const kp = process.env.AFIP_KEY_PATH?.trim();
+  const ic = process.env.AFIP_CERT?.trim();
+  const ik = process.env.AFIP_KEY?.trim();
+  const hasPath = !!(cp || kp);
+  const hasInline = !!(ic || ik);
+  if (!hasPath && !hasInline) return 'absent';
+  if (hasPath && hasInline) return 'bad';
+  if (hasPath) {
+    if (!cp || !kp) return 'bad';
+    try {
+      readFileSync(cp, 'utf8');
+      readFileSync(kp, 'utf8');
+      return 'ok';
+    } catch {
+      return 'bad';
+    }
+  }
+  if (!ic || !ik) return 'bad';
+  return 'ok';
+}
+
+function loadAfipCertKey(): { cert: string; key: string } | undefined {
+  if (getAfipCertKeyStatus() !== 'ok') return undefined;
+  const cp = process.env.AFIP_CERT_PATH?.trim();
+  const kp = process.env.AFIP_KEY_PATH?.trim();
+  const ic = process.env.AFIP_CERT?.trim();
+  const ik = process.env.AFIP_KEY?.trim();
+  if (cp && kp) {
+    return {
+      cert: readFileSync(cp, 'utf8'),
+      key: readFileSync(kp, 'utf8'),
+    };
+  }
+  if (ic && ik) return { cert: ic, key: ik };
+  return undefined;
+}
+
 export function isAfipConfigured(): boolean {
-  return Boolean(process.env.AFIP_ACCESS_TOKEN?.trim() && process.env.AFIP_CUIT?.trim());
+  if (!process.env.AFIP_ACCESS_TOKEN?.trim() || !process.env.AFIP_CUIT?.trim()) return false;
+  return getAfipCertKeyStatus() !== 'bad';
 }
 
 export type InvoiceProductLineInput = { productId: string; quantity: number };
@@ -171,10 +220,12 @@ export async function invoiceAppointmentAfip(
   const fechaCbte = todayYyyymmddArgentina();
   const fechaServ = yyyymmddFromDateStr(app.date);
 
+  const tls = loadAfipCertKey();
   const afip = new Afip({
     access_token: process.env.AFIP_ACCESS_TOKEN!.trim(),
     CUIT: Number(String(process.env.AFIP_CUIT).replace(/\D/g, '')),
     production: process.env.AFIP_PRODUCTION === 'true',
+    ...(tls ? { cert: tls.cert, key: tls.key } : {}),
   });
 
   const voucherData: Record<string, unknown> = {
