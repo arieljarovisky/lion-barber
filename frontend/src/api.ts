@@ -58,6 +58,7 @@ export interface Appointment {
   afipCaeVto?: string;
   afipCbteNro?: number;
   afipPtoVta?: number;
+  /** Instante de emisión AFIP (ISO 8601 con Z desde el backend). */
   afipFacturadoAt?: string;
   /** Desglose guardado al emitir AFIP */
   afipInvoiceDetail?: AfipInvoiceDetail;

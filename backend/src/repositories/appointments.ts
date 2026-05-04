@@ -1,3 +1,4 @@
+import { mysqlDatetimeUtcNaiveFromDate, mysqlUtcNaiveToIsoInstant } from '../mysqlUtcDatetime.js';
 import pool, { query } from '../db.js';
 import type { AfipInvoiceDetail, Appointment, AppointmentStatus } from '../types.js';
 import * as userRepo from './users.js';
@@ -96,7 +97,7 @@ function rowToAppointment(row: DbAppointment): Appointment {
     afipCaeVto: row.afip_cae_vto ? String(row.afip_cae_vto).slice(0, 10) : undefined,
     afipCbteNro: row.afip_cbte_nro != null ? Number(row.afip_cbte_nro) : undefined,
     afipPtoVta: row.afip_pto_vta != null ? Number(row.afip_pto_vta) : undefined,
-    afipFacturadoAt: row.afip_facturado_at ?? undefined,
+    afipFacturadoAt: mysqlUtcNaiveToIsoInstant(row.afip_facturado_at) ?? undefined,
     afipInvoiceDetail: parseAfipDetail(row.afip_invoice_detail),
   };
 }
@@ -505,8 +506,9 @@ export async function setAppointmentAfipInvoice(
   }
 ): Promise<void> {
   const detailJson = data.invoiceDetail ? JSON.stringify(data.invoiceDetail) : null;
+  const facturadoAtUtc = mysqlDatetimeUtcNaiveFromDate();
   await pool.execute(
-    `UPDATE appointments SET afip_cae = ?, afip_cae_vto = ?, afip_cbte_nro = ?, afip_pto_vta = ?, afip_facturado_at = NOW(), afip_invoice_detail = ? WHERE id = ?`,
-    [data.cae, data.caeVto, data.cbteNro, data.ptoVta, detailJson, id]
+    `UPDATE appointments SET afip_cae = ?, afip_cae_vto = ?, afip_cbte_nro = ?, afip_pto_vta = ?, afip_facturado_at = ?, afip_invoice_detail = ? WHERE id = ?`,
+    [data.cae, data.caeVto, data.cbteNro, data.ptoVta, facturadoAtUtc, detailJson, id]
   );
 }

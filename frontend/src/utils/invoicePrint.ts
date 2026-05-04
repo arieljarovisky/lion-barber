@@ -1,4 +1,5 @@
 import type { Appointment, AfipInvoiceDetail, Service } from '../api';
+import { formatInstantInArgentina } from './argentinaTime';
 import { formatArs, resolveAppointmentServiceAmountArs } from './money';
 
 function esc(s: string): string {
@@ -67,9 +68,7 @@ export function printLionBarberInvoice(opts: {
     month: 'long',
     year: 'numeric',
   });
-  const emitido = app.afipFacturadoAt
-    ? new Date(app.afipFacturadoAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
-    : '—';
+  const emitido = app.afipFacturadoAt ? formatInstantInArgentina(app.afipFacturadoAt) : '—';
 
   const html = `<!DOCTYPE html>
 <html lang="es">
