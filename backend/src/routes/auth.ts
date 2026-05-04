@@ -1,13 +1,15 @@
 import { Router } from 'express';
 import { verifyGoogleToken, isAdminEmail, signJwt } from '../auth.js';
 import * as userRepo from '../repositories/users.js';
+import * as appointmentRepo from '../repositories/appointments.js';
 import * as staffInvites from '../repositories/staffInvites.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
 router.post('/google', async (req, res) => {
-  const { idToken } = req.body;
+  const body = req.body as { idToken?: string; linkPhone?: string };
+  const { idToken, linkPhone: linkPhoneRaw } = body;
   if (!idToken || typeof idToken !== 'string') {
     return res.status(400).json({ error: 'Se requiere idToken' });
   }
@@ -20,6 +22,7 @@ router.post('/google', async (req, res) => {
     const emailLower = email.toLowerCase();
 
     const invite = await staffInvites.findInviteByEmail(emailLower);
+    const linkDigits = userRepo.normalizePhoneDigits(typeof linkPhoneRaw === 'string' ? linkPhoneRaw : '');
 
     let user = await userRepo.findUserByGoogleUid(googleUid);
     if (!user) {
@@ -29,6 +32,40 @@ router.post('/google', async (req, res) => {
           await userRepo.updateUserGoogleUid(byEmail.id, googleUid);
         }
         user = (await userRepo.findUserById(byEmail.id))!;
+      }
+    }
+
+    /** Fichas manuales sin Google (email técnico o sin mail real): matcheo por celular o nombre único. */
+    if (!user && !invite && !isAdminEmail(email)) {
+      if (linkDigits.length >= 8) {
+        const ids = await userRepo.findUnlinkedManualClientIdsByPhoneDigits(linkDigits);
+        if (ids.length === 1) {
+          const mailDup = email ? await userRepo.findUserByEmail(email) : null;
+          if (!mailDup || mailDup.id === ids[0]) {
+            const linked = await userRepo.linkGoogleIdentityToClient(ids[0], {
+              googleUid,
+              email,
+              name,
+              avatarUrl: picture,
+            });
+            if (linked) user = linked;
+          }
+        }
+      }
+      if (!user) {
+        const nameId = await userRepo.findUnlinkedManualClientIdByExactNameForAutoLink(name);
+        if (nameId != null) {
+          const mailDup = await userRepo.findUserByEmail(email);
+          if (!mailDup || mailDup.id === nameId) {
+            const linked = await userRepo.linkGoogleIdentityToClient(nameId, {
+              googleUid,
+              email,
+              name,
+              avatarUrl: picture,
+            });
+            if (linked) user = linked;
+          }
+        }
       }
     }
 
@@ -45,6 +82,9 @@ router.post('/google', async (req, res) => {
         role,
         barberId: role === 'staff' ? inviteBarberId : null,
       });
+      if (user.role === 'client' && linkDigits.length >= 8 && typeof linkPhoneRaw === 'string') {
+        await userRepo.addClientPhone(user.id, linkPhoneRaw);
+      }
       if (invite) await staffInvites.deleteInviteByEmail(emailLower);
     } else {
       if (isAdminEmail(email) && user.role !== 'admin') {
@@ -61,6 +101,9 @@ router.post('/google', async (req, res) => {
 
     await userRepo.updateUserProfile(user.id, { name, avatarUrl: picture });
     user = (await userRepo.findUserById(user.id))!;
+    if (user.role === 'client') {
+      await appointmentRepo.syncOrphanAppointmentsForClientPhones(user.id);
+    }
 
     const token = signJwt({
       userId: user.id,

@@ -19,7 +19,7 @@ interface AuthContextType {
   user: UserProfile | null;
   profile: UserProfile | null;
   loading: boolean;
-  loginWithGoogle: (idToken: string) => Promise<void>;
+  loginWithGoogle: (idToken: string, linkPhone?: string) => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: boolean;
   /** Admin o empleado: puede entrar al panel /dashboard */
@@ -64,8 +64,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loginWithGoogle = async (idToken: string) => {
-    const { token, user } = await api.auth.postGoogle(idToken);
+  const loginWithGoogle = async (idToken: string, linkPhone?: string) => {
+    const { token, user } = await api.auth.postGoogle(idToken, linkPhone);
     localStorage.setItem(TOKEN_KEY, token);
     setAuthToken(token);
     setProfile(profileFromBackend(user));

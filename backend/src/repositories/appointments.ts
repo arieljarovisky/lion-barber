@@ -512,3 +512,42 @@ export async function setAppointmentAfipInvoice(
     [data.cae, data.caeVto, data.cbteNro, data.ptoVta, facturadoAtUtc, detailJson, id]
   );
 }
+
+/** Asigna `user_id` a turnos cargados a mano (sin cuenta) con el mismo teléfono. */
+export async function linkOrphanAppointmentsToUserByPhoneDigits(
+  userId: number,
+  phoneDigits: string
+): Promise<number> {
+  const d = userRepo.normalizePhoneDigits(phoneDigits);
+  if (d.length < 8) return 0;
+  const rows = await query<{ id: number; phone: string | null }[]>(
+    `SELECT id, phone FROM appointments WHERE user_id IS NULL AND phone IS NOT NULL AND TRIM(phone) <> ''`
+  );
+  let n = 0;
+  for (const r of rows) {
+    if (userRepo.normalizePhoneDigits(String(r.phone ?? '')) !== d) continue;
+    const [res] = await pool.execute(
+      `UPDATE appointments SET user_id = ? WHERE id = ? AND user_id IS NULL`,
+      [userId, r.id]
+    );
+    n += (res as { affectedRows: number }).affectedRows ?? 0;
+  }
+  return n;
+}
+
+/** Enlaza turnos huérfanos para todos los teléfonos guardados en la ficha del cliente. */
+export async function syncOrphanAppointmentsForClientPhones(userId: number): Promise<number> {
+  const phones = await userRepo.getClientPhonesByUserId(userId);
+  const u = await userRepo.findUserById(userId);
+  const extra = u?.phone ? [u.phone] : [];
+  const all = [...phones, ...extra];
+  const seen = new Set<string>();
+  let total = 0;
+  for (const raw of all) {
+    const d = userRepo.normalizePhoneDigits(raw);
+    if (d.length < 8 || seen.has(d)) continue;
+    seen.add(d);
+    total += await linkOrphanAppointmentsToUserByPhoneDigits(userId, d);
+  }
+  return total;
+}

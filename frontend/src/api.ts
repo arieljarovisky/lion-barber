@@ -424,7 +424,7 @@ export const api = {
     }),
 
   auth: {
-    postGoogle: (idToken: string) =>
+    postGoogle: (idToken: string, linkPhone?: string) =>
       fetchApi<{
         token: string;
         user: {
@@ -436,7 +436,15 @@ export const api = {
           barberId?: string | null;
           avatarUrl?: string | null;
         };
-      }>('/api/auth/google', { method: 'POST', body: JSON.stringify({ idToken }) }),
+      }>('/api/auth/google', {
+        method: 'POST',
+        body: JSON.stringify({
+          idToken,
+          ...(linkPhone != null && String(linkPhone).trim() !== ''
+            ? { linkPhone: String(linkPhone).trim() }
+            : {}),
+        }),
+      }),
     getMe: () =>
       fetchApi<{
         id: number;

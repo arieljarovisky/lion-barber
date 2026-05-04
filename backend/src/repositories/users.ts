@@ -2,7 +2,26 @@ import { randomUUID } from 'node:crypto';
 import pool, { query } from '../db.js';
 
 /** Email técnico para fichas sin correo (único, válido para la columna NOT NULL). */
-const PLACEHOLDER_EMAIL_HOST = 'sin-email.lion-barber.internal';
+export const PLACEHOLDER_EMAIL_HOST = 'sin-email.lion-barber.internal';
+
+export function normalizePhoneDigits(phone: string): string {
+  return phone.replace(/\D/g, '');
+}
+
+function normalizePersonName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/\s+/g, ' ');
+}
+
+/** Evita matchear solo "Juan" o nombres demasiado cortos. */
+function looksLikeDistinctiveFullName(name: string): boolean {
+  const t = normalizePersonName(name);
+  return t.length >= 8 && t.includes(' ');
+}
 
 export interface DbUser {
   id: number;
@@ -135,6 +154,69 @@ export async function getClientPhonesByUserId(userId: number): Promise<string[]>
 /** Cuentas con rol cliente (para panel admin). */
 export async function findAllClients(): Promise<DbUser[]> {
   return query<DbUser[]>('SELECT * FROM users WHERE role = ? ORDER BY created_at DESC', ['client']);
+}
+
+/**
+ * Clientes manuales sin Google aún, cuyo teléfono en ficha coincide (solo dígitos).
+ * Si hay más de uno no se fusiona automáticamente.
+ */
+export async function findUnlinkedManualClientIdsByPhoneDigits(digits: string): Promise<number[]> {
+  const d = normalizePhoneDigits(digits);
+  if (d.length < 8) return [];
+  const rows = await query<DbUser[]>(
+    "SELECT * FROM users WHERE role = 'client' AND google_uid IS NULL"
+  );
+  const ids: number[] = [];
+  const phoneMap = await getClientPhonesByUserIds(rows.map((r) => r.id));
+  for (const u of rows) {
+    const listed = phoneMap.get(u.id) ?? [];
+    const fromUser = u.phone ? [u.phone] : [];
+    let hit = false;
+    for (const p of [...listed, ...fromUser]) {
+      if (normalizePhoneDigits(p) === d) {
+        hit = true;
+        break;
+      }
+    }
+    if (hit) ids.push(u.id);
+  }
+  return ids;
+}
+
+/**
+ * Un solo cliente manual con email placeholder y nombre normalizado igual al de Google
+ * (nombre y apellido, sin tildes, para bajar falsos positivos).
+ */
+export async function findUnlinkedManualClientIdByExactNameForAutoLink(googleName: string): Promise<number | null> {
+  if (!looksLikeDistinctiveFullName(googleName)) return null;
+  const target = normalizePersonName(googleName);
+  const rows = await query<DbUser[]>(
+    `SELECT id, email, name FROM users WHERE role = 'client' AND google_uid IS NULL AND LOWER(email) LIKE ?`,
+    [`%@${PLACEHOLDER_EMAIL_HOST}`]
+  );
+  const hits = rows.filter((r) => normalizePersonName(r.name) === target);
+  if (hits.length !== 1) return null;
+  return hits[0].id;
+}
+
+/** Vincula la cuenta Google a una ficha manual existente (mismo id, puntos e historial). */
+export async function linkGoogleIdentityToClient(
+  clientId: number,
+  data: { googleUid: string; email: string; name: string; avatarUrl: string | null }
+): Promise<DbUser | null> {
+  const uidDup = await findUserByGoogleUid(data.googleUid);
+  if (uidDup && uidDup.id !== clientId) return null;
+  const emailNorm = data.email.trim().toLowerCase();
+  const mailDup = await findUserByEmail(data.email);
+  if (mailDup && mailDup.id !== clientId) return null;
+  const [res] = await pool.execute(
+    `UPDATE users SET google_uid = ?, email = ?, name = ?, avatar_url = ?
+     WHERE id = ? AND role = 'client' AND google_uid IS NULL`,
+    [data.googleUid, emailNorm, data.name.trim(), data.avatarUrl, clientId]
+  );
+  const affected = (res as { affectedRows?: number }).affectedRows ?? 0;
+  if (!affected) return null;
+  return findUserById(clientId);
 }
 
 /** Cliente manual (sin cuenta Google aún). `google_uid` queda NULL hasta el primer login con ese email. */
