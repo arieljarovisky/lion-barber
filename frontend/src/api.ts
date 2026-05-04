@@ -241,9 +241,13 @@ export const api = {
 
   /** Solo admin: estado de integraci?n AFIP (Afip SDK). */
   getAfipStatus: () =>
-    fetchApi<{ configured: boolean; production: boolean; certKey: 'absent' | 'ok' | 'bad' }>(
-      '/api/afip/status'
-    ),
+    fetchApi<{
+      configured: boolean;
+      production: boolean;
+      certKey: 'absent' | 'ok' | 'bad';
+      emitterCuit: string | null;
+      cbteTipo: number;
+    }>('/api/afip/status'),
 
   /** Solo admin: emite comprobante electr?nico AFIP para un turno (opcional: productos de venta). */
   createAfipInvoice: (

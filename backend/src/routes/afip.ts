@@ -9,10 +9,16 @@ import {
 const router = Router();
 
 router.get('/status', requireAuth, requireAdmin, (_req, res) => {
+  const configured = isAfipConfigured();
+  const rawCuit = process.env.AFIP_CUIT?.trim();
+  const digits = rawCuit ? String(rawCuit).replace(/\D/g, '') : '';
+  const cbteTipo = Math.min(32767, Math.max(1, parseInt(process.env.AFIP_CBTE_TIPO ?? '6', 10) || 6));
   res.json({
-    configured: isAfipConfigured(),
+    configured,
     production: process.env.AFIP_PRODUCTION === 'true',
     certKey: getAfipCertKeyStatus(),
+    emitterCuit: configured && digits.length === 11 ? digits : null,
+    cbteTipo,
   });
 });
 

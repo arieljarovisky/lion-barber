@@ -354,6 +354,8 @@ export default function Dashboard() {
   const [redemptionOptions, setRedemptionOptions] = useState<PointsRedemptionOption[]>([]);
   const [redemptionOptionsLoading, setRedemptionOptionsLoading] = useState(false);
   const [afipConfigured, setAfipConfigured] = useState(false);
+  const [afipEmitterCuit, setAfipEmitterCuit] = useState<string | null>(null);
+  const [afipCbteTipo, setAfipCbteTipo] = useState(6);
   const [afipInvoiceApp, setAfipInvoiceApp] = useState<Appointment | null>(null);
   const [afipInvoiceBusy, setAfipInvoiceBusy] = useState(false);
   const [billingAppointments, setBillingAppointments] = useState<Appointment[]>([]);
@@ -563,12 +565,22 @@ export default function Dashboard() {
   useEffect(() => {
     if (!isAdmin) {
       setAfipConfigured(false);
+      setAfipEmitterCuit(null);
+      setAfipCbteTipo(6);
       return;
     }
     api
       .getAfipStatus()
-      .then((s) => setAfipConfigured(s.configured))
-      .catch(() => setAfipConfigured(false));
+      .then((s) => {
+        setAfipConfigured(s.configured);
+        setAfipEmitterCuit(s.emitterCuit ?? null);
+        setAfipCbteTipo(typeof s.cbteTipo === 'number' ? s.cbteTipo : 6);
+      })
+      .catch(() => {
+        setAfipConfigured(false);
+        setAfipEmitterCuit(null);
+        setAfipCbteTipo(6);
+      });
   }, [isAdmin]);
 
   useEffect(() => {
@@ -2419,8 +2431,11 @@ export default function Dashboard() {
           <BillingPanel
             appointments={billingAppointments}
             services={services}
+            barbers={barbers}
             loading={billingLoading}
             afipConfigured={afipConfigured}
+            afipEmitterCuit={afipEmitterCuit}
+            afipCbteTipo={afipCbteTipo}
             invoicingId={afipInvoiceBusy && afipInvoiceApp ? afipInvoiceApp.id : null}
             onInvoiceClick={openAfipInvoiceModal}
           />
