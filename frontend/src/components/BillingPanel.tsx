@@ -46,10 +46,12 @@ export default function BillingPanel({
           Definí <code className="rounded bg-white/80 px-1 text-xs">AFIP_ACCESS_TOKEN</code> y{' '}
           <code className="rounded bg-white/80 px-1 text-xs">AFIP_CUIT</code> en el servidor; para tu CUIT,
           sumá certificado y clave con <code className="rounded bg-white/80 px-1 text-xs">AFIP_CERT_PATH</code> +{' '}
-          <code className="rounded bg-white/80 px-1 text-xs">AFIP_KEY_PATH</code> (o PEM en{' '}
-          <code className="rounded bg-white/80 px-1 text-xs">AFIP_CERT</code> /{' '}
-          <code className="rounded bg-white/80 px-1 text-xs">AFIP_KEY</code>). Si definís cert/clave a medias, la
-          integración queda inválida hasta completarlas.
+          <code className="rounded bg-white/80 px-1 text-xs">AFIP_KEY_PATH</code> (en el servidor con archivos), o
+          pegá el <strong>contenido PEM completo</strong> (no la ruta del archivo) en{' '}
+          <code className="rounded bg-white/80 px-1 text-xs">AFIP_CERT</code> y{' '}
+          <code className="rounded bg-white/80 px-1 text-xs">AFIP_KEY</code>. Si definís cert/clave a medias, la
+          integración queda inválida hasta completarlas. Monotributo: en el servidor usá{' '}
+          <code className="rounded bg-white/80 px-1 text-xs">AFIP_CBTE_TIPO=11</code> (Factura C).
         </p>
       </div>
     );

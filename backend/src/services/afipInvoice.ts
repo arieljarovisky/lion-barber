@@ -85,6 +85,22 @@ function normalizePemFromEnv(raw: string): string {
   return t.replace(/\\n/g, '\n');
 }
 
+/** El SDK rechaza rutas o texto corto: exige bloques PEM completos. */
+function pemPairShapeOk(cert: string, key: string): boolean {
+  const c = normalizePemFromEnv(cert);
+  const k = normalizePemFromEnv(key);
+  if (!c.includes('-----BEGIN CERTIFICATE-----') || !c.includes('-----END CERTIFICATE-----')) return false;
+  const keyBegin =
+    k.includes('-----BEGIN PRIVATE KEY-----') ||
+    k.includes('-----BEGIN RSA PRIVATE KEY-----') ||
+    k.includes('-----BEGIN EC PRIVATE KEY-----');
+  const keyEnd =
+    k.includes('-----END PRIVATE KEY-----') ||
+    k.includes('-----END RSA PRIVATE KEY-----') ||
+    k.includes('-----END EC PRIVATE KEY-----');
+  return keyBegin && keyEnd;
+}
+
 function formatAfipSdkError(e: unknown): string {
   if (!(e instanceof Error)) return String(e);
   const ex = e as Error & { status?: number; data?: unknown };
@@ -129,15 +145,15 @@ export function getAfipCertKeyStatus(): 'absent' | 'ok' | 'bad' {
   if (hasPath) {
     if (!cp || !kp) return 'bad';
     try {
-      readFileSync(cp, 'utf8');
-      readFileSync(kp, 'utf8');
-      return 'ok';
+      const cert = readFileSync(cp, 'utf8');
+      const key = readFileSync(kp, 'utf8');
+      return pemPairShapeOk(cert, key) ? 'ok' : 'bad';
     } catch {
       return 'bad';
     }
   }
   if (!ic || !ik) return 'bad';
-  return 'ok';
+  return pemPairShapeOk(ic, ik) ? 'ok' : 'bad';
 }
 
 function loadAfipCertKey(): { cert: string; key: string } | undefined {
@@ -177,8 +193,9 @@ async function resolveAmountArs(app: Appointment): Promise<number> {
 }
 
 /**
- * Emite Factura B (CbteTipo 6) consumidor final por el monto del servicio + productos opcionales (IVA 21 % discriminado).
- * Requiere token de Afip SDK (`https://afipsdk.com`) y CUIT del emisor en variables de entorno.
+ * Emite comprobante AFIP según `AFIP_CBTE_TIPO`: por defecto Factura B (6), consumidor final, IVA 21 % discriminado.
+ * Monotributo / no RI en IVA: usar `AFIP_CBTE_TIPO=11` (Factura C: total = neto, sin alícuotas IVA en el request).
+ * Requiere token de Afip SDK y CUIT del emisor.
  */
 export async function invoiceAppointmentAfip(
   appointmentId: string,
@@ -245,6 +262,12 @@ export async function invoiceAppointmentAfip(
 
   const ptoVta = Math.min(9999, Math.max(1, parseInt(process.env.AFIP_PTO_VTA ?? '1', 10) || 1));
   const cbteTipo = Math.min(32767, Math.max(1, parseInt(process.env.AFIP_CBTE_TIPO ?? '6', 10) || 6));
+  /** Factura C (monotributo): WSFE no debe recibir alícuotas IVA en el detalle. */
+  const isFacturaC = cbteTipo === 11;
+  const condIvaReceptor = Math.min(
+    32767,
+    Math.max(1, parseInt(process.env.AFIP_CONDICION_IVA_RECEPTOR_ID ?? '5', 10) || 5)
+  );
 
   const total = amount;
   const neto = Math.round((total / 1.21) * 100) / 100;
@@ -270,17 +293,21 @@ export async function invoiceAppointmentAfip(
     CbteFch: fechaCbte,
     ImpTotal: total,
     ImpTotConc: 0,
-    ImpNeto: neto,
+    ImpNeto: isFacturaC ? total : neto,
     ImpOpEx: 0,
     ImpTrib: 0,
-    ImpIVA: iva,
+    ImpIVA: isFacturaC ? 0 : iva,
     MonId: 'PES',
     MonCotiz: 1,
-    Iva: [{ Id: 5, BaseImp: neto, Importe: iva }],
+    CondicionIVAReceptorId: condIvaReceptor,
     FchServDesde: fechaServ,
     FchServHasta: fechaServ,
     FchVtoPago: fechaServ,
   };
+
+  if (!isFacturaC) {
+    voucherData.Iva = [{ Id: 5, BaseImp: neto, Importe: iva }];
+  }
 
   let res: { CAE: string; CAEFchVto: string; voucherNumber: number };
   try {
