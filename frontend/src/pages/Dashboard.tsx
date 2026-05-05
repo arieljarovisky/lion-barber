@@ -575,6 +575,10 @@ export default function Dashboard() {
     () => buildTimeSlotsInRange(selectedDayHours.openTime, selectedDayHours.closeTime),
     [selectedDayHours.openTime, selectedDayHours.closeTime]
   );
+  const blockEndTimeOptions = useMemo(() => {
+    const close = selectedDayHours.closeTime;
+    return agendaTimeSlots.includes(close) ? agendaTimeSlots : [...agendaTimeSlots, close];
+  }, [agendaTimeSlots, selectedDayHours.closeTime]);
   /** Vista semana solo para admin (elige un peluquero). Los barberos usan vista por día (día actual / calendario). */
   const isWeekView = selectedBarberId !== 'all' && !isStaffBarber;
   const isDayToday = isSameDay(selectedDate, new Date());
@@ -767,7 +771,7 @@ export default function Dashboard() {
   const handleAddTimeBlock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scheduleBarberId || !canAccessDashboard) return;
-    if (agendaTimeSlots.indexOf(blockTimeEnd) <= agendaTimeSlots.indexOf(blockTimeStart)) {
+    if (timeToMinutes(blockTimeEnd) <= timeToMinutes(blockTimeStart)) {
       setScheduleError('La hora "hasta" debe ser posterior a "desde".');
       return;
     }
@@ -909,14 +913,14 @@ export default function Dashboard() {
     if (!agendaTimeSlots.length) return;
     setBlockTimeStart((prev) => (agendaTimeSlots.includes(prev) ? prev : agendaTimeSlots[0]));
     setBlockTimeEnd((prev) => {
-      if (agendaTimeSlots.includes(prev)) return prev;
+      if (blockEndTimeOptions.includes(prev)) return prev;
       return agendaTimeSlots[1] ?? agendaTimeSlots[0];
     });
     setForm((prev) => ({
       ...prev,
       time: agendaTimeSlots.includes(prev.time) ? prev.time : agendaTimeSlots[0],
     }));
-  }, [agendaTimeSlots]);
+  }, [agendaTimeSlots, blockEndTimeOptions]);
 
   useEffect(() => {
     if (!modalOpen || editingAppointment) {
@@ -2381,7 +2385,7 @@ export default function Dashboard() {
                         className="w-full border border-zinc-200 rounded-xl px-3 py-3 text-zinc-900 text-sm"
                         disabled={!canAccessDashboard}
                       >
-                        {agendaTimeSlots.map((t) => (
+                        {blockEndTimeOptions.map((t) => (
                           <option key={t} value={t}>
                             {t}
                           </option>
