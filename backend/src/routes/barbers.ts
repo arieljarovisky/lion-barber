@@ -15,14 +15,27 @@ router.get('/', async (_req, res) => {
 });
 
 router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
-  const { commissionPercent, name } = req.body as { commissionPercent?: number; name?: string };
-  if (commissionPercent == null && (name == null || !String(name).trim())) {
-    return res.status(400).json({ error: 'Se requiere name o commissionPercent' });
+  const { commissionPercent, name, whatsappPhone } = req.body as {
+    commissionPercent?: number;
+    name?: string;
+    whatsappPhone?: string | null;
+  };
+  const hasName = name != null && String(name).trim().length > 0;
+  const hasCommission = commissionPercent != null;
+  const hasWhatsapp = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'whatsappPhone');
+  if (!hasName && !hasCommission && !hasWhatsapp) {
+    return res.status(400).json({ error: 'Se requiere name, commissionPercent o whatsappPhone' });
   }
   try {
     const updated = await repo.updateBarber(req.params.id, {
-      ...(name != null ? { name: String(name) } : {}),
+      ...(hasName ? { name: String(name) } : {}),
       ...(commissionPercent != null ? { commissionPercent: Number(commissionPercent) } : {}),
+      ...(hasWhatsapp
+        ? {
+            whatsappPhone:
+              whatsappPhone == null ? null : String(whatsappPhone).trim() || null,
+          }
+        : {}),
     });
     if (!updated) return res.status(404).json({ error: 'Barbero no encontrado' });
     res.json(updated);

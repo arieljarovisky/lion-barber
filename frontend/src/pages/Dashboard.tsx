@@ -360,6 +360,9 @@ export default function Dashboard() {
   const [afipInvoiceBusy, setAfipInvoiceBusy] = useState(false);
   const [billingAppointments, setBillingAppointments] = useState<Appointment[]>([]);
   const [billingLoading, setBillingLoading] = useState(false);
+  const knownPaidAppointmentIdsRef = useRef<Set<string>>(new Set());
+  const didInitPaidAppointmentsRef = useRef(false);
+  const requestedBrowserNotificationPermissionRef = useRef(false);
 
   const showToast = useCallback((message: string, kind: 'ok' | 'err' = 'ok') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -380,6 +383,49 @@ export default function Dashboard() {
   const confirm = useConfirm();
   const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
   const isStaffBarber = Boolean(staffBarberId);
+
+  const notifyBarberForPaidAppointments = useCallback(
+    (list: Appointment[]) => {
+      if (profile?.role !== 'staff') return;
+      const paidScheduled = list.filter(
+        (a) => a.status === 'scheduled' && a.depositPaid && a.status !== 'cancelled'
+      );
+      const nextKnown = new Set(paidScheduled.map((a) => a.id));
+      if (!didInitPaidAppointmentsRef.current) {
+        knownPaidAppointmentIdsRef.current = nextKnown;
+        didInitPaidAppointmentsRef.current = true;
+        return;
+      }
+      const newPaid = paidScheduled.filter((a) => !knownPaidAppointmentIdsRef.current.has(a.id));
+      knownPaidAppointmentIdsRef.current = nextKnown;
+      if (newPaid.length === 0) return;
+
+      for (const app of newPaid) {
+        showToast(`Nueva seña confirmada: ${app.time} - ${app.name}`, 'ok');
+        if (typeof window === 'undefined' || !('Notification' in window)) continue;
+        if (Notification.permission === 'granted') {
+          new Notification('Nuevo turno con seña confirmada', {
+            body: `${app.name} - ${app.date} ${app.time}`,
+          });
+          continue;
+        }
+        if (
+          Notification.permission === 'default' &&
+          !requestedBrowserNotificationPermissionRef.current
+        ) {
+          requestedBrowserNotificationPermissionRef.current = true;
+          void Notification.requestPermission().then((permission) => {
+            if (permission === 'granted') {
+              new Notification('Nuevo turno con seña confirmada', {
+                body: `${app.name} - ${app.date} ${app.time}`,
+              });
+            }
+          });
+        }
+      }
+    },
+    [profile?.role, showToast]
+  );
 
   useEffect(() => {
     if (!modalOpen || !isAdmin || editingAppointment) return;
@@ -535,8 +581,8 @@ export default function Dashboard() {
   /** Un solo peluquero en pantalla (ej. cuenta barbero): layout de día ampliado */
   const isSingleBarberDayView = !isWeekView && barbers.length === 1;
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     try {
       const [appRes, barbersRes, servicesRes] = await Promise.all([
         isWeekView
@@ -546,6 +592,7 @@ export default function Dashboard() {
         api.getServices(),
       ]);
       setAppointments(appRes);
+      notifyBarberForPaidAppointments(appRes);
       const staffBid = profile?.role === 'staff' ? profile.barberId ?? null : null;
       setBarbers(staffBid ? barbersRes.filter((b) => b.id === staffBid) : barbersRes);
       setServices(servicesRes);
@@ -554,13 +601,22 @@ export default function Dashboard() {
       setBarbers([]);
       setServices([]);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
-  }, [dateStr, selectedBarberId, isWeekView, profile?.role, profile?.barberId]);
+  }, [dateStr, selectedBarberId, isWeekView, profile?.role, profile?.barberId, notifyBarberForPaidAppointments]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (profile?.role !== 'staff' || view !== 'agenda') return;
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void loadData({ silent: true });
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [profile?.role, view, loadData]);
 
   useEffect(() => {
     if (!isAdmin) {

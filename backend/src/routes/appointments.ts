@@ -11,6 +11,7 @@ import {
   isPastCalendarDateInArgentina,
 } from '../appointmentRules.js';
 import { refundPaymentTotal } from '../mercadopagoRefund.js';
+import { notifyShopPhoneAppointmentCreated } from '../services/mobileNotifications.js';
 
 const router = Router();
 
@@ -229,6 +230,9 @@ router.post('/', optionalAuth, async (req, res) => {
       depositPaid: Boolean(depositPaid),
       ...(durationMinutes != null ? { durationMinutes: Number(durationMinutes) } : {}),
     });
+    if ((created.status ?? 'scheduled') === 'scheduled') {
+      void notifyShopPhoneAppointmentCreated(created);
+    }
     res.status(201).json(created);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error al crear cita';

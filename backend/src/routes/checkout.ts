@@ -10,6 +10,8 @@ import {
   isDateOnOpenWeekday,
   isPastCalendarDateInArgentina,
 } from '../appointmentRules.js';
+import { notifyBarberByWhatsappOnDepositPaid } from '../services/whatsapp.js';
+import { notifyShopPhoneAppointmentCreated } from '../services/mobileNotifications.js';
 
 const router = Router();
 
@@ -582,12 +584,16 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
 
   const existingByRefId = ref.a ? await repo.getAppointmentById(ref.a) : null;
   if (existingByRefId) {
-    await repo.markAppointmentPaidAndScheduled(existingByRefId.id, paymentId);
+    const updated = await repo.markAppointmentPaidAndScheduled(existingByRefId.id, paymentId);
+    if (updated) {
+      void notifyBarberByWhatsappOnDepositPaid(updated);
+      void notifyShopPhoneAppointmentCreated(updated);
+    }
     return;
   }
 
   try {
-    await repo.createAppointment({
+    const created = await repo.createAppointment({
       name: ref.n,
       phone: ref.p,
       service: ref.s,
@@ -600,6 +606,8 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       mercadopagoPaymentId: paymentId,
       ...(userId != null && !Number.isNaN(userId) ? { userId } : {}),
     });
+    void notifyBarberByWhatsappOnDepositPaid(created);
+    void notifyShopPhoneAppointmentCreated(created);
   } catch (e) {
     const code = (e as { code?: string }).code;
     if (code === 'ER_DUP_ENTRY') return;

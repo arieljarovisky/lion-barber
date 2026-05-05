@@ -82,6 +82,8 @@ export interface Barber {
   role: string;
   photo: string;
   desc: string;
+  /** Número WhatsApp del barbero en formato E.164 (ej: +54911...). */
+  whatsappPhone?: string | null;
   /** Comisión % para el dueño (gestión interna). */
   commissionPercent?: number;
 }

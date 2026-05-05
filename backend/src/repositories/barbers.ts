@@ -7,6 +7,7 @@ interface DbBarber {
   role: string;
   photo: string | null;
   desc: string | null;
+  whatsapp_phone?: string | null;
   commission_percent?: string | number | null;
 }
 
@@ -18,6 +19,7 @@ function rowToBarber(r: DbBarber): Barber {
     role: r.role,
     photo: r.photo ?? '',
     desc: r.desc ?? '',
+    whatsappPhone: r.whatsapp_phone ?? null,
     commissionPercent: Number.isFinite(pct) ? pct : 0,
   };
 }
@@ -41,10 +43,10 @@ export async function updateBarberCommission(id: string, commissionPercent: numb
 
 export async function updateBarber(
   id: string,
-  data: { name?: string; commissionPercent?: number }
+  data: { name?: string; commissionPercent?: number; whatsappPhone?: string | null }
 ): Promise<Barber | null> {
   const fields: string[] = [];
-  const values: Array<string | number> = [];
+  const values: Array<string | number | null> = [];
 
   if (data.name != null) {
     const n = data.name.trim();
@@ -58,6 +60,15 @@ export async function updateBarber(
     if (!Number.isFinite(p)) throw new Error('Comisión inválida.');
     fields.push('commission_percent = ?');
     values.push(p);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'whatsappPhone')) {
+    const w = data.whatsappPhone == null ? '' : String(data.whatsappPhone).trim();
+    if (w && !/^\+[1-9]\d{7,14}$/.test(w)) {
+      throw new Error('WhatsApp inválido. Usá formato internacional, por ejemplo +54911...');
+    }
+    fields.push('whatsapp_phone = ?');
+    values.push(w || null);
   }
 
   if (!fields.length) return getBarberById(id);
