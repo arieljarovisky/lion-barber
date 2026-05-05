@@ -62,7 +62,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-zinc-800 bg-zinc-950 text-white shadow-xl lg:static lg:z-auto lg:min-h-screen lg:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-zinc-800 bg-zinc-950 text-white shadow-xl lg:shadow-none ${
           mobileNavOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
@@ -248,7 +248,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
         </div>
       </aside>
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-64">
         <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4 py-3 text-white lg:hidden">
           <button
             type="button"

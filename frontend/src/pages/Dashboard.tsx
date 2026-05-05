@@ -1135,6 +1135,37 @@ export default function Dashboard() {
     }
   }, [loadData, view]);
 
+  const handleBulkAfipInvoice = useCallback(
+    async (appointmentIds: string[]) => {
+      const ids = [...new Set(appointmentIds.map((id) => String(id).trim()).filter(Boolean))];
+      if (ids.length === 0) return;
+      setAfipInvoiceBusy(true);
+      let ok = 0;
+      let failed = 0;
+      for (const id of ids) {
+        try {
+          await api.createAfipInvoice(id);
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      setAfipInvoiceBusy(false);
+      void loadData();
+      if (view === 'facturacion') {
+        void api.getAppointments().then(setBillingAppointments).catch(() => {});
+      }
+      if (ok > 0 && failed === 0) {
+        showToast(`Facturación masiva completada: ${ok} turno(s) facturado(s).`, 'ok');
+      } else if (ok > 0 && failed > 0) {
+        showToast(`Facturación masiva parcial: ${ok} ok, ${failed} con error.`, 'err');
+      } else {
+        showToast('No se pudo facturar ninguno de los turnos seleccionados.', 'err');
+      }
+    },
+    [loadData, showToast, view]
+  );
+
   const openCreateServiceModal = () => {
     setEditingService(null);
     setServiceForm({ name: '', price: '', duration: 30, desc: '', emoji: '✂️', pointsReward: '0' });
@@ -2497,7 +2528,9 @@ export default function Dashboard() {
             afipEmitterCuit={afipEmitterCuit}
             afipCbteTipo={afipCbteTipo}
             invoicingId={afipInvoiceBusy && afipInvoiceApp ? afipInvoiceApp.id : null}
+            bulkInvoicing={afipInvoiceBusy && !afipInvoiceApp}
             onInvoiceClick={openAfipInvoiceModal}
+            onBulkInvoice={handleBulkAfipInvoice}
           />
         )}
 

@@ -20,7 +20,9 @@ type BillingPanelProps = {
   afipEmitterCuit?: string | null;
   afipCbteTipo?: number;
   invoicingId: string | null;
+  bulkInvoicing?: boolean;
   onInvoiceClick: (app: Appointment) => void;
+  onBulkInvoice: (appointmentIds: string[]) => void;
 };
 
 export default function BillingPanel({
@@ -32,7 +34,9 @@ export default function BillingPanel({
   afipEmitterCuit,
   afipCbteTipo,
   invoicingId,
+  bulkInvoicing = false,
   onInvoiceClick,
+  onBulkInvoice,
 }: BillingPanelProps) {
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState(() => format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd'));
@@ -41,6 +45,7 @@ export default function BillingPanel({
   const [barberId, setBarberId] = useState<string>('');
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -72,6 +77,20 @@ export default function BillingPanel({
   const pageClamped = Math.min(page, totalPages);
   const startIdx = (pageClamped - 1) * pageSize;
   const pageRows = rows.slice(startIdx, startIdx + pageSize);
+  const selectableRows = useMemo(
+    () => rows.filter((a) => !a.afipCae && resolveAppointmentServiceAmountArs(a, services) != null),
+    [rows, services]
+  );
+  const selectableIds = useMemo(() => new Set(selectableRows.map((a) => a.id)), [selectableRows]);
+  const pageSelectableRows = useMemo(
+    () => pageRows.filter((a) => !a.afipCae && resolveAppointmentServiceAmountArs(a, services) != null),
+    [pageRows, services]
+  );
+  const pageSelectableIds = useMemo(() => pageSelectableRows.map((a) => a.id), [pageSelectableRows]);
+  const selectedCount = selectedIds.length;
+  const allSelectableSelected = selectableRows.length > 0 && selectedCount === selectableRows.length;
+  const allPageSelected =
+    pageSelectableIds.length > 0 && pageSelectableIds.every((id) => selectedIds.includes(id));
 
   useEffect(() => {
     setPage(1);
@@ -81,6 +100,10 @@ export default function BillingPanel({
     setPage((p) => Math.min(Math.max(1, p), totalPages));
   }, [totalPages, pageSize]);
 
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => selectableIds.has(id)));
+  }, [selectableIds]);
+
   const resetFilters = () => {
     setSearch('');
     setDateFrom(format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd'));
@@ -88,6 +111,33 @@ export default function BillingPanel({
     setInvoiceFilter('all');
     setBarberId('');
     setPage(1);
+  };
+
+  const toggleRowSelection = (appointmentId: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      if (checked) return prev.includes(appointmentId) ? prev : [...prev, appointmentId];
+      return prev.filter((id) => id !== appointmentId);
+    });
+  };
+
+  const toggleSelectAllFiltered = (checked: boolean) => {
+    setSelectedIds(checked ? selectableRows.map((a) => a.id) : []);
+  };
+
+  const toggleSelectPage = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      if (checked) {
+        const merged = new Set([...prev, ...pageSelectableIds]);
+        return Array.from(merged);
+      }
+      const removeSet = new Set(pageSelectableIds);
+      return prev.filter((id) => !removeSet.has(id));
+    });
+  };
+
+  const handleBulkInvoiceClick = () => {
+    if (selectedIds.length === 0) return;
+    onBulkInvoice(selectedIds);
   };
 
   if (!afipConfigured) {
@@ -221,6 +271,33 @@ export default function BillingPanel({
             </select>
           </label>
         </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3">
+          <button
+            type="button"
+            onClick={() => toggleSelectAllFiltered(!allSelectableSelected)}
+            disabled={selectableRows.length === 0 || bulkInvoicing}
+            className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {allSelectableSelected ? 'Deseleccionar filtrados' : 'Seleccionar filtrados'}
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleSelectPage(!allPageSelected)}
+            disabled={pageSelectableIds.length === 0 || bulkInvoicing}
+            className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {allPageSelected ? 'Deseleccionar página' : 'Seleccionar página'}
+          </button>
+          <button
+            type="button"
+            onClick={handleBulkInvoiceClick}
+            disabled={selectedCount === 0 || bulkInvoicing}
+            className="inline-flex items-center gap-1 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Receipt size={12} />
+            {bulkInvoicing ? 'Facturando…' : `Facturar seleccionados (${selectedCount})`}
+          </button>
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -228,6 +305,9 @@ export default function BillingPanel({
           <table className="w-full min-w-[800px] text-left text-sm">
             <thead className="border-b border-zinc-100 bg-zinc-50 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
               <tr>
+                <th className="w-10 px-3 py-3 text-center">
+                  <span className="sr-only">Seleccionar</span>
+                </th>
                 <th className="px-4 py-3">Fecha / hora</th>
                 <th className="px-4 py-3">Cliente</th>
                 <th className="px-4 py-3">Servicio</th>
@@ -240,15 +320,26 @@ export default function BillingPanel({
             <tbody className="divide-y divide-zinc-100">
               {totalRows === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-zinc-500">
+                  <td colSpan={8} className="px-4 py-10 text-center text-zinc-500">
                     No hay turnos con estos filtros.
                   </td>
                 </tr>
               ) : (
                 pageRows.map((app) => {
                   const amt = resolveAppointmentServiceAmountArs(app, services);
+                  const selectable = !app.afipCae && amt != null;
+                  const checked = selectedIds.includes(app.id);
                   return (
                     <tr key={app.id} className="bg-white hover:bg-zinc-50/80">
+                      <td className="px-3 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={!selectable || bulkInvoicing}
+                          onChange={(e) => toggleRowSelection(app.id, e.target.checked)}
+                          className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-40"
+                        />
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-zinc-800">
                         {format(new Date(app.date + 'T12:00:00'), 'd MMM yyyy', { locale: es })} · {app.time}
                       </td>
