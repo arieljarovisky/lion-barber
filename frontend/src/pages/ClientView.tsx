@@ -186,6 +186,7 @@ export default function ClientView() {
   const [dragged, setDragged] = useState(false);
 
   const selectedWeekday = getISODay(parse(selectedDate, 'yyyy-MM-dd', new Date()));
+  const isSelectedDateClosed = !openWeekdays.includes(selectedWeekday) || closedDates.includes(selectedDate);
   const selectedDayHours = shopWeekdayHours[selectedWeekday] ?? { openTime: '10:00', closeTime: shopCloseTime };
   const businessTimeSlots = useMemo(
     () => buildTimeSlotsInRange(selectedDayHours.openTime, selectedDayHours.closeTime),
@@ -257,6 +258,10 @@ export default function ClientView() {
     const todayStr = format(startOfToday(), 'yyyy-MM-dd');
     if (selectedDate < todayStr) {
       setBookingError('No podés reservar en una fecha pasada.');
+      return false;
+    }
+    if (isSelectedDateClosed) {
+      setBookingError('La barbería está cerrada en la fecha elegida.');
       return false;
     }
     const cleanName = name.trim();
@@ -341,7 +346,7 @@ export default function ClientView() {
   }, [pendingCheckoutSuccess, authLoading]);
 
   useEffect(() => {
-    if (!selectedDate || !selectedService || !selectedBarber) {
+    if (!selectedDate || !selectedService || !selectedBarber || isSelectedDateClosed) {
       setAvailableSlots([]);
       setEarliestAny(null);
       return;
@@ -364,7 +369,12 @@ export default function ClientView() {
       .then((r) => setAvailableSlots(r.slots.length ? r.slots : []))
       .catch(() => setAvailableSlots(businessTimeSlots));
     setEarliestAny(null);
-  }, [selectedDate, selectedBarber, selectedService, selectedServiceDuration, services, businessTimeSlots]);
+  }, [selectedDate, selectedBarber, selectedService, selectedServiceDuration, services, businessTimeSlots, isSelectedDateClosed]);
+
+  useEffect(() => {
+    if (!isSelectedDateClosed) return;
+    setSelectedTime('');
+  }, [isSelectedDateClosed]);
 
   useEffect(() => {
     if (selectedTime && visibleTimeSlots.length > 0 && !visibleTimeSlots.includes(selectedTime)) {
@@ -945,13 +955,18 @@ export default function ClientView() {
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                         <Clock size={14} /> Hora
                       </label>
+                      {isSelectedDateClosed && (
+                        <p className="text-red-400 text-sm">
+                          La barbería está cerrada ese día. Elegí otra fecha para ver horarios.
+                        </p>
+                      )}
                       {!selectedBarber ? (
                         <p className="text-zinc-500 text-sm">
                           Elegí un barbero para ver los horarios disponibles.
                         </p>
                       ) : (
                         <>
-                          {selectedBarber === ANY_BARBER_ID && earliestAny && !isSlotAlreadyPast(selectedDate, earliestAny.time) && (
+                          {!isSelectedDateClosed && selectedBarber === ANY_BARBER_ID && earliestAny && !isSlotAlreadyPast(selectedDate, earliestAny.time) && (
                             <button
                               type="button"
                               onClick={() => setSelectedTime(earliestAny.time)}
@@ -960,18 +975,18 @@ export default function ClientView() {
                               Usar el próximo libre: {earliestAny.time}
                             </button>
                           )}
-                          {visibleTimeSlots.length === 0 && availableSlots.length > 0 && selectedDate === format(startOfToday(), 'yyyy-MM-dd') && (
+                          {!isSelectedDateClosed && visibleTimeSlots.length === 0 && availableSlots.length > 0 && selectedDate === format(startOfToday(), 'yyyy-MM-dd') && (
                             <p className="text-amber-500/90 text-sm mb-2">
                               Para hoy no quedan horarios con al menos {BOOKING_LEAD_MINUTES} minutos de anticipación. Elegí otro día.
                             </p>
                           )}
-                          {availableSlots.length === 0 && selectedService && selectedBarber && (
+                          {!isSelectedDateClosed && availableSlots.length === 0 && selectedService && selectedBarber && (
                             <p className="text-amber-500/90 text-sm mb-2">
                               No hay horarios disponibles para esa fecha y duración. Probá otro día u otro barbero.
                             </p>
                           )}
                           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 sm:gap-3">
-                            {visibleTimeSlots.map(time => {
+                            {(isSelectedDateClosed ? [] : visibleTimeSlots).map(time => {
                               const isSelected = selectedTime === time;
                               return (
                                 <button

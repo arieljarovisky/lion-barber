@@ -695,6 +695,7 @@ export default function Dashboard() {
       .getShopSettings()
       .then((s) => {
         if (cancelled) return;
+        setShopDays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
         setShopCloseTime(s.closeTime || '20:00');
         setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
         setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
@@ -867,6 +868,13 @@ export default function Dashboard() {
   const handlePrevWeek = () => setSelectedDate((d) => subWeeks(d, 1));
   const handleNextWeek = () => setSelectedDate((d) => addWeeks(d, 1));
   const handleThisWeek = () => setSelectedDate(startOfDay(new Date()));
+  const handleJumpToDate = (value: string) => {
+    const v = value.trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return;
+    const d = parseISO(`${v}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return;
+    setSelectedDate(startOfDay(d));
+  };
 
   const dayAppointments = appointments
     .filter((app) => app.date === dateStr && app.status !== 'cancelled')
@@ -890,10 +898,13 @@ export default function Dashboard() {
 
   const getBlockedSlotsForBarberDate = useCallback(
     (barberId: string | undefined, dateStrValue: string): Set<string> => {
+      const weekday = getIsoWeekdayFromYmd(dateStrValue);
+      const shopClosedByWeekday = !shopDays.includes(weekday);
+      const shopClosedByDate = shopClosedDates.includes(dateStrValue);
+      if (shopClosedByWeekday || shopClosedByDate) return new Set<string>(agendaTimeSlots);
       if (!barberId) return new Set<string>();
       const cfg = agendaRestrictionsByBarber[barberId];
       if (!cfg) return new Set<string>();
-      const weekday = getIsoWeekdayFromYmd(dateStrValue);
       if (cfg.offWeekdays.has(weekday)) return new Set<string>(agendaTimeSlots);
       const blocked = new Set<string>();
       for (const slot of agendaTimeSlots) {
@@ -911,7 +922,7 @@ export default function Dashboard() {
       }
       return blocked;
     },
-    [agendaRestrictionsByBarber, agendaTimeSlots]
+    [agendaRestrictionsByBarber, agendaTimeSlots, shopDays, shopClosedDates]
   );
 
   useEffect(() => {
@@ -1532,6 +1543,15 @@ export default function Dashboard() {
                   {isWeekView ? 'Esta semana' : 'Hoy'}
                 </button>
               </div>
+              <label className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-sm">
+                <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Ir a</span>
+                <input
+                  type="date"
+                  value={format(selectedDate, 'yyyy-MM-dd')}
+                  onChange={(e) => handleJumpToDate(e.target.value)}
+                  className="rounded-lg border border-zinc-200 px-2 py-1 text-sm text-zinc-800 outline-none focus:border-[#b39055]"
+                />
+              </label>
 
               {isStaffBarber ? (
                 <div className="bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm font-bold text-white w-full sm:w-auto">
