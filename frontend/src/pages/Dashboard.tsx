@@ -110,7 +110,7 @@ function buildTimeSlotsInRange(openTime: string, closeTime: string): string[] {
     : 20 * 60;
   return TIME_SLOTS.filter((slot) => {
     const start = timeToMinutes(slot);
-    return Number.isFinite(start) && start >= safeOpen && start + SLOT_STEP_MINUTES <= safeClose;
+    return Number.isFinite(start) && start >= safeOpen && start + SLOT_STEP_MINUTES < safeClose;
   });
 }
 
@@ -2385,7 +2385,7 @@ export default function Dashboard() {
                         className="w-full border border-zinc-200 rounded-xl px-3 py-3 text-zinc-900 text-sm"
                         disabled={!canAccessDashboard}
                       >
-                        {blockEndTimeOptions.map((t) => (
+                        {agendaTimeSlots.map((t) => (
                           <option key={t} value={t}>
                             {t}
                           </option>
@@ -2400,7 +2400,7 @@ export default function Dashboard() {
                         className="w-full border border-zinc-200 rounded-xl px-3 py-3 text-zinc-900 text-sm"
                         disabled={!canAccessDashboard}
                       >
-                        {agendaTimeSlots.map((t) => (
+                        {blockEndTimeOptions.map((t) => (
                           <option key={t} value={t}>
                             {t}
                           </option>

@@ -66,7 +66,7 @@ function buildTimeSlotsInRange(openTime: string, closeTime: string): string[] {
   const safeClose = Number.isFinite(closeMinutes) ? Math.max(safeOpen + 20, Math.min(24 * 60, closeMinutes)) : 20 * 60;
   return TIME_SLOTS.filter((slot) => {
     const start = timeToMinutes(slot);
-    return Number.isFinite(start) && start >= safeOpen && start + 20 <= safeClose;
+    return Number.isFinite(start) && start >= safeOpen && start + 20 < safeClose;
   });
 }
 

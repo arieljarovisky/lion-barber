@@ -34,7 +34,7 @@ export function slotFitsBusinessHours(
   closeMinutes = CLOSE_MINUTES
 ): boolean {
   const start = timeToMinutes(startTime);
-  return start >= OPEN_MINUTES && start + durationMinutes <= closeMinutes;
+  return start >= OPEN_MINUTES && start + durationMinutes < closeMinutes;
 }
 
 export function closeTimeToMinutes(closeTime: string | undefined): number {
