@@ -303,6 +303,11 @@ export async function initDb(): Promise<void> {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
   try {
+    await pool.execute('ALTER TABLE shop_settings ADD COLUMN closed_dates TEXT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
     await pool.execute(
       "INSERT IGNORE INTO shop_settings (id, cutoff_hours, open_weekdays, deposit_percent, close_time) VALUES (1, 12, '1,2,3,4,5,6,7', 30, '20:00')"
     );

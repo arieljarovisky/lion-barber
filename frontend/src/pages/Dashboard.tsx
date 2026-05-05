@@ -343,6 +343,8 @@ export default function Dashboard() {
   const [shopDepositPercent, setShopDepositPercent] = useState(30);
   const [shopCloseTime, setShopCloseTime] = useState('20:00');
   const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
+  const [shopClosedDates, setShopClosedDates] = useState<string[]>([]);
+  const [closedDateInput, setClosedDateInput] = useState('');
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState('');
@@ -695,6 +697,7 @@ export default function Dashboard() {
         if (cancelled) return;
         setShopCloseTime(s.closeTime || '20:00');
         setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
+        setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
       })
       .catch(() => {});
     return () => {
@@ -716,6 +719,8 @@ export default function Dashboard() {
           setShopDepositPercent(s.depositPercent);
           setShopCloseTime(s.closeTime || '20:00');
           setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
+          setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
+          setClosedDateInput('');
         }
       })
       .catch(() => {
@@ -1373,6 +1378,24 @@ export default function Dashboard() {
     });
   };
 
+  const handleAddClosedDate = () => {
+    const date = closedDateInput.trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setShopError('Ingresá una fecha válida para feriado/cierre.');
+      return;
+    }
+    setShopError('');
+    setShopClosedDates((prev) => {
+      if (prev.includes(date)) return prev;
+      return [...prev, date].sort((a, b) => a.localeCompare(b));
+    });
+    setClosedDateInput('');
+  };
+
+  const handleRemoveClosedDate = (date: string) => {
+    setShopClosedDates((prev) => prev.filter((d) => d !== date));
+  };
+
   const handleSaveShopSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (shopDays.length === 0) {
@@ -1388,6 +1411,7 @@ export default function Dashboard() {
         depositPercent: shopDepositPercent,
         closeTime: shopCloseTime,
         weekdayHours: shopWeekdayHours,
+        closedDates: shopClosedDates,
       });
       showToast('Configuración guardada correctamente');
     } catch (err) {
@@ -2746,6 +2770,48 @@ export default function Dashboard() {
                       </div>
                     );
                   })}
+                </div>
+                <div className="mt-6">
+                  <h4 className="font-black text-base text-zinc-900">Feriados / cierres puntuales</h4>
+                  <p className="text-sm text-zinc-500 mt-1">
+                    Fechas específicas en las que la barbería no abre (anula la reserva web ese día).
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <input
+                      type="date"
+                      value={closedDateInput}
+                      onChange={(e) => setClosedDateInput(e.target.value)}
+                      className="w-44 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddClosedDate}
+                      className="px-4 py-2.5 rounded-xl border border-zinc-200 bg-zinc-50 text-zinc-800 text-sm font-bold hover:bg-zinc-100"
+                    >
+                      Agregar fecha cerrada
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {shopClosedDates.map((date) => (
+                      <span
+                        key={date}
+                        className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-900"
+                      >
+                        {format(parseISO(`${date}T00:00:00`), 'd MMM yyyy', { locale: es })}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveClosedDate(date)}
+                          className="text-red-700 hover:text-red-900"
+                          aria-label={`Quitar ${date}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {shopClosedDates.length === 0 && (
+                      <span className="text-xs text-zinc-400">No hay fechas cerradas cargadas.</span>
+                    )}
+                  </div>
                 </div>
               </div>
               <button

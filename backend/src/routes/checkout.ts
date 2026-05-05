@@ -7,6 +7,7 @@ import { getServiceById } from '../repositories/services.js';
 import { requireAuth, type AuthRequest } from '../middleware/auth.js';
 import {
   hoursUntilAppointmentStart,
+  isDateClosed,
   isDateOnOpenWeekday,
   isPastCalendarDateInArgentina,
 } from '../appointmentRules.js';
@@ -355,6 +356,9 @@ router.post('/sena', async (req, res) => {
   }
   if (!isDateOnOpenWeekday(date, shop.openWeekdays)) {
     return res.status(400).json({ error: 'El local no atiende ese día. Elegí otra fecha.' });
+  }
+  if (isDateClosed(date, shop.closedDates)) {
+    return res.status(400).json({ error: 'La barbería está cerrada en esa fecha. Elegí otra fecha.' });
   }
 
   let durationMinutes: number;

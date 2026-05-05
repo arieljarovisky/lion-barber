@@ -13,6 +13,12 @@ export function isDateOnOpenWeekday(dateStr: string, openWeekdays: number[]): bo
   return openWeekdays.includes(w);
 }
 
+export function isDateClosed(dateStr: string, closedDates: string[]): boolean {
+  const d = String(dateStr ?? '').trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+  return closedDates.includes(d);
+}
+
 /** HH:mm o HH:mm:ss → HH:mm (MySQL TIME suele devolver segundos). */
 export function normalizeTimeSlot(timeStr: string): string {
   const t = timeStr.trim();

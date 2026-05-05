@@ -6,6 +6,7 @@ export interface ShopSettingsRow {
   deposit_percent: number;
   close_time: string;
   weekday_hours?: string | null;
+  closed_dates?: string | null;
 }
 
 const DEFAULT_OPEN = '1,2,3,4,5,6,7';
@@ -95,15 +96,32 @@ function parseWeekdayHours(raw: string | null | undefined, fallbackClose: string
   }
 }
 
+function parseClosedDates(raw: string | null | undefined): string[] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const unique = new Set<string>();
+    for (const v of parsed) {
+      const s = String(v ?? '').trim().slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) unique.add(s);
+    }
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
 export async function getShopSettings(): Promise<{
   cutoffHours: number;
   openWeekdays: number[];
   depositPercent: number;
   closeTime: string;
   weekdayHours: WeekdayHours;
+  closedDates: string[];
 }> {
   const rows = await query<ShopSettingsRow[]>(
-    'SELECT cutoff_hours, open_weekdays, deposit_percent, close_time, weekday_hours FROM shop_settings WHERE id = 1'
+    'SELECT cutoff_hours, open_weekdays, deposit_percent, close_time, weekday_hours, closed_dates FROM shop_settings WHERE id = 1'
   );
   const row = rows[0];
   if (!row) {
@@ -113,6 +131,7 @@ export async function getShopSettings(): Promise<{
       depositPercent: 30,
       closeTime: '20:00',
       weekdayHours: defaultWeekdayHours(),
+      closedDates: [],
     };
   }
   const closeTime = normalizeCloseTime(row.close_time);
@@ -125,6 +144,7 @@ export async function getShopSettings(): Promise<{
         : 30,
     closeTime,
     weekdayHours: parseWeekdayHours(row.weekday_hours, closeTime),
+    closedDates: parseClosedDates(row.closed_dates),
   };
 }
 
@@ -134,12 +154,14 @@ export async function updateShopSettings(data: {
   depositPercent?: number;
   closeTime?: string;
   weekdayHours?: Partial<Record<number, Partial<DayHours>>>;
+  closedDates?: string[];
 }): Promise<{
   cutoffHours: number;
   openWeekdays: number[];
   depositPercent: number;
   closeTime: string;
   weekdayHours: WeekdayHours;
+  closedDates: string[];
 }> {
   const current = await getShopSettings();
   const cutoffHours =
@@ -162,10 +184,19 @@ export async function updateShopSettings(data: {
       weekdayHours[d] = normalizeDayHours(data.weekdayHours[d], weekdayHours[d]);
     }
   }
+  let closedDates = current.closedDates;
+  if (data.closedDates != null && Array.isArray(data.closedDates)) {
+    const unique = new Set<string>();
+    for (const raw of data.closedDates) {
+      const s = String(raw ?? '').trim().slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) unique.add(s);
+    }
+    closedDates = Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }
   const openStr = openWeekdays.join(',');
   await pool.execute(
-    'UPDATE shop_settings SET cutoff_hours = ?, open_weekdays = ?, deposit_percent = ?, close_time = ?, weekday_hours = ? WHERE id = 1',
-    [cutoffHours, openStr, depositPercent, closeTime, JSON.stringify(weekdayHours)]
+    'UPDATE shop_settings SET cutoff_hours = ?, open_weekdays = ?, deposit_percent = ?, close_time = ?, weekday_hours = ?, closed_dates = ? WHERE id = 1',
+    [cutoffHours, openStr, depositPercent, closeTime, JSON.stringify(weekdayHours), JSON.stringify(closedDates)]
   );
-  return { cutoffHours, openWeekdays, depositPercent, closeTime, weekdayHours };
+  return { cutoffHours, openWeekdays, depositPercent, closeTime, weekdayHours, closedDates };
 }

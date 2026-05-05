@@ -135,6 +135,7 @@ export default function ClientView() {
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [openWeekdays, setOpenWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
+  const [closedDates, setClosedDates] = useState<string[]>([]);
   const [shopCloseTime, setShopCloseTime] = useState('20:00');
   const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
 
@@ -145,6 +146,7 @@ export default function ClientView() {
       .getShopSettings()
       .then((s) => {
         setOpenWeekdays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
+        setClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
         setShopCloseTime(s.closeTime || '20:00');
         const next: Record<number, DayHours> = { ...DEFAULT_WEEKDAY_HOURS };
         for (let d = 1; d <= 7; d++) {
@@ -389,27 +391,31 @@ export default function ClientView() {
     const today = startOfToday();
     return Array.from({ length: 30 })
       .map((_, i) => addDays(today, i))
-      .filter((d) => openWeekdays.includes(getISODay(d)));
-  }, [openWeekdays]);
+      .filter((d) => openWeekdays.includes(getISODay(d)))
+      .filter((d) => !closedDates.includes(format(d, 'yyyy-MM-dd')));
+  }, [openWeekdays, closedDates]);
 
   /** Solo cuando cambian los días hábiles reales (no en cada referencia nueva del array de la API). */
   const openWeekdaysKey = [...openWeekdays].sort((a, b) => a - b).join(',');
+  const closedDatesKey = [...closedDates].sort((a, b) => a.localeCompare(b)).join(',');
 
   useEffect(() => {
     if (!openWeekdays.length) return;
     setSelectedDate((current) => {
       const d = parse(current, 'yyyy-MM-dd', new Date());
-      if (openWeekdays.includes(getISODay(d))) return current;
+      const currentYmd = format(d, 'yyyy-MM-dd');
+      if (openWeekdays.includes(getISODay(d)) && !closedDates.includes(currentYmd)) return current;
       const t = startOfToday();
       for (let i = 0; i < 60; i++) {
         const cand = addDays(t, i);
-        if (openWeekdays.includes(getISODay(cand))) {
+        const ymd = format(cand, 'yyyy-MM-dd');
+        if (openWeekdays.includes(getISODay(cand)) && !closedDates.includes(ymd)) {
           return format(cand, 'yyyy-MM-dd');
         }
       }
       return current;
     });
-  }, [openWeekdaysKey]);
+  }, [openWeekdaysKey, closedDatesKey]);
 
   const today = startOfToday();
 
@@ -420,7 +426,8 @@ export default function ClientView() {
       const [year, month, day] = selectedDate.split('-').map(Number);
       const customDate = new Date(year, month - 1, day);
       const notPast = !isBefore(startOfDay(customDate), startOfToday());
-      if (openWeekdays.includes(getISODay(customDate)) && notPast) {
+      const customYmd = format(customDate, 'yyyy-MM-dd');
+      if (openWeekdays.includes(getISODay(customDate)) && !closedDates.includes(customYmd) && notPast) {
         displayDays = [customDate, ...baseDays];
       }
     }
@@ -1126,7 +1133,8 @@ export default function ClientView() {
                 const isSelected = selectedDate === format(day, 'yyyy-MM-dd');
                 const isPast = isBefore(startOfDay(day), startOfDay(today));
                 const isCurrentMonth = isSameMonth(day, startOfMonth(currentMonth));
-                const isClosedDay = !openWeekdays.includes(getISODay(day));
+                const ymd = format(day, 'yyyy-MM-dd');
+                const isClosedDay = !openWeekdays.includes(getISODay(day)) || closedDates.includes(ymd);
                 
                 return (
                   <button

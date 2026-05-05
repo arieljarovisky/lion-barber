@@ -7,6 +7,7 @@ import {
   canClientRescheduleAppointment,
   DEPOSIT_REFUND_MIN_HOURS,
   hoursUntilAppointmentStart,
+  isDateClosed,
   isDateOnOpenWeekday,
   isPastCalendarDateInArgentina,
 } from '../appointmentRules.js';
@@ -166,6 +167,9 @@ router.post('/:id/reschedule', requireAuth, async (req, res) => {
     if (!isDateOnOpenWeekday(date, settings.openWeekdays)) {
       return res.status(400).json({ error: 'El local no atiende ese día. Elegí otra fecha.' });
     }
+    if (isDateClosed(date, settings.closedDates)) {
+      return res.status(400).json({ error: 'La barbería está cerrada en esa fecha. Elegí otra.' });
+    }
     const barberId = app.barberId;
     if (!barberId) {
       return res.status(400).json({ error: 'Turno sin barbero asignado' });
@@ -216,6 +220,9 @@ router.post('/', optionalAuth, async (req, res) => {
     }
     if (!isDateOnOpenWeekday(date, shop.openWeekdays)) {
       return res.status(400).json({ error: 'El local no atiende ese día.' });
+    }
+    if (isDateClosed(date, shop.closedDates)) {
+      return res.status(400).json({ error: 'La barbería está cerrada en esa fecha.' });
     }
     const created = await repo.createAppointment({
       name,

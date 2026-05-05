@@ -14,7 +14,7 @@ import {
 } from '../slotUtils.js';
 import { getScheduleRestrictionIntervals } from './barberSchedule.js';
 import { getShopSettings } from './shopSettings.js';
-import { isDateOnOpenWeekday } from '../appointmentRules.js';
+import { isDateClosed, isDateOnOpenWeekday } from '../appointmentRules.js';
 
 export const ANY_BARBER_ID = '__any__';
 
@@ -176,8 +176,9 @@ export async function resolveBarberForAny(
   time: string,
   durationMinutes: number
 ): Promise<string | null> {
-  const { openWeekdays, closeTime, weekdayHours } = await getShopSettings();
+  const { openWeekdays, closeTime, weekdayHours, closedDates } = await getShopSettings();
   if (!isDateOnOpenWeekday(date, openWeekdays)) return null;
+  if (isDateClosed(date, closedDates)) return null;
   const weekday = new Date(`${date}T12:00:00`).getDay() || 7;
   const dayHours = weekdayHours[weekday] ?? { openTime: '10:00', closeTime };
   const openMinutes = openTimeToMinutes(dayHours.openTime);
@@ -285,8 +286,9 @@ export async function resolveDurationMinutes(
 }
 
 export async function getAvailableSlots(date: string, barberId: string, durationMinutes = 30): Promise<string[]> {
-  const { openWeekdays, closeTime, weekdayHours } = await getShopSettings();
+  const { openWeekdays, closeTime, weekdayHours, closedDates } = await getShopSettings();
   if (!isDateOnOpenWeekday(date, openWeekdays)) return [];
+  if (isDateClosed(date, closedDates)) return [];
   const weekday = new Date(`${date}T12:00:00`).getDay() || 7;
   const dayHours = weekdayHours[weekday] ?? { openTime: '10:00', closeTime };
   const openMinutes = openTimeToMinutes(dayHours.openTime);
@@ -299,8 +301,9 @@ export async function getAvailableSlots(date: string, barberId: string, duration
 
 /** Horarios en los que al menos un barbero puede atender (misma duración). */
 export async function getAvailableSlotsAnyBarber(date: string, durationMinutes: number): Promise<string[]> {
-  const { openWeekdays, closeTime, weekdayHours } = await getShopSettings();
+  const { openWeekdays, closeTime, weekdayHours, closedDates } = await getShopSettings();
   if (!isDateOnOpenWeekday(date, openWeekdays)) return [];
+  if (isDateClosed(date, closedDates)) return [];
   const weekday = new Date(`${date}T12:00:00`).getDay() || 7;
   const dayHours = weekdayHours[weekday] ?? { openTime: '10:00', closeTime };
   const openMinutes = openTimeToMinutes(dayHours.openTime);
@@ -327,8 +330,9 @@ export async function getEarliestAvailableAnyBarber(
   date: string,
   durationMinutes: number
 ): Promise<EarliestSlot | null> {
-  const { openWeekdays, closeTime, weekdayHours } = await getShopSettings();
+  const { openWeekdays, closeTime, weekdayHours, closedDates } = await getShopSettings();
   if (!isDateOnOpenWeekday(date, openWeekdays)) return null;
+  if (isDateClosed(date, closedDates)) return null;
   const weekday = new Date(`${date}T12:00:00`).getDay() || 7;
   const dayHours = weekdayHours[weekday] ?? { openTime: '10:00', closeTime };
   const openMinutes = openTimeToMinutes(dayHours.openTime);
@@ -350,7 +354,10 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
   await expireStalePendingAppointments();
   let barberId = data.barberId;
   const durationMinutes = data.durationMinutes ?? (await resolveDurationMinutes(data.serviceId, data.service));
-  const { closeTime, weekdayHours } = await getShopSettings();
+  const { closeTime, weekdayHours, closedDates } = await getShopSettings();
+  if (isDateClosed(data.date, closedDates)) {
+    throw new Error('La barbería está cerrada en esa fecha');
+  }
   const weekday = new Date(`${data.date}T12:00:00`).getDay() || 7;
   const dayHours = weekdayHours[weekday] ?? { openTime: '10:00', closeTime };
   const openMinutes = openTimeToMinutes(dayHours.openTime);
@@ -427,7 +434,10 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       : serviceChanged
         ? await resolveDurationMinutes(updated.serviceId, updated.service)
         : current.durationMinutes ?? 30;
-  const { closeTime, weekdayHours } = await getShopSettings();
+  const { closeTime, weekdayHours, closedDates } = await getShopSettings();
+  if (isDateClosed(date, closedDates)) {
+    throw new Error('La barbería está cerrada en esa fecha');
+  }
   const weekday = new Date(`${date}T12:00:00`).getDay() || 7;
   const dayHours = weekdayHours[weekday] ?? { openTime: '10:00', closeTime };
   const openMinutes = openTimeToMinutes(dayHours.openTime);
