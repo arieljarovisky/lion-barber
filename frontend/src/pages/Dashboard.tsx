@@ -290,6 +290,9 @@ export default function Dashboard() {
   const [newClientEmail, setNewClientEmail] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [adminClientsLoading, setAdminClientsLoading] = useState(false);
+  const [nameSuggestionsOpen, setNameSuggestionsOpen] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const nameSuggestionsRef = useRef<HTMLUListElement>(null);
   const [agendaRestrictionsByBarber, setAgendaRestrictionsByBarber] = useState<
     Record<string, { offWeekdays: Set<number>; blocks: BarberTimeBlockRow[] }>
   >({});
@@ -465,6 +468,32 @@ export default function Dashboard() {
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
       .slice(0, 8);
   }, [isAdmin, editingAppointment, modalOpen, form.name, form.phone, adminClients]);
+
+  useEffect(() => {
+    if (!nameSuggestionsOpen) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (nameInputRef.current?.contains(target)) return;
+      if (nameSuggestionsRef.current?.contains(target)) return;
+      setNameSuggestionsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNameSuggestionsOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [nameSuggestionsOpen]);
+
+  useEffect(() => {
+    if (!modalOpen) setNameSuggestionsOpen(false);
+  }, [modalOpen]);
 
   const loadServicePointsPanel = useCallback(async () => {
     setPointsPanelLoading(true);
@@ -1062,8 +1091,13 @@ export default function Dashboard() {
         let nameForApp = form.name.trim();
         const phoneForApp = form.phone.trim();
 
-        if (!nameForApp || !phoneForApp) {
-          setError('Nombre y teléfono son obligatorios.');
+        if (!nameForApp) {
+          setError('El nombre es obligatorio.');
+          setSaving(false);
+          return;
+        }
+        if (!isAdmin && !phoneForApp) {
+          setError('El teléfono es obligatorio.');
           setSaving(false);
           return;
         }
@@ -1086,7 +1120,7 @@ export default function Dashboard() {
             try {
               const { client } = await api.createAdminClient({
                 name: nameForApp,
-                phone: phoneForApp,
+                ...(phoneForApp ? { phone: phoneForApp } : {}),
                 ...(email ? { email } : {}),
                 points: 0,
               });
@@ -2937,6 +2971,7 @@ export default function Dashboard() {
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Nombre</label>
                 <div className="relative">
                   <input
+                    ref={nameInputRef}
                     type="text"
                     required
                     value={form.name}
@@ -2950,6 +2985,22 @@ export default function Dashboard() {
                         if (c.name.trim().toLowerCase() === v.trim().toLowerCase()) return prev;
                         return null;
                       });
+                      if (isAdmin && !editingAppointment) {
+                        setNameSuggestionsOpen(true);
+                      }
+                    }}
+                    onFocus={() => {
+                      if (isAdmin && !editingAppointment) {
+                        setNameSuggestionsOpen(true);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setNameSuggestionsOpen(false);
+                      } else if (e.key === 'Enter' && nameSuggestionsOpen) {
+                        e.preventDefault();
+                        setNameSuggestionsOpen(false);
+                      }
                     }}
                     onBlur={() => {
                       if (!isAdmin || editingAppointment) return;
@@ -2975,11 +3026,28 @@ export default function Dashboard() {
                   {isAdmin && !editingAppointment && adminClientsLoading && (
                     <p className="mt-1 text-xs text-zinc-400">Cargando clientes…</p>
                   )}
-                  {isAdmin && !editingAppointment && linkedClientId == null && clientNameSuggestions.length > 0 && (
+                  {isAdmin &&
+                    !editingAppointment &&
+                    nameSuggestionsOpen &&
+                    linkedClientId == null &&
+                    clientNameSuggestions.length > 0 && (
                     <ul
+                      ref={nameSuggestionsRef}
                       className="absolute z-20 mt-1 w-full max-h-48 overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg"
                       role="listbox"
                     >
+                      <li className="flex items-center justify-between px-3 py-1.5 text-[11px] uppercase tracking-wider text-zinc-400 border-b border-zinc-100">
+                        <span>Clientes existentes</span>
+                        <button
+                          type="button"
+                          className="text-zinc-400 hover:text-zinc-700 font-bold"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => setNameSuggestionsOpen(false)}
+                          aria-label="Cerrar sugerencias"
+                        >
+                          ×
+                        </button>
+                      </li>
                       {clientNameSuggestions.map((c) => (
                         <li key={c.id} role="option">
                           <button
@@ -2994,6 +3062,7 @@ export default function Dashboard() {
                               }));
                               setLinkedClientId(c.id);
                               setNewClientEmail('');
+                              setNameSuggestionsOpen(false);
                             }}
                           >
                             <span className="font-medium">{c.name}</span>
@@ -3021,11 +3090,14 @@ export default function Dashboard() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                  Teléfono <span className="font-normal text-zinc-400">(contacto del turno)</span>
+                  Teléfono{' '}
+                  <span className="font-normal text-zinc-400">
+                    {isAdmin ? '(opcional)' : '(contacto del turno)'}
+                  </span>
                 </label>
                 <input
                   type="tel"
-                  required
+                  required={!isAdmin}
                   value={form.phone}
                   onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                   className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"

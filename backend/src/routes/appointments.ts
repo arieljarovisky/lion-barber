@@ -197,13 +197,18 @@ router.get('/:id', async (req, res) => {
 router.post('/', optionalAuth, async (req, res) => {
   const { name, phone, service, serviceId, barber, barberId, date, time, userId, depositPaid, durationMinutes } =
     req.body;
-  if (!name || !phone || !service || !date || !time) {
-    return res.status(400).json({ error: 'Faltan campos: name, phone, service, date, time' });
+  const u = (req as AuthRequest).user;
+  const isStaffOrAdmin = u?.role === 'admin' || u?.role === 'staff';
+  const phoneTrim = typeof phone === 'string' ? phone.trim() : '';
+  if (!name || !service || !date || !time) {
+    return res.status(400).json({ error: 'Faltan campos: name, service, date, time' });
+  }
+  if (!isStaffOrAdmin && !phoneTrim) {
+    return res.status(400).json({ error: 'Falta el teléfono de contacto' });
   }
   if (!barberId) {
     return res.status(400).json({ error: 'Falta barberId (o elige "Cualquier barbero")' });
   }
-  const u = (req as AuthRequest).user;
   if (u?.role === 'staff') {
     const bid = u.barberId;
     if (!bid || String(barberId) !== bid) {
@@ -226,7 +231,7 @@ router.post('/', optionalAuth, async (req, res) => {
     }
     const created = await repo.createAppointment({
       name,
-      phone,
+      phone: phoneTrim,
       service,
       serviceId: serviceId != null ? String(serviceId) : undefined,
       barber,
