@@ -33,6 +33,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Receipt,
+  MessageCircle,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -229,6 +230,50 @@ function getAppointmentPaymentBadge(app: Appointment): { label: string; classNam
     label: 'Sin senia',
     className: 'bg-zinc-100 text-zinc-700 border border-zinc-200',
   };
+}
+
+/** El botón de WhatsApp se ofrece para turnos confirmados sin seña pagada (hay que coordinar manualmente). */
+function appointmentNeedsManualContact(app: Appointment): boolean {
+  if (app.status === 'cancelled' || app.status === 'pending_payment') return false;
+  if (app.depositPaid) return false;
+  return normalizePhoneDigits(app.phone ?? '').length >= 8;
+}
+
+/** Convierte el teléfono a E.164 argentino para wa.me (asume número AR sin código de país). */
+function buildWhatsappPhone(rawPhone: string): string | null {
+  const digits = normalizePhoneDigits(rawPhone);
+  if (digits.length < 8) return null;
+  if (digits.startsWith('54')) return digits;
+  if (digits.startsWith('15')) {
+    return `549${digits.slice(2)}`;
+  }
+  if (digits.length >= 10) {
+    return `549${digits}`;
+  }
+  return `549${digits}`;
+}
+
+function formatAppointmentDateForMessage(ymd: string): string {
+  const [y, m, d] = ymd.split('-');
+  if (!y || !m || !d) return ymd;
+  return `${d}/${m}/${y}`;
+}
+
+function buildAppointmentWhatsappUrl(app: Appointment): string | null {
+  const phone = buildWhatsappPhone(app.phone ?? '');
+  if (!phone) return null;
+  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+  const lines = [
+    `Hola ${greetingName}! Te confirmo tu turno en Lion Barber:`,
+    '',
+    `Fecha: ${formatAppointmentDateForMessage(app.date)}`,
+    `Hora: ${app.time}`,
+    `Servicio: ${app.service}`,
+  ];
+  if (app.barber) lines.push(`Barbero: ${app.barber}`);
+  lines.push('', '¿Podés confirmármelo?');
+  const text = encodeURIComponent(lines.join('\n'));
+  return `https://wa.me/${phone}?text=${text}`;
 }
 
 const WEEKDAY_SHORT: { value: number; label: string }[] = [
@@ -1830,6 +1875,22 @@ export default function Dashboard() {
                                   </p>
                                   <p className="text-zinc-600 text-xs truncate mt-0.5">{app.service}</p>
                                   <div className="flex gap-1 mt-auto pt-2">
+                                    {appointmentNeedsManualContact(app) && (() => {
+                                      const waUrl = buildAppointmentWhatsappUrl(app);
+                                      if (!waUrl) return null;
+                                      return (
+                                        <a
+                                          href={waUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                                          title="Enviar WhatsApp"
+                                        >
+                                          <MessageCircle size={14} />
+                                        </a>
+                                      );
+                                    })()}
                                     <button
                                       type="button"
                                       onClick={() => openEditModal(app)}
@@ -1984,6 +2045,21 @@ export default function Dashboard() {
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1 shrink-0">
+                                    {appointmentNeedsManualContact(app) && (() => {
+                                      const waUrl = buildAppointmentWhatsappUrl(app);
+                                      if (!waUrl) return null;
+                                      return (
+                                        <a
+                                          href={waUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                                          title="Enviar WhatsApp"
+                                        >
+                                          <MessageCircle size={16} />
+                                        </a>
+                                      );
+                                    })()}
                                     <button
                                       type="button"
                                       onClick={() => openEditModal(app)}
@@ -2101,6 +2177,21 @@ export default function Dashboard() {
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-1 flex-shrink-0">
+                                  {appointmentNeedsManualContact(app) && (() => {
+                                    const waUrl = buildAppointmentWhatsappUrl(app);
+                                    if (!waUrl) return null;
+                                    return (
+                                      <a
+                                        href={waUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                                        title="Enviar WhatsApp"
+                                      >
+                                        <MessageCircle size={14} />
+                                      </a>
+                                    );
+                                  })()}
                                   <button
                                     type="button"
                                     onClick={() => openEditModal(app)}
@@ -2252,6 +2343,22 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div className="flex-shrink-0 flex items-center gap-1.5 sm:border-l border-zinc-100 sm:pl-3 pt-2 sm:pt-0 border-t sm:border-t-0 -mx-0.5 sm:mx-0">
+                    {appointmentNeedsManualContact(app) && (() => {
+                      const waUrl = buildAppointmentWhatsappUrl(app);
+                      if (!waUrl) return null;
+                      return (
+                        <a
+                          href={waUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={`Enviar WhatsApp a ${app.name}`}
+                          className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded-md text-xs font-semibold transition-colors"
+                        >
+                          <MessageCircle size={14} />
+                          WhatsApp
+                        </a>
+                      );
+                    })()}
                     <button
                       type="button"
                       onClick={() => openEditModal(app)}
