@@ -13,6 +13,12 @@ import {
 } from '../appointmentRules.js';
 import { notifyBarberByWhatsappOnDepositPaid } from '../services/whatsapp.js';
 import { notifyShopPhoneAppointmentCreated } from '../services/mobileNotifications.js';
+import {
+  sendDepositConfirmedEmail,
+  sendDepositPendingEmail,
+  isRealClientEmail,
+} from '../services/email.js';
+import { findUserById } from '../repositories/users.js';
 
 const router = Router();
 
@@ -433,6 +439,21 @@ router.post('/sena', async (req, res) => {
     appointmentId: pending.id,
     paymentDueAt,
   });
+
+  void (async () => {
+    try {
+      const user = await findUserById(uid);
+      if (user && isRealClientEmail(user.email)) {
+        await sendDepositPendingEmail(user.email, pending, {
+          paymentUrl: pref.url,
+          paymentDueAt,
+          depositMinutes: PENDING_PAYMENT_MINUTES,
+        });
+      }
+    } catch (err) {
+      console.error('[Email] No se pudo enviar aviso de seña pendiente', err);
+    }
+  })();
 });
 
 /**
@@ -501,6 +522,21 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
       appointmentId: app.id,
       paymentDueAt: app.paymentDueAt,
     });
+
+    void (async () => {
+      try {
+        const user = await findUserById(authReq.user!.id);
+        if (user && isRealClientEmail(user.email)) {
+          await sendDepositPendingEmail(user.email, app, {
+            paymentUrl: pref.url,
+            paymentDueAt: app.paymentDueAt,
+            depositMinutes: PENDING_PAYMENT_MINUTES,
+          });
+        }
+      } catch (err) {
+        console.error('[Email] No se pudo reenviar aviso de seña pendiente', err);
+      }
+    })();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al preparar el pago' });
@@ -592,6 +628,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     if (updated) {
       void notifyBarberByWhatsappOnDepositPaid(updated);
       void notifyShopPhoneAppointmentCreated(updated);
+      void notifyClientDepositConfirmed(updated);
     }
     return;
   }
@@ -612,10 +649,24 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     });
     void notifyBarberByWhatsappOnDepositPaid(created);
     void notifyShopPhoneAppointmentCreated(created);
+    void notifyClientDepositConfirmed(created);
   } catch (e) {
     const code = (e as { code?: string }).code;
     if (code === 'ER_DUP_ENTRY') return;
     console.error('Webhook MP: no se pudo crear el turno (revisá cupo / reembolso)', e);
+  }
+}
+
+async function notifyClientDepositConfirmed(app: { id: string; userId?: number; name: string }): Promise<void> {
+  try {
+    if (app.userId == null || !Number.isFinite(Number(app.userId))) return;
+    const user = await findUserById(Number(app.userId));
+    if (!user || !isRealClientEmail(user.email)) return;
+    const full = await repo.getAppointmentById(app.id);
+    if (!full) return;
+    await sendDepositConfirmedEmail(user.email, full);
+  } catch (err) {
+    console.error('[Email] No se pudo enviar confirmación de seña al cliente', err);
   }
 }
 
