@@ -12,7 +12,14 @@ import {
   isPastCalendarDateInArgentina,
 } from '../appointmentRules.js';
 import { refundPaymentTotal } from '../mercadopagoRefund.js';
-import { notifyShopPhoneAppointmentCreated } from '../services/mobileNotifications.js';
+import {
+  notifyShopPhoneAppointmentCancelled,
+  notifyShopPhoneAppointmentCreated,
+  notifyShopPhoneAppointmentRescheduled,
+} from '../services/mobileNotifications.js';
+import { isRealClientEmail, sendAppointmentScheduledEmail } from '../services/email.js';
+import { findUserById } from '../repositories/users.js';
+import type { Appointment } from '../types.js';
 
 const router = Router();
 
@@ -140,6 +147,7 @@ router.post('/:id/cancel', requireAuth, async (req, res) => {
 
     const updated = await repo.cancelAppointmentByUser(id, authReq.user!.id);
     if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
+    void notifyShopPhoneAppointmentCancelled(updated, { byClient: true });
     res.json({ ...updated, cancelNotice });
   } catch (err) {
     console.error(err);
@@ -179,6 +187,7 @@ router.post('/:id/reschedule', requireAuth, async (req, res) => {
     await repo.assertNoOverlap(barberId, date, time, durationMinutes, id);
     const updated = await repo.updateAppointment(id, { date, time });
     if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
+    void notifyShopPhoneAppointmentRescheduled(app, updated);
     res.json(updated);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error al reprogramar';
@@ -244,6 +253,7 @@ router.post('/', optionalAuth, async (req, res) => {
     });
     if ((created.status ?? 'scheduled') === 'scheduled') {
       void notifyShopPhoneAppointmentCreated(created);
+      void notifyClientAppointmentScheduled(created);
     }
     res.status(201).json(created);
   } catch (err) {
@@ -297,7 +307,19 @@ router.delete('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   }
   const ok = await repo.deleteAppointment(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Cita no encontrada' });
+  void notifyShopPhoneAppointmentCancelled(existing, { byClient: false });
   res.status(204).send();
 });
+
+async function notifyClientAppointmentScheduled(app: Appointment): Promise<void> {
+  try {
+    if (app.userId == null || !Number.isFinite(Number(app.userId))) return;
+    const user = await findUserById(Number(app.userId));
+    if (!user || !isRealClientEmail(user.email)) return;
+    await sendAppointmentScheduledEmail(user.email, app);
+  } catch (err) {
+    console.error('[Email] No se pudo enviar aviso de turno agendado', err);
+  }
+}
 
 export default router;

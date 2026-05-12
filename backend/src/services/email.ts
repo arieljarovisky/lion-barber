@@ -202,6 +202,77 @@ export async function sendDepositPendingEmail(
   });
 }
 
+/** Aviso al cliente: el turno fue agendado (sin pago de seña, ej. desde el panel del admin). */
+export async function sendAppointmentScheduledEmail(
+  email: string,
+  app: Appointment
+): Promise<void> {
+  if (!isRealClientEmail(email)) return;
+  const cfg = getSmtpConfig();
+  if (!cfg) return;
+
+  const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
+  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+
+  const text = [
+    `${greetingName}, agendamos tu turno en ${cfg.shopName}.`,
+    '',
+    'Detalles del turno:',
+    detailsText,
+    '',
+    'Recordá que hay 10 minutos de tolerancia desde la hora del turno.',
+    '',
+    `Te esperamos en ${cfg.shopName}.`,
+  ].join('\n');
+
+  const html = `<!doctype html>
+<html lang="es">
+  <body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#18181b;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e4e4e7;">
+            <tr>
+              <td style="background:#18181b;color:#fff;padding:24px 28px;">
+                <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#e5c185;">${escapeHtml(
+                  cfg.shopName
+                )}</div>
+                <div style="font-size:22px;font-weight:800;margin-top:6px;">Tu turno fue agendado</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 28px;font-size:15px;line-height:1.55;color:#27272a;">
+                <p style="margin:0 0 12px;">Hola <strong>${escapeHtml(greetingName)}</strong>,</p>
+                <p style="margin:0 0 16px;">Agendamos tu turno:</p>
+                <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:8px 0 16px;">
+                  ${detailsHtml}
+                </table>
+                <div style="margin:16px 0;padding:12px 14px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;font-size:14px;color:#166534;">
+                  Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.
+                </div>
+                <p style="margin:18px 0 0;">¡Te esperamos!</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#fafafa;padding:14px 28px;font-size:12px;color:#a1a1aa;text-align:center;">
+                Este es un mensaje automático de ${escapeHtml(cfg.shopName)}.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  await sendMail({
+    to: email,
+    subject: `Tu turno en ${cfg.shopName} fue agendado`,
+    text,
+    html,
+  });
+}
+
 /** Aviso al cliente: la seña se acreditó y el turno quedó confirmado. */
 export async function sendDepositConfirmedEmail(
   email: string,
