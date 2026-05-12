@@ -954,6 +954,23 @@ export default function Dashboard() {
     .filter((app) => app.date === dateStr && app.status !== 'cancelled')
     .sort((a, b) => a.time.localeCompare(b.time));
 
+  const barberById = useMemo(() => {
+    const map = new Map<string, Barber>();
+    for (const b of barbers) map.set(b.id, b);
+    return map;
+  }, [barbers]);
+
+  function resolveBarberForApp(app: Appointment): Barber | undefined {
+    if (app.barberId) {
+      const direct = barberById.get(app.barberId);
+      if (direct) return direct;
+    }
+    if (app.barber) {
+      return barbers.find((b) => b.name === app.barber);
+    }
+    return undefined;
+  }
+
   const appointmentsByBarber = barbers.map((barber) => ({
     barber,
     appointments: dayAppointments.filter(
@@ -2267,118 +2284,150 @@ export default function Dashboard() {
               </button>
             </div>
           ) : (
-            <div className="divide-y divide-zinc-100">
-              {dayAppointments.map((app) => (
-                <div
-                  key={app.id}
-                  className="px-3 py-2.5 sm:px-4 sm:py-3 hover:bg-zinc-50/80 transition-colors flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 group"
-                >
-                  <div className="flex-shrink-0 flex items-center gap-1.5 bg-zinc-950 text-white rounded-lg px-2.5 py-1.5 sm:min-w-[4.5rem] sm:justify-center">
-                    <Clock size={14} className="text-[#e5c185] shrink-0" />
-                    <span className="font-bold text-sm tabular-nums tracking-tight">{app.time}</span>
-                  </div>
-                  <div className="flex-1 min-w-0 grid grid-cols-2 lg:grid-cols-4 gap-x-4 gap-y-2 text-sm">
-                    <div className="min-w-0 col-span-2 lg:col-span-1">
-                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5 flex items-center gap-1">
-                        <User size={11} className="shrink-0" /> Cliente
-                      </p>
-                      <p className="font-semibold text-zinc-900 truncate">{app.name}</p>
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5 flex items-center gap-1">
-                        <Phone size={11} className="shrink-0" /> Teléfono
-                      </p>
-                      <a
-                        href={`https://wa.me/549${app.phone.replace(/\D/g, '')}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="font-medium text-zinc-900 hover:text-[#b39055] transition-colors truncate block"
-                      >
-                        {app.phone}
-                      </a>
-                    </div>
-                    <div className="min-w-0 col-span-2 lg:col-span-1">
-                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5 flex items-center gap-1">
-                        <Scissors size={11} className="shrink-0" /> Servicio
-                      </p>
-                      <span className="inline-flex max-w-full items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-zinc-100 text-zinc-800 truncate">
-                        {app.service}
+            <ul className="divide-y divide-zinc-100">
+              {dayAppointments.map((app) => {
+                const dm = app.durationMinutes ?? 30;
+                const endClock = addMinutesToClock(app.time, dm);
+                const badge = getAppointmentPaymentBadge(app);
+                const barberInfo = resolveBarberForApp(app);
+                const phoneDigits = normalizePhoneDigits(app.phone ?? '');
+                const phoneHref = phoneDigits ? `https://wa.me/549${phoneDigits}` : null;
+                const waUrl = appointmentNeedsManualContact(app) ? buildAppointmentWhatsappUrl(app) : null;
+                const showAfipBlock = isAdmin && afipConfigured && app.status !== 'cancelled';
+                const initials = (app.name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
+                return (
+                  <li
+                    key={app.id}
+                    className="relative flex flex-col gap-3 px-3 py-3 sm:px-4 sm:py-3 hover:bg-zinc-50/60 transition-colors sm:flex-row sm:items-center sm:gap-4 group"
+                  >
+                    {/* Hora */}
+                    <div className="flex sm:flex-col items-center justify-center gap-2 sm:gap-0.5 bg-zinc-950 text-white rounded-lg px-3 py-2 sm:min-w-[4.25rem] flex-shrink-0">
+                      <span className="font-bold text-base sm:text-[15px] tabular-nums leading-none">{app.time}</span>
+                      <span className="hidden sm:block text-[10px] text-zinc-400 tabular-nums mt-1 leading-none">
+                        hasta {endClock}
                       </span>
-                      <div className="mt-2">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${getAppointmentPaymentBadge(app).className}`}
-                        >
-                          {getAppointmentPaymentBadge(app).label}
-                        </span>
+                      <span className="sm:hidden text-xs text-zinc-400 tabular-nums">· {dm} min</span>
+                    </div>
+
+                    {/* Cliente + teléfono */}
+                    <div className="flex items-center gap-3 min-w-0 sm:w-56 sm:flex-shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#e5c185] to-[#b39055] text-zinc-900 flex items-center justify-center text-xs font-black tracking-tight flex-shrink-0">
+                        {initials}
                       </div>
-                      {isAdmin && afipConfigured && app.status !== 'cancelled' && (
-                        <div className="mt-2 flex flex-col gap-1">
-                          {app.afipCae ? (
-                            <span className="inline-flex items-center gap-1.5 text-[10px] text-emerald-800 font-semibold leading-snug">
-                              <Receipt size={12} className="shrink-0" />
-                              <span>
-                                AFIP {app.afipPtoVta}-{app.afipCbteNro} · CAE {app.afipCae}
-                                {app.afipCaeVto ? (
-                                  <span className="font-normal text-zinc-600"> · vto {app.afipCaeVto}</span>
-                                ) : null}
-                              </span>
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => openAfipInvoiceModal(app)}
-                              disabled={afipInvoiceBusy && afipInvoiceApp?.id === app.id}
-                              className="inline-flex items-center justify-center gap-1 w-fit px-2.5 py-1.5 rounded-md text-[11px] font-bold bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
-                            >
-                              <Receipt size={12} />
-                              {afipInvoiceBusy && afipInvoiceApp?.id === app.id ? 'Facturando…' : 'Facturar AFIP'}
-                            </button>
-                          )}
-                        </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-sm text-zinc-900 truncate leading-tight">{app.name}</p>
+                        {phoneHref ? (
+                          <a
+                            href={phoneHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-emerald-700 transition-colors truncate max-w-full"
+                          >
+                            <Phone size={10} className="shrink-0" />
+                            <span className="truncate">{app.phone}</span>
+                          </a>
+                        ) : (
+                          <span className="text-[11px] text-zinc-400 italic">Sin teléfono</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Servicio */}
+                    <div className="min-w-0 sm:flex-1 sm:min-w-[8rem]">
+                      <p className="hidden sm:block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Servicio</p>
+                      <p className="text-sm font-medium text-zinc-800 truncate flex items-center gap-1.5">
+                        <Scissors size={12} className="text-zinc-400 shrink-0 sm:hidden" />
+                        <span className="truncate">{app.service}</span>
+                      </p>
+                      <p className="text-[11px] text-zinc-500 tabular-nums hidden sm:block">{dm} min</p>
+                    </div>
+
+                    {/* Barbero */}
+                    <div className="min-w-0 sm:w-36 sm:flex-shrink-0">
+                      <p className="hidden sm:block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Barbero</p>
+                      <div className="flex items-center gap-2 min-w-0">
+                        {barberInfo?.photo ? (
+                          <img
+                            src={barberInfo.photo}
+                            alt={barberInfo.name}
+                            className="w-6 h-6 rounded-full object-cover ring-1 ring-zinc-200 flex-shrink-0"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-zinc-200 flex items-center justify-center text-[10px] font-bold text-zinc-600 flex-shrink-0">
+                            {(app.barber ?? '?').slice(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="text-sm font-medium text-zinc-700 truncate">{app.barber ?? '—'}</span>
+                      </div>
+                    </div>
+
+                    {/* Estado pago + AFIP */}
+                    <div className="flex flex-wrap items-center gap-1.5 sm:w-40 sm:flex-shrink-0 sm:flex-nowrap">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${badge.className}`}
+                      >
+                        {badge.label}
+                      </span>
+                      {showAfipBlock && app.afipCae && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-800"
+                          title={`AFIP ${app.afipPtoVta}-${app.afipCbteNro} · CAE ${app.afipCae}${app.afipCaeVto ? ` · vto ${app.afipCaeVto}` : ''}`}
+                        >
+                          <Receipt size={11} className="shrink-0" />
+                          <span className="tabular-nums">#{app.afipCbteNro}</span>
+                        </span>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-0.5">Barbero</p>
-                      <span className="font-medium text-zinc-800 truncate block">{app.barber ?? '—'}</span>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0 flex items-center gap-1.5 sm:border-l border-zinc-100 sm:pl-3 pt-2 sm:pt-0 border-t sm:border-t-0 -mx-0.5 sm:mx-0">
-                    {appointmentNeedsManualContact(app) && (() => {
-                      const waUrl = buildAppointmentWhatsappUrl(app);
-                      if (!waUrl) return null;
-                      return (
+
+                    {/* Acciones */}
+                    <div className="flex items-center justify-end gap-1 sm:flex-shrink-0 sm:border-l sm:border-zinc-100 sm:pl-3">
+                      {showAfipBlock && !app.afipCae && (
+                        <button
+                          type="button"
+                          onClick={() => openAfipInvoiceModal(app)}
+                          disabled={afipInvoiceBusy && afipInvoiceApp?.id === app.id}
+                          title="Facturar AFIP"
+                          className="inline-flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-lg text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                        >
+                          <Receipt size={14} />
+                          <span className="hidden lg:inline">
+                            {afipInvoiceBusy && afipInvoiceApp?.id === app.id ? 'Facturando…' : 'Facturar'}
+                          </span>
+                        </button>
+                      )}
+                      {waUrl && (
                         <a
                           href={waUrl}
                           target="_blank"
                           rel="noreferrer"
                           title={`Enviar WhatsApp a ${app.name}`}
-                          className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded-md text-xs font-semibold transition-colors"
+                          className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-emerald-700 hover:bg-emerald-50 transition-colors"
                         >
-                          <MessageCircle size={14} />
-                          WhatsApp
+                          <MessageCircle size={16} />
                         </a>
-                      );
-                    })()}
-                    <button
-                      type="button"
-                      onClick={() => openEditModal(app)}
-                      className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-amber-50 text-amber-900 hover:bg-amber-100 rounded-md text-xs font-semibold transition-colors"
-                    >
-                      <Pencil size={14} />
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(app.id)}
-                      className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 bg-red-50 text-red-700 hover:bg-red-100 rounded-md text-xs font-semibold transition-colors"
-                    >
-                      <Trash2 size={14} />
-                      Eliminar
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(app)}
+                        title="Editar turno"
+                        className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-amber-800 hover:bg-amber-50 transition-colors"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(app.id)}
+                        title="Eliminar turno"
+                        className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
         </>
