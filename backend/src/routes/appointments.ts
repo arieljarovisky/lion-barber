@@ -313,9 +313,19 @@ router.delete('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
 
 async function notifyClientAppointmentScheduled(app: Appointment): Promise<void> {
   try {
-    if (app.userId == null || !Number.isFinite(Number(app.userId))) return;
+    if (app.userId == null || !Number.isFinite(Number(app.userId))) {
+      console.warn(
+        `[Email] OMITIDO: turno ${app.id} sin userId vinculado (cliente no logueado o carga manual sin cuenta)`
+      );
+      return;
+    }
     const user = await findUserById(Number(app.userId));
-    if (!user || !isRealClientEmail(user.email)) return;
+    if (!user) {
+      console.warn(`[Email] OMITIDO: usuario ${app.userId} no encontrado en DB`);
+      return;
+    }
+    if (!isRealClientEmail(user.email)) return;
+    console.log(`[Email] Disparando aviso de turno agendado a userId=${user.id} email=${user.email}`);
     await sendAppointmentScheduledEmail(user.email, app);
   } catch (err) {
     console.error('[Email] No se pudo enviar aviso de turno agendado', err);

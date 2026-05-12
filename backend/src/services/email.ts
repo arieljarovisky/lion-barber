@@ -54,9 +54,19 @@ function getTransporter(cfg: SmtpConfig): Transporter {
 /** Filtra emails placeholder (clientes manuales sin correo real). */
 export function isRealClientEmail(email: string | null | undefined): boolean {
   const e = (email ?? '').trim().toLowerCase();
-  if (!e) return false;
-  if (e.endsWith(`@${PLACEHOLDER_EMAIL_HOST.toLowerCase()}`)) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  if (!e) {
+    console.warn('[Email] Descartado: cliente sin email registrado');
+    return false;
+  }
+  if (e.endsWith(`@${PLACEHOLDER_EMAIL_HOST.toLowerCase()}`)) {
+    console.warn(`[Email] Descartado: email placeholder "${e}" (cliente manual sin correo real)`);
+    return false;
+  }
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  if (!valid) {
+    console.warn(`[Email] Descartado: email con formato inválido "${e}"`);
+  }
+  return valid;
 }
 
 function fmtDate(ymd: string): string {
@@ -102,16 +112,31 @@ interface SendOpts {
 
 async function sendMail(opts: SendOpts): Promise<void> {
   const cfg = getSmtpConfig();
-  if (!cfg) return;
+  if (!cfg) {
+    console.warn(
+      `[Email] OMITIDO: SMTP no configurado. Asunto="${opts.subject}" Destino="${opts.to}"`
+    );
+    return;
+  }
+  console.log(
+    `[Email] Intentando enviar via ${cfg.host}:${cfg.port} (secure=${cfg.secure}) from="${cfg.from}" to="${opts.to}" subject="${opts.subject}"`
+  );
   try {
     const transporter = getTransporter(cfg);
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: cfg.from.includes('<') ? cfg.from : `"${cfg.shopName}" <${cfg.from}>`,
       to: opts.to,
       subject: opts.subject,
       text: opts.text,
       html: opts.html,
     });
+    console.log(
+      `[Email] OK enviado messageId=${info.messageId ?? '-'} response=${info.response ?? '-'} accepted=${(
+        info.accepted ?? []
+      )
+        .map(String)
+        .join(',')} rejected=${(info.rejected ?? []).map(String).join(',') || '-'}`
+    );
   } catch (err) {
     console.error('[Email] Error enviando mail', opts.subject, '→', opts.to, err);
   }
