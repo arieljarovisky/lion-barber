@@ -110,16 +110,74 @@ interface SendOpts {
   html: string;
 }
 
-async function sendMail(opts: SendOpts): Promise<void> {
+interface ResendConfig {
+  apiKey: string;
+  from: string;
+  shopName: string;
+}
+
+function getShopNameForEmails(): string {
+  return (process.env.SHOP_NAME ?? 'Lion Barber').trim() || 'Lion Barber';
+}
+
+function isEmailProviderConfigured(): boolean {
+  const resendKey = (process.env.RESEND_API_KEY ?? '').trim();
+  if (resendKey) return true;
+  const host = (process.env.SMTP_HOST ?? '').trim();
+  const user = (process.env.SMTP_USER ?? '').trim();
+  const password = (process.env.SMTP_PASSWORD ?? process.env.SMTP_PASS ?? '').trim();
+  return Boolean(host && user && password);
+}
+
+function getResendConfig(): ResendConfig | null {
+  const apiKey = (process.env.RESEND_API_KEY ?? '').trim();
+  if (!apiKey) return null;
+  const fromEnv = (process.env.RESEND_FROM ?? process.env.SMTP_FROM ?? '').trim();
+  const from = fromEnv || 'onboarding@resend.dev';
+  return { apiKey, from, shopName: getShopNameForEmails() };
+}
+
+async function sendMailViaResend(cfg: ResendConfig, opts: SendOpts): Promise<void> {
+  const from = cfg.from.includes('<') ? cfg.from : `${cfg.shopName} <${cfg.from}>`;
+  console.log(
+    `[Email] Intentando enviar via Resend API from="${from}" to="${opts.to}" subject="${opts.subject}"`
+  );
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cfg.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [opts.to],
+        subject: opts.subject,
+        text: opts.text,
+        html: opts.html,
+      }),
+    });
+    const body = await res.text().catch(() => '');
+    if (!res.ok) {
+      console.error(`[Email] Resend HTTP ${res.status}: ${body}`);
+      return;
+    }
+    console.log(`[Email] OK Resend respuesta=${body}`);
+  } catch (err) {
+    console.error('[Email] Error enviando con Resend', err);
+  }
+}
+
+async function sendMailViaSmtp(opts: SendOpts): Promise<void> {
   const cfg = getSmtpConfig();
   if (!cfg) {
     console.warn(
-      `[Email] OMITIDO: SMTP no configurado. Asunto="${opts.subject}" Destino="${opts.to}"`
+      `[Email] OMITIDO: no hay proveedor configurado (RESEND_API_KEY o SMTP_*). Asunto="${opts.subject}" Destino="${opts.to}"`
     );
     return;
   }
   console.log(
-    `[Email] Intentando enviar via ${cfg.host}:${cfg.port} (secure=${cfg.secure}) from="${cfg.from}" to="${opts.to}" subject="${opts.subject}"`
+    `[Email] Intentando enviar via SMTP ${cfg.host}:${cfg.port} (secure=${cfg.secure}) from="${cfg.from}" to="${opts.to}" subject="${opts.subject}"`
   );
   try {
     const transporter = getTransporter(cfg);
@@ -131,15 +189,24 @@ async function sendMail(opts: SendOpts): Promise<void> {
       html: opts.html,
     });
     console.log(
-      `[Email] OK enviado messageId=${info.messageId ?? '-'} response=${info.response ?? '-'} accepted=${(
+      `[Email] OK SMTP messageId=${info.messageId ?? '-'} response=${info.response ?? '-'} accepted=${(
         info.accepted ?? []
       )
         .map(String)
         .join(',')} rejected=${(info.rejected ?? []).map(String).join(',') || '-'}`
     );
   } catch (err) {
-    console.error('[Email] Error enviando mail', opts.subject, '→', opts.to, err);
+    console.error('[Email] Error enviando mail SMTP', opts.subject, '→', opts.to, err);
   }
+}
+
+async function sendMail(opts: SendOpts): Promise<void> {
+  const resend = getResendConfig();
+  if (resend) {
+    await sendMailViaResend(resend, opts);
+    return;
+  }
+  await sendMailViaSmtp(opts);
 }
 
 /** Aviso al cliente: turno reservado y esperando que se pague la seña. */
@@ -149,8 +216,11 @@ export async function sendDepositPendingEmail(
   options: { paymentUrl?: string; paymentDueAt?: string | null; depositMinutes: number }
 ): Promise<void> {
   if (!isRealClientEmail(email)) return;
-  const cfg = getSmtpConfig();
-  if (!cfg) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendDepositPendingEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const cfg = { shopName: getShopNameForEmails() };
 
   const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
@@ -233,8 +303,11 @@ export async function sendAppointmentScheduledEmail(
   app: Appointment
 ): Promise<void> {
   if (!isRealClientEmail(email)) return;
-  const cfg = getSmtpConfig();
-  if (!cfg) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendAppointmentScheduledEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const cfg = { shopName: getShopNameForEmails() };
 
   const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
@@ -304,8 +377,11 @@ export async function sendDepositConfirmedEmail(
   app: Appointment
 ): Promise<void> {
   if (!isRealClientEmail(email)) return;
-  const cfg = getSmtpConfig();
-  if (!cfg) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendDepositConfirmedEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const cfg = { shopName: getShopNameForEmails() };
 
   const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
