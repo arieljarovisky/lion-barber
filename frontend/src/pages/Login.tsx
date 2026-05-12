@@ -5,10 +5,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { motion } from 'motion/react';
 
 export default function Login() {
-  const { loginWithGoogle, user, loading, canAccessDashboard } = useAuth();
+  const { loginWithGoogle, user, loading, canAccessDashboard, sessionExpired, clearSessionExpired } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [error, setError] = useState('');
+  /** Capturamos el flag al montar para que persista aunque el contexto se vacíe. */
+  const [showExpiredNotice, setShowExpiredNotice] = useState(false);
+
+  React.useEffect(() => {
+    if (sessionExpired) {
+      setShowExpiredNotice(true);
+      clearSessionExpired();
+    }
+  }, [sessionExpired, clearSessionExpired]);
 
   const fromState = (location.state as { from?: { pathname: string; hash?: string } })?.from;
   const fromPath = fromState?.pathname ?? '/perfil';
@@ -64,6 +73,12 @@ export default function Login() {
         <p className="text-zinc-400 text-center text-xs sm:text-sm mb-6 px-2">
           Iniciá sesión o registrate con tu cuenta de Google para continuar.
         </p>
+
+        {showExpiredNotice && !error && (
+          <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-amber-950/40 border border-amber-500/30 rounded-xl text-amber-200 text-xs sm:text-sm text-center break-words">
+            Tu sesión expiró por seguridad. Iniciá sesión otra vez para continuar.
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-950/50 border border-red-500/30 rounded-xl text-red-400 text-xs sm:text-sm text-center break-words">

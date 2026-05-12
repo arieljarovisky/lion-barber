@@ -30,6 +30,45 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
+/**
+ * Lee el `exp` (segundos epoch) de un JWT sin validar firma.
+ * Devuelve `null` si el token no se puede decodificar.
+ */
+export function getJwtExpSeconds(token: string): number | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = payloadB64 + '='.repeat((4 - (payloadB64.length % 4)) % 4);
+    const json = typeof atob === 'function' ? atob(padded) : Buffer.from(padded, 'base64').toString('utf-8');
+    const decoded = JSON.parse(json) as { exp?: number };
+    return typeof decoded.exp === 'number' ? decoded.exp : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True si el token tiene `exp` y ya pasó (con margen de 5s para clock skew). */
+export function isJwtExpired(token: string): boolean {
+  const exp = getJwtExpSeconds(token);
+  if (exp == null) return false;
+  return Date.now() / 1000 > exp - 5;
+}
+
+/** Listener global para 401/expiración: el AuthContext lo usa para cerrar sesión. */
+type UnauthorizedHandler = (reason: 'expired' | 'invalid') => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+export function setUnauthorizedHandler(cb: UnauthorizedHandler | null) {
+  unauthorizedHandler = cb;
+}
+function notifyUnauthorized(reason: 'expired' | 'invalid') {
+  try {
+    unauthorizedHandler?.(reason);
+  } catch {
+    /* ignore */
+  }
+}
+
 export const ANY_BARBER_ID = '__any__';
 
 export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
@@ -169,6 +208,15 @@ export interface AdminClientWithHistory {
 }
 
 async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
+  /**
+   * Atajo: si tenemos un token cargado y ya está vencido, no malgastamos un round trip
+   * y disparamos el cierre de sesión local. Igualmente excluimos el endpoint de login
+   * para no romper el flujo cuando justamente venimos a renovar credenciales.
+   */
+  if (authToken && !path.startsWith('/api/auth/google') && isJwtExpired(authToken)) {
+    notifyUnauthorized('expired');
+    throw new ApiError('Tu sesión expiró', 401);
+  }
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options?.headers as Record<string, string>) };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
   const res = await fetch(`${API_URL}${path}`, {
@@ -178,6 +226,9 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const msg = (err as { error?: string }).error ?? res.statusText;
+    if (res.status === 401 && authToken) {
+      notifyUnauthorized(isJwtExpired(authToken) ? 'expired' : 'invalid');
+    }
     throw new ApiError(msg, res.status);
   }
   if (res.status === 204) return undefined as T;

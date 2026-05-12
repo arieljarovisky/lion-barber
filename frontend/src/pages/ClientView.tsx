@@ -1086,11 +1086,7 @@ export default function ClientView() {
                       </div>
                     )}
                   </div>
-                  {profile?.depositExempt ? (
-                    <p className="text-center text-[11px] text-emerald-400/90 mt-2">
-                      Tu cuenta está marcada como exenta de seña: el turno queda confirmado al apretar el botón, sin Mercado Pago.
-                    </p>
-                  ) : (
+                  {!profile?.depositExempt && (
                     <p className="text-center text-[11px] text-zinc-500 mt-2">
                       Reservamos el horario por 15 minutos: si el pago de la seña no se aprueba en ese tiempo, la reserva se
                       cancela automáticamente. Podés volver a pagar desde tu perfil mientras no venza el plazo.
