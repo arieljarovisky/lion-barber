@@ -2380,23 +2380,22 @@ export default function Dashboard() {
                       )}
                     </div>
 
-                    {/* Acciones */}
-                    <div className="flex items-center justify-end gap-1 sm:flex-shrink-0 sm:border-l sm:border-zinc-100 sm:pl-3">
-                      {showAfipBlock && !app.afipCae && (
+                    {/* Acciones (ancho fijo para mantener alineación entre filas) */}
+                    <div className="flex items-center justify-end gap-1 flex-wrap sm:flex-nowrap sm:w-[10.5rem] sm:flex-shrink-0 sm:border-l sm:border-zinc-100 sm:pl-3">
+                      {showAfipBlock && !app.afipCae ? (
                         <button
                           type="button"
                           onClick={() => openAfipInvoiceModal(app)}
                           disabled={afipInvoiceBusy && afipInvoiceApp?.id === app.id}
-                          title="Facturar AFIP"
-                          className="inline-flex items-center justify-center gap-1.5 h-9 px-2.5 rounded-lg text-xs font-semibold bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                          title={afipInvoiceBusy && afipInvoiceApp?.id === app.id ? 'Facturando…' : 'Facturar AFIP'}
+                          className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors"
                         >
-                          <Receipt size={14} />
-                          <span className="hidden lg:inline">
-                            {afipInvoiceBusy && afipInvoiceApp?.id === app.id ? 'Facturando…' : 'Facturar'}
-                          </span>
+                          <Receipt size={16} />
                         </button>
+                      ) : (
+                        <span className="hidden sm:inline-block h-9 w-9" aria-hidden="true" />
                       )}
-                      {waUrl && (
+                      {waUrl ? (
                         <a
                           href={waUrl}
                           target="_blank"
@@ -2406,6 +2405,8 @@ export default function Dashboard() {
                         >
                           <MessageCircle size={16} />
                         </a>
+                      ) : (
+                        <span className="hidden sm:inline-block h-9 w-9" aria-hidden="true" />
                       )}
                       <button
                         type="button"
