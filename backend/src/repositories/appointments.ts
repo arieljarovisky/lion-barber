@@ -491,6 +491,15 @@ export async function markAppointmentPaidAndScheduled(
   return getAppointmentById(appointmentId);
 }
 
+/** Cliente exento: pasa de pending_payment a scheduled sin marcar seña pagada ni vincular pago MP. */
+export async function markAppointmentScheduledByExempt(appointmentId: string): Promise<Appointment | null> {
+  await query(
+    "UPDATE appointments SET status = 'scheduled', payment_due_at = NULL WHERE id = ? AND status = 'pending_payment'",
+    [appointmentId]
+  );
+  return getAppointmentById(appointmentId);
+}
+
 /** Cancelación por el cliente (soft). */
 export async function cancelAppointmentByUser(id: string, userId: number): Promise<Appointment | null> {
   const app = await getAppointmentById(id);

@@ -334,17 +334,26 @@ export default function Perfil() {
 
   const handlePaySena = async (a: Appointment) => {
     setSenaError('');
-    const key = mpPublicKey?.trim();
-    if (!key) {
-      setSenaError(
-        'Falta la clave pública de Mercado Pago en el sitio (VITE_MERCADOPAGO_PUBLIC_KEY). Pedile al administrador que la configure.'
-      );
-      return;
+    const isExempt = Boolean(profile?.depositExempt);
+    if (!isExempt) {
+      const key = mpPublicKey?.trim();
+      if (!key) {
+        setSenaError(
+          'Falta la clave pública de Mercado Pago en el sitio (VITE_MERCADOPAGO_PUBLIC_KEY). Pedile al administrador que la configure.'
+        );
+        return;
+      }
     }
     setSenaLoadingId(a.id);
     try {
       const data = await api.createCheckoutSenaForAppointment(a.id);
-      setSenaWallet({ appointmentId: data.appointmentId, preferenceId: data.preferenceId });
+      if ('exempt' in data && data.exempt) {
+        setSenaWallet(null);
+        setActionSuccess('Tu turno quedó confirmado (cuenta exenta de seña).');
+        reload();
+      } else if ('preferenceId' in data) {
+        setSenaWallet({ appointmentId: data.appointmentId, preferenceId: data.preferenceId });
+      }
     } catch (err) {
       setSenaError(err instanceof Error ? err.message : 'No se pudo iniciar el pago de la seña');
     } finally {

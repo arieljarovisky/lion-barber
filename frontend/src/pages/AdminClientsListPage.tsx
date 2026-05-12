@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { format, parseISO, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Users, ChevronRight, LayoutGrid, List, Plus, X, Search, SlidersHorizontal, RotateCcw, Trash2 } from 'lucide-react';
+import { Users, ChevronRight, LayoutGrid, List, Plus, X, Search, SlidersHorizontal, RotateCcw, Trash2, ShieldCheck } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
@@ -28,7 +28,8 @@ type ClientFilterPreset =
   | 'no_bookings'
   | 'new_30d'
   | 'vip_points'
-  | 'frequent_visits';
+  | 'frequent_visits'
+  | 'exempt';
 
 const VIP_POINTS_MIN = 25;
 const FREQUENT_BOOKINGS_MIN = 3;
@@ -221,6 +222,9 @@ export default function AdminClientsListPage() {
       case 'frequent_visits':
         list = list.filter((c) => c.appointments.length >= FREQUENT_BOOKINGS_MIN);
         break;
+      case 'exempt':
+        list = list.filter((c) => Boolean(c.depositExempt));
+        break;
       default:
         break;
     }
@@ -383,6 +387,7 @@ export default function AdminClientsListPage() {
                     id: 'frequent_visits' as const,
                     label: `Frecuentes (≥${FREQUENT_BOOKINGS_MIN} turnos)`,
                   },
+                  { id: 'exempt' as const, label: 'Exentos de seña' },
                 ] as const
               ).map(({ id, label }) => (
                 <button
@@ -439,7 +444,18 @@ export default function AdminClientsListPage() {
                     <div className="flex gap-3">
                       <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
                       <div className="min-w-0 flex-1">
-                        <p className="font-bold text-zinc-900 group-hover:text-zinc-950 truncate">{c.name}</p>
+                        <div className="flex items-start gap-2">
+                          <p className="font-bold text-zinc-900 group-hover:text-zinc-950 truncate flex-1">{c.name}</p>
+                          {c.depositExempt && (
+                            <span
+                              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700"
+                              title="Cliente exento de pagar seña"
+                            >
+                              <ShieldCheck size={10} />
+                              Sin seña
+                            </span>
+                          )}
+                        </div>
                         <p className="mt-1 text-xs text-zinc-500 truncate">{displayClientEmail(c.email)}</p>
                         {mainPhone ? (
                           <p className="mt-0.5 text-xs font-medium text-zinc-600 truncate">
@@ -522,6 +538,15 @@ export default function AdminClientsListPage() {
                           <div className="flex items-center gap-3">
                             <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
                             <span className="font-semibold text-zinc-900">{c.name}</span>
+                            {c.depositExempt && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700"
+                                title="Cliente exento de pagar seña"
+                              >
+                                <ShieldCheck size={10} />
+                                Sin seña
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="max-w-[14rem] truncate px-4 py-3 text-zinc-600">{displayClientEmail(c.email)}</td>

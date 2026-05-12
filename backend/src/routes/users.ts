@@ -59,6 +59,7 @@ router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
         phones: userPhones,
         points: user.points,
         avatarUrl: user.avatar_url ?? null,
+        depositExempt: userRepo.isUserDepositExempt(user),
         createdAt: dbDateTimeToIsoUtc(user.created_at),
         appointments: [],
       },
@@ -85,6 +86,7 @@ router.get('/clients', requireAuth, requireAdmin, async (_req, res) => {
       phones: phonesByUser.get(c.id) ?? [],
       points: c.points,
       avatarUrl: c.avatar_url ?? null,
+      depositExempt: userRepo.isUserDepositExempt(c),
       createdAt: dbDateTimeToIsoUtc(c.created_at),
       appointments: byUser.get(c.id) ?? [],
     }));
@@ -117,6 +119,7 @@ router.get('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
         phones,
         points: user.points,
         avatarUrl: user.avatar_url ?? null,
+        depositExempt: userRepo.isUserDepositExempt(user),
         createdAt: dbDateTimeToIsoUtc(user.created_at),
         appointments,
       },
@@ -124,6 +127,44 @@ router.get('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al cargar el cliente' });
+  }
+});
+
+router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  const body = req.body as { depositExempt?: unknown };
+  if (typeof body.depositExempt !== 'boolean') {
+    return res.status(400).json({ error: 'depositExempt debe ser true o false' });
+  }
+  try {
+    const existing = await userRepo.findUserById(id);
+    if (!existing || existing.role !== 'client') {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+    const updated = await userRepo.setClientDepositExempt(id, body.depositExempt);
+    if (!updated) {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+    const phones = await userRepo.getClientPhonesByUserId(id);
+    res.json({
+      client: {
+        id: updated.id,
+        email: updated.email,
+        name: updated.name,
+        phone: phones[0] ?? null,
+        phones,
+        points: updated.points,
+        avatarUrl: updated.avatar_url ?? null,
+        depositExempt: userRepo.isUserDepositExempt(updated),
+        createdAt: dbDateTimeToIsoUtc(updated.created_at),
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al actualizar el cliente' });
   }
 });
 

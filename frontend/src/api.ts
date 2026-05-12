@@ -162,6 +162,8 @@ export interface AdminClientWithHistory {
   points: number;
   /** Foto de perfil de Google si el cliente inici? sesi?n al menos una vez. */
   avatarUrl?: string | null;
+  /** Cliente exento de pagar seña: sus reservas se confirman sin Mercado Pago. */
+  depositExempt?: boolean;
   createdAt: string;
   appointments: Appointment[];
 }
@@ -198,7 +200,10 @@ export const api = {
   createAppointment: (data: Omit<Appointment, 'id'> & { userId?: number }) =>
     fetchApi<Appointment>('/api/appointments', { method: 'POST', body: JSON.stringify(data) }),
 
-  /** Crea preferencia de se?a; el front usa `preferenceId` con Wallet Brick (y opcionalmente `url` para redirecci?n). */
+  /**
+   * Crea preferencia de seña (Wallet Brick) o confirma directo si el cliente está exento de seña.
+   * Si `exempt === true` no hay `preferenceId`: el turno ya quedó confirmado.
+   */
   createCheckoutSena: (data: {
     name: string;
     phone: string;
@@ -209,17 +214,20 @@ export const api = {
     time: string;
     userId?: number;
   }) =>
-    fetchApi<{ preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }>(
-      '/api/checkout/sena',
-      { method: 'POST', body: JSON.stringify(data) }
-    ),
+    fetchApi<
+      | { exempt: true; appointmentId: string }
+      | { preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }
+    >('/api/checkout/sena', { method: 'POST', body: JSON.stringify(data) }),
 
-  /** Nueva preferencia MP para un turno pending_payment (p. ej. desde el perfil). Requiere sesi?n. */
+  /**
+   * Reintento de seña para un turno pending_payment (desde el perfil). Requiere sesión.
+   * Si el cliente quedó exento, devuelve `{ exempt: true }` y el turno se confirma sin MP.
+   */
   createCheckoutSenaForAppointment: (appointmentId: string) =>
-    fetchApi<{ preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }>(
-      `/api/checkout/sena/${encodeURIComponent(appointmentId)}`,
-      { method: 'POST' }
-    ),
+    fetchApi<
+      | { exempt: true; appointmentId: string }
+      | { preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }
+    >(`/api/checkout/sena/${encodeURIComponent(appointmentId)}`, { method: 'POST' }),
 
   updateAppointment: (id: string, data: Partial<Appointment>) =>
     fetchApi<Appointment>(`/api/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -420,6 +428,13 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  /** Solo admin: actualiza un cliente. Por ahora solo el flag de exención de seña. */
+  updateAdminClient: (clientId: number, data: { depositExempt: boolean }) =>
+    fetchApi<{ client: AdminClientWithHistory }>(
+      `/api/users/clients/${encodeURIComponent(String(clientId))}`,
+      { method: 'PATCH', body: JSON.stringify(data) }
+    ),
+
   /** Solo admin: elimina una ficha de cliente y desvincula sus turnos de la cuenta. */
   deleteAdminClient: (clientId: number) =>
     fetchApi<void>(`/api/users/clients/${encodeURIComponent(String(clientId))}`, {
@@ -438,6 +453,7 @@ export const api = {
           points: number;
           barberId?: string | null;
           avatarUrl?: string | null;
+          depositExempt?: boolean;
         };
       }>('/api/auth/google', {
         method: 'POST',
@@ -457,6 +473,7 @@ export const api = {
         points: number;
         barberId?: string | null;
         avatarUrl?: string | null;
+        depositExempt?: boolean;
       }>('/api/auth/me'),
   },
 };

@@ -18,7 +18,7 @@ import {
   sendDepositPendingEmail,
   isRealClientEmail,
 } from '../services/email.js';
-import { findUserById } from '../repositories/users.js';
+import { findUserById, isUserDepositExempt } from '../repositories/users.js';
 
 const router = Router();
 
@@ -389,6 +389,46 @@ router.post('/sena', async (req, res) => {
     return res.status(409).json({ error: msg });
   }
 
+  /** Atajo: si el cliente está exento de seña, confirmamos el turno sin pasar por Mercado Pago. */
+  const requesterUser = await findUserById(uid);
+  if (requesterUser && isUserDepositExempt(requesterUser)) {
+    let confirmed;
+    try {
+      confirmed = await repo.createAppointment({
+        name,
+        phone,
+        service,
+        serviceId: serviceId ?? undefined,
+        barberId,
+        date,
+        time,
+        durationMinutes,
+        status: 'scheduled',
+        depositPaid: false,
+        userId: uid,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudo crear el turno';
+      return res.status(409).json({ error: msg });
+    }
+
+    res.status(201).json({
+      exempt: true,
+      appointmentId: confirmed.id,
+    });
+
+    void (async () => {
+      try {
+        if (isRealClientEmail(requesterUser.email)) {
+          await sendDepositConfirmedEmail(requesterUser.email, confirmed);
+        }
+      } catch (err) {
+        console.error('[Email] No se pudo enviar confirmación a cliente exento', err);
+      }
+    })();
+    return;
+  }
+
   let pending;
   const paymentDueAt = paymentDueAtMysqlFromNow();
   try {
@@ -494,6 +534,24 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
 
     const durationMinutes =
       app.durationMinutes ?? (await repo.resolveDurationMinutes(app.serviceId, app.service));
+
+    /** Atajo: si el cliente quedó marcado como exento de seña, confirmamos el turno sin Mercado Pago. */
+    const requesterUser = await findUserById(authReq.user!.id);
+    if (requesterUser && isUserDepositExempt(requesterUser)) {
+      const updated = await repo.markAppointmentScheduledByExempt(app.id);
+      const finalApp = updated ?? app;
+      res.json({ exempt: true, appointmentId: finalApp.id });
+      void (async () => {
+        try {
+          if (isRealClientEmail(requesterUser.email)) {
+            await sendDepositConfirmedEmail(requesterUser.email, finalApp);
+          }
+        } catch (err) {
+          console.error('[Email] No se pudo enviar confirmación a cliente exento (retry)', err);
+        }
+      })();
+      return;
+    }
 
     let pref: { preferenceId: string; url?: string };
     try {

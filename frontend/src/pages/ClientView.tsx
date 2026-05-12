@@ -490,12 +490,15 @@ export default function ClientView() {
       return;
     }
     if (!validateBookingForm()) return;
-    const key = mpPublicKey?.trim();
-    if (!key) {
-      setBookingError(
-        'Falta la clave pública de Mercado Pago en el sitio (VITE_MERCADOPAGO_PUBLIC_KEY). Pedile al administrador que la configure.'
-      );
-      return;
+    const isExempt = Boolean(profile.depositExempt);
+    if (!isExempt) {
+      const key = mpPublicKey?.trim();
+      if (!key) {
+        setBookingError(
+          'Falta la clave pública de Mercado Pago en el sitio (VITE_MERCADOPAGO_PUBLIC_KEY). Pedile al administrador que la configure.'
+        );
+        return;
+      }
     }
     setSenaCheckoutLoading(true);
     try {
@@ -509,7 +512,15 @@ export default function ClientView() {
         time: selectedTime,
         userId: profile.id,
       });
-      setSenaCheckoutPreferenceId(data.preferenceId);
+      if ('exempt' in data && data.exempt) {
+        setBookingSuccess(true);
+        setSenaCheckoutPreferenceId(null);
+        window.requestAnimationFrame(() => {
+          document.getElementById('reserva')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      } else if ('preferenceId' in data) {
+        setSenaCheckoutPreferenceId(data.preferenceId);
+      }
     } catch (err) {
       setBookingError(err instanceof Error ? err.message : 'No se pudo iniciar el pago de la seña');
     } finally {
@@ -1047,11 +1058,15 @@ export default function ClientView() {
                       className="bg-[#e5c185] hover:bg-[#d4b074] disabled:opacity-60 disabled:pointer-events-none text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
                       {senaCheckoutLoading
-                        ? 'Preparando pago…'
+                        ? profile?.depositExempt
+                          ? 'Confirmando turno…'
+                          : 'Preparando pago…'
                         : profile
-                          ? senaCheckoutPreferenceId
-                            ? 'Preferencia lista — pagá abajo'
-                            : 'Pagar seña y confirmar turno'
+                          ? profile.depositExempt
+                            ? 'Confirmar turno'
+                            : senaCheckoutPreferenceId
+                              ? 'Preferencia lista — pagá abajo'
+                              : 'Pagar seña y confirmar turno'
                           : 'Iniciar sesión para confirmar'}
                     </button>
                     {senaCheckoutPreferenceId && (
@@ -1071,10 +1086,16 @@ export default function ClientView() {
                       </div>
                     )}
                   </div>
-                  <p className="text-center text-[11px] text-zinc-500 mt-2">
-                    Reservamos el horario por 15 minutos: si el pago de la seña no se aprueba en ese tiempo, la reserva se
-                    cancela automáticamente. Podés volver a pagar desde tu perfil mientras no venza el plazo.
-                  </p>
+                  {profile?.depositExempt ? (
+                    <p className="text-center text-[11px] text-emerald-400/90 mt-2">
+                      Tu cuenta está marcada como exenta de seña: el turno queda confirmado al apretar el botón, sin Mercado Pago.
+                    </p>
+                  ) : (
+                    <p className="text-center text-[11px] text-zinc-500 mt-2">
+                      Reservamos el horario por 15 minutos: si el pago de la seña no se aprueba en ese tiempo, la reserva se
+                      cancela automáticamente. Podés volver a pagar desde tu perfil mientras no venza el plazo.
+                    </p>
+                  )}
                 </form>
               )}
             </div>

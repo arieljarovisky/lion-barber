@@ -121,6 +121,7 @@ router.post('/google', async (req, res) => {
         points: user.points ?? 0,
         barberId: user.barber_id ?? null,
         avatarUrl: user.avatar_url ?? null,
+        depositExempt: userRepo.isUserDepositExempt(user),
       },
     });
   } catch (err) {
@@ -141,6 +142,7 @@ router.get('/me', requireAuth, async (req, res) => {
     points: user.points ?? 0,
     barberId: user.barber_id ?? null,
     avatarUrl: user.avatar_url ?? null,
+    depositExempt: userRepo.isUserDepositExempt(user),
   });
 });
 

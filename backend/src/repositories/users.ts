@@ -36,7 +36,26 @@ export interface DbUser {
   phone?: string | null;
   /** Todos los teléfonos de contacto de la ficha. */
   phones?: string[];
+  /** Si es true, el cliente queda exento de pagar seña: sus turnos se confirman directo. */
+  deposit_exempt?: number | boolean | null;
   created_at: Date;
+}
+
+export function isUserDepositExempt(u: Pick<DbUser, 'deposit_exempt'>): boolean {
+  const v = u.deposit_exempt;
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v === 1;
+  return false;
+}
+
+/** Actualiza el flag de exención (solo clientes). */
+export async function setClientDepositExempt(userId: number, exempt: boolean): Promise<DbUser | null> {
+  await query('UPDATE users SET deposit_exempt = ? WHERE id = ? AND role = ?', [
+    exempt ? 1 : 0,
+    userId,
+    'client',
+  ]);
+  return findUserById(userId);
 }
 
 interface DbClientPhone {

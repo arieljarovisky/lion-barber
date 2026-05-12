@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, Trash2 } from 'lucide-react';
+import { ChevronLeft, Trash2, ShieldCheck } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
@@ -28,6 +28,7 @@ export default function AdminClientDetailPage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const [savingExempt, setSavingExempt] = useState(false);
 
   const idNum = Number(clientId);
   const invalidId = !Number.isFinite(idNum) || idNum < 1;
@@ -75,6 +76,23 @@ export default function AdminClientDetailPage() {
     },
     [navigate]
   );
+
+  const handleToggleExempt = useCallback(async () => {
+    if (!client || savingExempt) return;
+    const next = !client.depositExempt;
+    setSavingExempt(true);
+    setError('');
+    try {
+      const res = await api.updateAdminClient(client.id, { depositExempt: next });
+      setClient((prev) => (prev ? { ...prev, depositExempt: res.client.depositExempt } : prev));
+    } catch (e) {
+      const msg =
+        e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'No se pudo actualizar la exención.';
+      setError(msg);
+    } finally {
+      setSavingExempt(false);
+    }
+  }, [client, savingExempt]);
 
   const handleDeleteClient = useCallback(async () => {
     if (!client || deleting) return;
@@ -169,6 +187,46 @@ export default function AdminClientDetailPage() {
                     <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Puntos</span>
                     <span className="text-2xl font-black text-[#b39055]">{client.points}</span>
                   </div>
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-100 bg-white px-5 py-4 sm:px-8">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                        client.depositExempt
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-zinc-100 text-zinc-500'
+                      }`}
+                      aria-hidden
+                    >
+                      <ShieldCheck size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-zinc-900">Exento de pagar seña</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        Si está activo, este cliente reserva turnos sin pasar por Mercado Pago: el turno queda confirmado
+                        directo.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleExempt()}
+                    disabled={savingExempt}
+                    aria-pressed={Boolean(client.depositExempt)}
+                    className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition disabled:opacity-50 ${
+                      client.depositExempt ? 'bg-emerald-500' : 'bg-zinc-300'
+                    }`}
+                    title={client.depositExempt ? 'Quitar exención' : 'Marcar como exento'}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                        client.depositExempt ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
                 </div>
               </div>
             </div>

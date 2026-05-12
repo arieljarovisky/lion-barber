@@ -13,6 +13,8 @@ export interface UserProfile {
   /** Cuenta de barbero (staff): id en la agenda */
   barberId?: string | null;
   avatarUrl?: string | null;
+  /** Cliente exento de pagar seña: reserva turnos directo, sin Mercado Pago. */
+  depositExempt?: boolean;
 }
 
 interface AuthContextType {
@@ -46,6 +48,7 @@ function profileFromBackend(u: {
   points?: number;
   barberId?: string | null;
   avatarUrl?: string | null;
+  depositExempt?: boolean;
 }): UserProfile {
   const role =
     u.role === 'admin' ? 'admin' : u.role === 'staff' ? 'staff' : 'client';
@@ -57,6 +60,7 @@ function profileFromBackend(u: {
     role,
     barberId: u.barberId ?? null,
     avatarUrl: u.avatarUrl ?? null,
+    depositExempt: Boolean(u.depositExempt),
   };
 }
 
