@@ -62,6 +62,7 @@ interface DbAppointment {
   afip_pto_vta?: number | null;
   afip_facturado_at?: string | null;
   afip_invoice_detail?: string | null;
+  reminder_1h_sent?: number;
 }
 
 function parseAfipDetail(raw: string | null | undefined): AfipInvoiceDetail | undefined {
@@ -477,6 +478,12 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
     const p = String(saved.phone ?? '').trim();
     await userRepo.addClientPhone(saved.userId, p);
   }
+  if (
+    saved &&
+    ((data.date != null && data.date !== current.date) || (data.time != null && data.time !== current.time))
+  ) {
+    await query('UPDATE appointments SET reminder_1h_sent = 0 WHERE id = ?', [id]);
+  }
   return saved;
 }
 
@@ -569,4 +576,21 @@ export async function syncOrphanAppointmentsForClientPhones(userId: number): Pro
     total += await linkOrphanAppointmentsToUserByPhoneDigits(userId, d);
   }
   return total;
+}
+
+/** Para el job de recordatorio 1h: turnos futuros con cuenta y flag pendiente. */
+export async function listScheduledAppointmentIdsForReminderScan(): Promise<string[]> {
+  const rows = await query<{ id: number }[]>(
+    `SELECT id FROM appointments
+     WHERE status = 'scheduled'
+       AND user_id IS NOT NULL
+       AND reminder_1h_sent = 0
+       AND date >= DATE_SUB(CURDATE(), INTERVAL 1 DAY)
+       AND date <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)`
+  );
+  return rows.map((r) => String(r.id));
+}
+
+export async function markAppointmentReminder1hSent(id: string): Promise<void> {
+  await query('UPDATE appointments SET reminder_1h_sent = 1 WHERE id = ?', [id]);
 }

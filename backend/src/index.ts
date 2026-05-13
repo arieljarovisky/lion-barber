@@ -14,6 +14,7 @@ import afip from './routes/afip.js';
 import users from './routes/users.js';
 import shopProducts from './routes/shopProducts.js';
 import pointsRedemptionOptions from './routes/pointsRedemptionOptions.js';
+import { runAppointmentReminderEmails } from './jobs/runAppointmentReminderEmails.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -59,6 +60,12 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`Lion Barber API en http://localhost:${PORT}`);
   });
+
+  const reminderMs = 5 * 60 * 1000;
+  setInterval(() => {
+    void runAppointmentReminderEmails().catch((e) => console.error('[Reminder] job', e));
+  }, reminderMs);
+  void runAppointmentReminderEmails().catch((e) => console.error('[Reminder] job inicial', e));
 }
 
 start();

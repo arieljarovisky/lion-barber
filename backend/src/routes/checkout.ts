@@ -16,6 +16,7 @@ import { notifyShopPhoneAppointmentCreated } from '../services/mobileNotificatio
 import {
   sendDepositConfirmedEmail,
   sendDepositPendingEmail,
+  sendAppointmentScheduledEmail,
   isRealClientEmail,
 } from '../services/email.js';
 import { findUserById, isUserDepositExempt } from '../repositories/users.js';
@@ -422,7 +423,7 @@ router.post('/sena', async (req, res) => {
     void (async () => {
       try {
         if (isRealClientEmail(requesterUser.email)) {
-          await sendDepositConfirmedEmail(requesterUser.email, confirmed);
+          await sendAppointmentScheduledEmail(requesterUser.email, confirmed);
         }
       } catch (err) {
         console.error('[Email] No se pudo enviar confirmación a cliente exento', err);
@@ -547,7 +548,7 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
       void (async () => {
         try {
           if (isRealClientEmail(requesterUser.email)) {
-            await sendDepositConfirmedEmail(requesterUser.email, finalApp);
+            await sendAppointmentScheduledEmail(requesterUser.email, finalApp);
           }
         } catch (err) {
           console.error('[Email] No se pudo enviar confirmación a cliente exento (retry)', err);
@@ -725,6 +726,10 @@ async function notifyClientDepositConfirmed(app: { id: string; userId?: number; 
     if (!user || !isRealClientEmail(user.email)) return;
     const full = await repo.getAppointmentById(app.id);
     if (!full) return;
+    if (!full.depositPaid) {
+      await sendAppointmentScheduledEmail(user.email, full);
+      return;
+    }
     await sendDepositConfirmedEmail(user.email, full);
   } catch (err) {
     console.error('[Email] No se pudo enviar confirmación de seña al cliente', err);

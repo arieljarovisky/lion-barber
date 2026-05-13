@@ -210,6 +210,25 @@ export default function Perfil() {
     reload();
   }, [reload]);
 
+  /** Abrir reprogramación desde enlace en emails (?reprogramar=id). */
+  useEffect(() => {
+    const rid = searchParams.get('reprogramar')?.trim();
+    if (!rid || loading) return;
+    const app = appointments.find((a) => a.id === rid);
+    if (!app || app.status !== 'scheduled') return;
+    setRescheduleApp(app);
+    setRsDate(app.date);
+    setRsTime('');
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('reprogramar');
+        return next;
+      },
+      { replace: true }
+    );
+  }, [loading, appointments, searchParams, setSearchParams]);
+
   useEffect(() => {
     const checkout = searchParams.get('checkout');
     if (checkout === 'success') {

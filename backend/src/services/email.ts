@@ -113,6 +113,12 @@ function getFrontendUrlForEmail(): string {
   return u.replace(/\/$/, '');
 }
 
+/** Enlace al perfil del cliente con modal de reprogramación abierto para ese turno. */
+export function getClientPerfilRescheduleUrl(appointmentId: string): string {
+  const base = getFrontendUrlForEmail();
+  return `${base}/perfil?reprogramar=${encodeURIComponent(appointmentId)}`;
+}
+
 function getEmailLogoUrl(): string {
   const override = (process.env.EMAIL_LOGO_URL ?? '').trim();
   if (override) return override;
@@ -129,6 +135,8 @@ interface BrandedEmailOpts {
   noticeColor?: 'amber' | 'green' | 'red' | 'zinc';
   noticeHtml?: string;
   cta?: { label: string; url: string };
+  /** Segundo botón (p. ej. reprogramar) debajo del CTA principal. */
+  secondaryCta?: { label: string; url: string };
   outro?: string;
 }
 
@@ -154,6 +162,14 @@ function renderBrandedEmail(opts: BrandedEmailOpts): string {
          <a href="${escapeHtml(opts.cta.url)}"
             style="display:inline-block;background:${accent};color:#0a0a0a;font-weight:800;text-decoration:none;padding:13px 26px;border-radius:12px;letter-spacing:.1em;text-transform:uppercase;font-size:13px;box-shadow:0 8px 18px rgba(229,193,133,.35);">
            ${escapeHtml(opts.cta.label)}
+         </a>
+       </p>`
+    : '';
+  const secondaryCtaHtml = opts.secondaryCta
+    ? `<p style="margin:12px 0 4px;text-align:center;">
+         <a href="${escapeHtml(opts.secondaryCta.url)}"
+            style="display:inline-block;background:#ffffff;color:#18181b;font-weight:800;text-decoration:none;padding:12px 24px;border-radius:12px;letter-spacing:.08em;text-transform:uppercase;font-size:12px;border:2px solid ${accent};">
+           ${escapeHtml(opts.secondaryCta.label)}
          </a>
        </p>`
     : '';
@@ -195,6 +211,7 @@ function renderBrandedEmail(opts: BrandedEmailOpts): string {
                   </table>
                   ${noticeHtml}
                   ${ctaHtml}
+                  ${secondaryCtaHtml}
                   ${outroHtml}
                 </div>
                 <div style="background:#0a0a0a;color:#a1a1aa;padding:18px 28px;text-align:center;font-size:12px;letter-spacing:.04em;">
@@ -348,6 +365,8 @@ export async function sendDepositPendingEmail(
     `Tenés ${minutes} minutos para completar el pago, si no se cancela automáticamente.`,
     options.paymentUrl ? `Pagar ahora: ${options.paymentUrl}` : '',
     '',
+    `Reprogramar u otro horario: ${getClientPerfilRescheduleUrl(app.id)}`,
+    '',
     `Gracias por elegir ${shopName}.`,
   ]
     .filter(Boolean)
@@ -361,6 +380,7 @@ export async function sendDepositPendingEmail(
     noticeColor: 'amber',
     noticeHtml: `Tenés <strong>${minutes} minutos</strong> para completar el pago. Si no se acredita en ese plazo, la reserva se cancela automáticamente.`,
     cta: options.paymentUrl ? { label: 'Pagar la seña', url: options.paymentUrl } : undefined,
+    secondaryCta: { label: 'Reprogramar turno', url: getClientPerfilRescheduleUrl(app.id) },
     outro: 'También podés gestionar tus turnos desde tu perfil en nuestro sitio.',
   });
 
@@ -386,6 +406,7 @@ export async function sendAppointmentScheduledEmail(
 
   const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+  const reproUrl = getClientPerfilRescheduleUrl(app.id);
 
   const text = [
     `${greetingName}, agendamos tu turno en ${shopName}.`,
@@ -394,6 +415,8 @@ export async function sendAppointmentScheduledEmail(
     detailsText,
     '',
     'Recordá que hay 10 minutos de tolerancia desde la hora del turno.',
+    '',
+    `Reprogramar turno: ${reproUrl}`,
     '',
     `Te esperamos en ${shopName}.`,
   ].join('\n');
@@ -405,6 +428,7 @@ export async function sendAppointmentScheduledEmail(
     detailsHtml,
     noticeColor: 'green',
     noticeHtml: 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
+    cta: { label: 'Reprogramar turno', url: reproUrl },
     outro: '¡Te esperamos!',
   });
 
@@ -430,6 +454,7 @@ export async function sendDepositConfirmedEmail(
 
   const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+  const reproUrl = getClientPerfilRescheduleUrl(app.id);
 
   const text = [
     `${greetingName}, recibimos el pago de la seña y tu turno está confirmado.`,
@@ -438,6 +463,8 @@ export async function sendDepositConfirmedEmail(
     detailsText,
     '',
     'Recordá que hay 10 minutos de tolerancia desde la hora de tu turno.',
+    '',
+    `Reprogramar turno: ${reproUrl}`,
     '',
     `Te esperamos en ${shopName}.`,
   ].join('\n');
@@ -449,12 +476,57 @@ export async function sendDepositConfirmedEmail(
     detailsHtml,
     noticeColor: 'green',
     noticeHtml: 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
+    cta: { label: 'Reprogramar turno', url: reproUrl },
     outro: '¡Te esperamos!',
   });
 
   await sendMail({
     to: email,
     subject: `Tu turno en ${shopName} quedó confirmado`,
+    text,
+    html,
+  });
+}
+
+/** Recordatorio ~1 h antes del turno (solo turnos scheduled con cuenta). */
+export async function sendAppointmentReminder1hEmail(email: string, app: Appointment): Promise<void> {
+  if (!isRealClientEmail(email)) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendAppointmentReminder1hEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const shopName = getShopNameForEmails();
+  const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
+  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+  const reproUrl = getClientPerfilRescheduleUrl(app.id);
+
+  const text = [
+    `${greetingName}, en aproximadamente 1 hora tenés turno en ${shopName}.`,
+    '',
+    'Detalles del turno:',
+    detailsText,
+    '',
+    `Reprogramar o ver tus turnos: ${reproUrl}`,
+    '',
+    `Te esperamos.`,
+  ].join('\n');
+
+  const html = renderBrandedEmail({
+    title: 'Recordatorio: tu turno es en 1 hora',
+    greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
+    intro:
+      'Te recordamos que en aproximadamente <strong>1 hora</strong> comienza tu turno. Si ya no podés asistir, reprogramá con tiempo desde el sitio.',
+    detailsHtml,
+    noticeColor: 'zinc',
+    noticeHtml:
+      'Recordá la tolerancia de <strong>10 minutos</strong> desde la hora pactada. Cancelaciones y reprogramaciones dependen de la anticipación configurada en la web.',
+    cta: { label: 'Reprogramar turno', url: reproUrl },
+    outro: `Equipo ${shopName}`,
+  });
+
+  await sendMail({
+    to: email,
+    subject: `Recordatorio: tu turno en ${shopName} es en 1 hora`,
     text,
     html,
   });
