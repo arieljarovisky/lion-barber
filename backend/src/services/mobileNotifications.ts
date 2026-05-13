@@ -13,37 +13,81 @@ function fmtDate(ymd: string): string {
   return `${d}/${m}/${y}`;
 }
 
-function buildAppointmentCreatedMessage(app: Appointment): string {
+function appointmentBaseLines(app: Appointment): string[] {
   return [
-    'Nuevo turno agendado',
-    '',
     `Cliente: ${app.name}`,
     `Servicio: ${app.service}`,
     `Barbero: ${app.barber ?? app.barberId ?? '-'}`,
     `Fecha: ${fmtDate(app.date)}`,
     `Hora: ${app.time}`,
     `Telefono: ${app.phone}`,
+  ];
+}
+
+function buildAppointmentCreatedMessage(app: Appointment): string {
+  return [
+    'Nuevo turno agendado',
+    '',
+    ...appointmentBaseLines(app),
     `Seña: ${app.depositPaid ? 'Pagada' : 'No pagada'}`,
   ].join('\n');
 }
 
-export async function notifyShopPhoneAppointmentCreated(app: Appointment): Promise<void> {
+function buildAppointmentCancelledMessage(
+  app: Appointment,
+  opts?: { byClient?: boolean }
+): string {
+  const header = opts?.byClient
+    ? 'Turno cancelado por el cliente'
+    : 'Turno cancelado';
+  return [header, '', ...appointmentBaseLines(app)].join('\n');
+}
+
+function buildAppointmentRescheduledMessage(prev: Appointment, next: Appointment): string {
+  return [
+    'Turno reprogramado por el cliente',
+    '',
+    `Cliente: ${next.name}`,
+    `Servicio: ${next.service}`,
+    `Barbero: ${next.barber ?? next.barberId ?? '-'}`,
+    `Antes: ${fmtDate(prev.date)} ${prev.time}`,
+    `Ahora: ${fmtDate(next.date)} ${next.time}`,
+    `Telefono: ${next.phone}`,
+  ].join('\n');
+}
+
+async function sendTelegramMessage(text: string): Promise<void> {
   const cfg = getTelegramConfig();
   if (!cfg) return;
   try {
     const res = await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: cfg.chatId,
-        text: buildAppointmentCreatedMessage(app),
-      }),
+      body: JSON.stringify({ chat_id: cfg.chatId, text }),
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       console.error(`[Telegram] sendMessage HTTP ${res.status}: ${errText}`);
     }
   } catch (err) {
-    console.error('[Telegram] Error enviando notificación de turno', err);
+    console.error('[Telegram] Error enviando notificación', err);
   }
+}
+
+export async function notifyShopPhoneAppointmentCreated(app: Appointment): Promise<void> {
+  await sendTelegramMessage(buildAppointmentCreatedMessage(app));
+}
+
+export async function notifyShopPhoneAppointmentCancelled(
+  app: Appointment,
+  opts?: { byClient?: boolean }
+): Promise<void> {
+  await sendTelegramMessage(buildAppointmentCancelledMessage(app, opts));
+}
+
+export async function notifyShopPhoneAppointmentRescheduled(
+  prev: Appointment,
+  next: Appointment
+): Promise<void> {
+  await sendTelegramMessage(buildAppointmentRescheduledMessage(prev, next));
 }

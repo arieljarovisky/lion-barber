@@ -417,6 +417,8 @@ router.post('/sena', async (req, res) => {
       appointmentId: confirmed.id,
     });
 
+    void notifyShopPhoneAppointmentCreated(confirmed);
+
     void (async () => {
       try {
         if (isRealClientEmail(requesterUser.email)) {
@@ -541,6 +543,7 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
       const updated = await repo.markAppointmentScheduledByExempt(app.id);
       const finalApp = updated ?? app;
       res.json({ exempt: true, appointmentId: finalApp.id });
+      void notifyShopPhoneAppointmentCreated(finalApp);
       void (async () => {
         try {
           if (isRealClientEmail(requesterUser.email)) {

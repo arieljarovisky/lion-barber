@@ -54,9 +54,19 @@ function getTransporter(cfg: SmtpConfig): Transporter {
 /** Filtra emails placeholder (clientes manuales sin correo real). */
 export function isRealClientEmail(email: string | null | undefined): boolean {
   const e = (email ?? '').trim().toLowerCase();
-  if (!e) return false;
-  if (e.endsWith(`@${PLACEHOLDER_EMAIL_HOST.toLowerCase()}`)) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  if (!e) {
+    console.warn('[Email] Descartado: cliente sin email registrado');
+    return false;
+  }
+  if (e.endsWith(`@${PLACEHOLDER_EMAIL_HOST.toLowerCase()}`)) {
+    console.warn(`[Email] Descartado: email placeholder "${e}" (cliente manual sin correo real)`);
+    return false;
+  }
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  if (!valid) {
+    console.warn(`[Email] Descartado: email con formato inválido "${e}"`);
+  }
+  return valid;
 }
 
 function fmtDate(ymd: string): string {
@@ -85,12 +95,125 @@ function buildAppointmentTable(app: Appointment): { text: string; html: string }
   const html = rows
     .map(
       ([k, v]) =>
-        `<tr><td style="padding:6px 12px 6px 0;color:#71717a;font-size:13px;text-transform:uppercase;letter-spacing:.04em;">${escapeHtml(
-          k
-        )}</td><td style="padding:6px 0;color:#18181b;font-weight:600;">${escapeHtml(v)}</td></tr>`
+        `<tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #f4f4f5;color:#71717a;font-size:11px;text-transform:uppercase;letter-spacing:.16em;font-weight:700;width:35%;">${escapeHtml(
+            k
+          )}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #f4f4f5;color:#18181b;font-weight:700;font-size:15px;">${escapeHtml(
+            v
+          )}</td>
+        </tr>`
     )
     .join('');
   return { text, html };
+}
+
+function getFrontendUrlForEmail(): string {
+  const u = (process.env.FRONTEND_URL ?? 'http://localhost:3000').trim();
+  return u.replace(/\/$/, '');
+}
+
+function getEmailLogoUrl(): string {
+  const override = (process.env.EMAIL_LOGO_URL ?? '').trim();
+  if (override) return override;
+  return `${getFrontendUrlForEmail()}/lion-logo-hero-for-ui.png`;
+}
+
+interface BrandedEmailOpts {
+  accentColor?: string;
+  eyebrow?: string;
+  title: string;
+  greeting?: string;
+  intro?: string;
+  detailsHtml: string;
+  noticeColor?: 'amber' | 'green' | 'red' | 'zinc';
+  noticeHtml?: string;
+  cta?: { label: string; url: string };
+  outro?: string;
+}
+
+function renderBrandedEmail(opts: BrandedEmailOpts): string {
+  const shopName = getShopNameForEmails();
+  const logoUrl = getEmailLogoUrl();
+  const accent = opts.accentColor ?? '#e5c185';
+  const noticePalette: Record<NonNullable<BrandedEmailOpts['noticeColor']>, { bg: string; border: string; color: string }> = {
+    amber: { bg: '#fef9c3', border: '#fde68a', color: '#854d0e' },
+    green: { bg: '#f0fdf4', border: '#bbf7d0', color: '#166534' },
+    red: { bg: '#fef2f2', border: '#fecaca', color: '#991b1b' },
+    zinc: { bg: '#f4f4f5', border: '#e4e4e7', color: '#3f3f46' },
+  };
+  const noticeStyle = noticePalette[opts.noticeColor ?? 'amber'];
+  const eyebrow = opts.eyebrow ?? shopName.toUpperCase();
+  const greetingHtml = opts.greeting ? `<p style="margin:0 0 10px;font-size:16px;">${opts.greeting}</p>` : '';
+  const introHtml = opts.intro ? `<p style="margin:0 0 18px;color:#3f3f46;">${opts.intro}</p>` : '';
+  const noticeHtml = opts.noticeHtml
+    ? `<div style="margin:18px 0 4px;padding:14px 16px;border:1px solid ${noticeStyle.border};background:${noticeStyle.bg};border-radius:12px;font-size:14px;color:${noticeStyle.color};">${opts.noticeHtml}</div>`
+    : '';
+  const ctaHtml = opts.cta
+    ? `<p style="margin:24px 0 4px;text-align:center;">
+         <a href="${escapeHtml(opts.cta.url)}"
+            style="display:inline-block;background:${accent};color:#0a0a0a;font-weight:800;text-decoration:none;padding:13px 26px;border-radius:12px;letter-spacing:.1em;text-transform:uppercase;font-size:13px;box-shadow:0 8px 18px rgba(229,193,133,.35);">
+           ${escapeHtml(opts.cta.label)}
+         </a>
+       </p>`
+    : '';
+  const outroHtml = opts.outro
+    ? `<p style="margin:22px 0 0;font-size:13px;color:#71717a;">${opts.outro}</p>`
+    : '';
+
+  return `<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="light only" />
+    <title>${escapeHtml(opts.title)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#0a0a0a;font-family:Inter,Segoe UI,system-ui,-apple-system,Arial,sans-serif;color:#18181b;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;visibility:hidden;">${escapeHtml(opts.title)} - ${escapeHtml(shopName)}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(180deg,#0a0a0a 0%,#0a0a0a 220px,#f4f4f5 220px,#f4f4f5 100%);padding:36px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
+            <tr>
+              <td align="center" style="padding:8px 8px 22px;">
+                <img src="${escapeHtml(logoUrl)}" width="92" height="92" alt="${escapeHtml(shopName)}" style="display:block;border:0;outline:0;background:#0a0a0a;border-radius:50%;" />
+                <div style="margin-top:14px;font-size:11px;letter-spacing:.32em;color:${accent};text-transform:uppercase;font-weight:700;">${escapeHtml(eyebrow)}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #e4e4e7;box-shadow:0 24px 48px rgba(0,0,0,.18);">
+                <div style="background:#0a0a0a;color:#fff;padding:22px 28px;border-bottom:3px solid ${accent};">
+                  <div style="font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:${accent};font-weight:700;">${escapeHtml(shopName)}</div>
+                  <div style="font-size:24px;font-weight:900;margin-top:6px;letter-spacing:.01em;">${escapeHtml(opts.title)}</div>
+                </div>
+                <div style="padding:26px 28px 8px;font-size:15px;line-height:1.6;color:#27272a;">
+                  ${greetingHtml}
+                  ${introHtml}
+                  <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid #e4e4e7;border-radius:12px;overflow:hidden;background:#fafafa;">
+                    ${opts.detailsHtml}
+                  </table>
+                  ${noticeHtml}
+                  ${ctaHtml}
+                  ${outroHtml}
+                </div>
+                <div style="background:#0a0a0a;color:#a1a1aa;padding:18px 28px;text-align:center;font-size:12px;letter-spacing:.04em;">
+                  <div style="color:${accent};font-weight:700;letter-spacing:.28em;text-transform:uppercase;font-size:11px;">${escapeHtml(shopName)}</div>
+                  <div style="margin-top:6px;">Tu barbería de confianza</div>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:18px 8px;color:#a1a1aa;font-size:11px;letter-spacing:.04em;">
+                Este es un mensaje automático de ${escapeHtml(shopName)}. No respondas a este correo.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 }
 
 interface SendOpts {
@@ -100,21 +223,103 @@ interface SendOpts {
   html: string;
 }
 
-async function sendMail(opts: SendOpts): Promise<void> {
+interface ResendConfig {
+  apiKey: string;
+  from: string;
+  shopName: string;
+}
+
+function getShopNameForEmails(): string {
+  return (process.env.SHOP_NAME ?? 'Lion Barber').trim() || 'Lion Barber';
+}
+
+function isEmailProviderConfigured(): boolean {
+  const resendKey = (process.env.RESEND_API_KEY ?? '').trim();
+  if (resendKey) return true;
+  const host = (process.env.SMTP_HOST ?? '').trim();
+  const user = (process.env.SMTP_USER ?? '').trim();
+  const password = (process.env.SMTP_PASSWORD ?? process.env.SMTP_PASS ?? '').trim();
+  return Boolean(host && user && password);
+}
+
+function getResendConfig(): ResendConfig | null {
+  const apiKey = (process.env.RESEND_API_KEY ?? '').trim();
+  if (!apiKey) return null;
+  const fromEnv = (process.env.RESEND_FROM ?? process.env.SMTP_FROM ?? '').trim();
+  const from = fromEnv || 'onboarding@resend.dev';
+  return { apiKey, from, shopName: getShopNameForEmails() };
+}
+
+async function sendMailViaResend(cfg: ResendConfig, opts: SendOpts): Promise<void> {
+  const from = cfg.from.includes('<') ? cfg.from : `${cfg.shopName} <${cfg.from}>`;
+  console.log(
+    `[Email] Intentando enviar via Resend API from="${from}" to="${opts.to}" subject="${opts.subject}"`
+  );
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cfg.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [opts.to],
+        subject: opts.subject,
+        text: opts.text,
+        html: opts.html,
+      }),
+    });
+    const body = await res.text().catch(() => '');
+    if (!res.ok) {
+      console.error(`[Email] Resend HTTP ${res.status}: ${body}`);
+      return;
+    }
+    console.log(`[Email] OK Resend respuesta=${body}`);
+  } catch (err) {
+    console.error('[Email] Error enviando con Resend', err);
+  }
+}
+
+async function sendMailViaSmtp(opts: SendOpts): Promise<void> {
   const cfg = getSmtpConfig();
-  if (!cfg) return;
+  if (!cfg) {
+    console.warn(
+      `[Email] OMITIDO: no hay proveedor configurado (RESEND_API_KEY o SMTP_*). Asunto="${opts.subject}" Destino="${opts.to}"`
+    );
+    return;
+  }
+  console.log(
+    `[Email] Intentando enviar via SMTP ${cfg.host}:${cfg.port} (secure=${cfg.secure}) from="${cfg.from}" to="${opts.to}" subject="${opts.subject}"`
+  );
   try {
     const transporter = getTransporter(cfg);
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: cfg.from.includes('<') ? cfg.from : `"${cfg.shopName}" <${cfg.from}>`,
       to: opts.to,
       subject: opts.subject,
       text: opts.text,
       html: opts.html,
     });
+    console.log(
+      `[Email] OK SMTP messageId=${info.messageId ?? '-'} response=${info.response ?? '-'} accepted=${(
+        info.accepted ?? []
+      )
+        .map(String)
+        .join(',')} rejected=${(info.rejected ?? []).map(String).join(',') || '-'}`
+    );
   } catch (err) {
-    console.error('[Email] Error enviando mail', opts.subject, '→', opts.to, err);
+    console.error('[Email] Error enviando mail SMTP', opts.subject, '→', opts.to, err);
   }
+}
+
+async function sendMail(opts: SendOpts): Promise<void> {
+  const resend = getResendConfig();
+  if (resend) {
+    await sendMailViaResend(resend, opts);
+    return;
+  }
+  await sendMailViaSmtp(opts);
 }
 
 /** Aviso al cliente: turno reservado y esperando que se pague la seña. */
@@ -124,14 +329,17 @@ export async function sendDepositPendingEmail(
   options: { paymentUrl?: string; paymentDueAt?: string | null; depositMinutes: number }
 ): Promise<void> {
   if (!isRealClientEmail(email)) return;
-  const cfg = getSmtpConfig();
-  if (!cfg) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendDepositPendingEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const shopName = getShopNameForEmails();
 
   const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
   const minutes = options.depositMinutes;
 
-  const lines = [
+  const text = [
     `${greetingName}, reservamos tu turno y estamos esperando que se acredite el pago de la seña.`,
     '',
     'Detalles del turno:',
@@ -140,63 +348,69 @@ export async function sendDepositPendingEmail(
     `Tenés ${minutes} minutos para completar el pago, si no se cancela automáticamente.`,
     options.paymentUrl ? `Pagar ahora: ${options.paymentUrl}` : '',
     '',
-    `Gracias por elegir ${cfg.shopName}.`,
-  ];
-  const text = lines.filter(Boolean).join('\n');
+    `Gracias por elegir ${shopName}.`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 
-  const html = `<!doctype html>
-<html lang="es">
-  <body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#18181b;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e4e4e7;">
-            <tr>
-              <td style="background:#18181b;color:#fff;padding:24px 28px;">
-                <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#e5c185;">${escapeHtml(
-                  cfg.shopName
-                )}</div>
-                <div style="font-size:22px;font-weight:800;margin-top:6px;">Tu turno está reservado</div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:24px 28px;font-size:15px;line-height:1.55;color:#27272a;">
-                <p style="margin:0 0 12px;">Hola <strong>${escapeHtml(greetingName)}</strong>,</p>
-                <p style="margin:0 0 16px;">Reservamos tu horario y estamos esperando que se acredite el pago de la seña para confirmar el turno.</p>
-                <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:8px 0 16px;">
-                  ${detailsHtml}
-                </table>
-                <div style="margin:16px 0;padding:12px 14px;border:1px solid #fde68a;background:#fef9c3;border-radius:10px;font-size:14px;color:#854d0e;">
-                  Tenés <strong>${minutes} minutos</strong> para completar el pago. Si no se acredita en ese plazo, la reserva se cancela automáticamente.
-                </div>
-                ${
-                  options.paymentUrl
-                    ? `<p style="margin:18px 0 0;text-align:center;">
-                        <a href="${escapeHtml(options.paymentUrl)}"
-                           style="display:inline-block;background:#e5c185;color:#18181b;font-weight:800;text-decoration:none;padding:12px 22px;border-radius:10px;letter-spacing:.04em;text-transform:uppercase;font-size:13px;">
-                          Pagar la seña
-                        </a>
-                      </p>`
-                    : ''
-                }
-                <p style="margin:22px 0 0;font-size:13px;color:#71717a;">También podés gestionar tus turnos desde tu perfil en el sitio.</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="background:#fafafa;padding:14px 28px;font-size:12px;color:#a1a1aa;text-align:center;">
-                Este es un mensaje automático de ${escapeHtml(cfg.shopName)}.
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+  const html = renderBrandedEmail({
+    title: 'Tu turno está reservado',
+    greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
+    intro: 'Reservamos tu horario y estamos esperando que se acredite el pago de la seña para confirmarlo.',
+    detailsHtml,
+    noticeColor: 'amber',
+    noticeHtml: `Tenés <strong>${minutes} minutos</strong> para completar el pago. Si no se acredita en ese plazo, la reserva se cancela automáticamente.`,
+    cta: options.paymentUrl ? { label: 'Pagar la seña', url: options.paymentUrl } : undefined,
+    outro: 'También podés gestionar tus turnos desde tu perfil en nuestro sitio.',
+  });
 
   await sendMail({
     to: email,
-    subject: `Tu turno en ${cfg.shopName} está esperando el pago de la seña`,
+    subject: `Tu turno en ${shopName} está esperando el pago de la seña`,
+    text,
+    html,
+  });
+}
+
+/** Aviso al cliente: el turno fue agendado (sin pago de seña, ej. desde el panel del admin). */
+export async function sendAppointmentScheduledEmail(
+  email: string,
+  app: Appointment
+): Promise<void> {
+  if (!isRealClientEmail(email)) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendAppointmentScheduledEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const shopName = getShopNameForEmails();
+
+  const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
+  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+
+  const text = [
+    `${greetingName}, agendamos tu turno en ${shopName}.`,
+    '',
+    'Detalles del turno:',
+    detailsText,
+    '',
+    'Recordá que hay 10 minutos de tolerancia desde la hora del turno.',
+    '',
+    `Te esperamos en ${shopName}.`,
+  ].join('\n');
+
+  const html = renderBrandedEmail({
+    title: 'Tu turno fue agendado',
+    greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
+    intro: 'Agendamos tu turno con éxito. Te dejamos los detalles para que los tengas a mano.',
+    detailsHtml,
+    noticeColor: 'green',
+    noticeHtml: 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
+    outro: '¡Te esperamos!',
+  });
+
+  await sendMail({
+    to: email,
+    subject: `Tu turno en ${shopName} fue agendado`,
     text,
     html,
   });
@@ -208,8 +422,11 @@ export async function sendDepositConfirmedEmail(
   app: Appointment
 ): Promise<void> {
   if (!isRealClientEmail(email)) return;
-  const cfg = getSmtpConfig();
-  if (!cfg) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendDepositConfirmedEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const shopName = getShopNameForEmails();
 
   const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
@@ -222,52 +439,22 @@ export async function sendDepositConfirmedEmail(
     '',
     'Recordá que hay 10 minutos de tolerancia desde la hora de tu turno.',
     '',
-    `Te esperamos en ${cfg.shopName}.`,
+    `Te esperamos en ${shopName}.`,
   ].join('\n');
 
-  const html = `<!doctype html>
-<html lang="es">
-  <body style="margin:0;padding:0;background:#f4f4f5;font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;color:#18181b;">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:32px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e4e4e7;">
-            <tr>
-              <td style="background:#16a34a;color:#fff;padding:24px 28px;">
-                <div style="font-size:12px;letter-spacing:.2em;text-transform:uppercase;opacity:.85;">${escapeHtml(
-                  cfg.shopName
-                )}</div>
-                <div style="font-size:22px;font-weight:800;margin-top:6px;">¡Tu turno está confirmado!</div>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:24px 28px;font-size:15px;line-height:1.55;color:#27272a;">
-                <p style="margin:0 0 12px;">Hola <strong>${escapeHtml(greetingName)}</strong>,</p>
-                <p style="margin:0 0 16px;">Recibimos el pago de la seña. Tu turno quedó confirmado:</p>
-                <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:8px 0 16px;">
-                  ${detailsHtml}
-                </table>
-                <div style="margin:16px 0;padding:12px 14px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:10px;font-size:14px;color:#166534;">
-                  Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.
-                </div>
-                <p style="margin:18px 0 0;">¡Te esperamos!</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="background:#fafafa;padding:14px 28px;font-size:12px;color:#a1a1aa;text-align:center;">
-                Este es un mensaje automático de ${escapeHtml(cfg.shopName)}.
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
+  const html = renderBrandedEmail({
+    title: '¡Tu turno está confirmado!',
+    greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
+    intro: 'Recibimos el pago de la seña. Tu turno quedó confirmado.',
+    detailsHtml,
+    noticeColor: 'green',
+    noticeHtml: 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
+    outro: '¡Te esperamos!',
+  });
 
   await sendMail({
     to: email,
-    subject: `Tu turno en ${cfg.shopName} quedó confirmado`,
+    subject: `Tu turno en ${shopName} quedó confirmado`,
     text,
     html,
   });
