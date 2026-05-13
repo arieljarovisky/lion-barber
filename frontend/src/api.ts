@@ -164,6 +164,8 @@ export interface ShopSettings {
   closeTime: string;
   weekdayHours: Record<number, { openTime: string; closeTime: string }>;
   closedDates: string[];
+  /** Plantilla del mensaje prellenado al abrir WhatsApp desde la agenda (null = mensaje por defecto). */
+  whatsappMessageTemplate?: string | null;
 }
 
 export interface BarberFrancoRow {
@@ -325,7 +327,16 @@ export const api = {
 
   updateShopSettings: (
     data: Partial<
-      Pick<ShopSettings, 'cutoffHours' | 'openWeekdays' | 'depositPercent' | 'closeTime' | 'weekdayHours' | 'closedDates'>
+      Pick<
+        ShopSettings,
+        | 'cutoffHours'
+        | 'openWeekdays'
+        | 'depositPercent'
+        | 'closeTime'
+        | 'weekdayHours'
+        | 'closedDates'
+        | 'whatsappMessageTemplate'
+      >
     >
   ) =>
     fetchApi<ShopSettings>('/api/shop-settings', { method: 'PATCH', body: JSON.stringify(data) }),

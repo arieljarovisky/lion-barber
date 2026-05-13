@@ -259,20 +259,49 @@ function formatAppointmentDateForMessage(ymd: string): string {
   return `${d}/${m}/${y}`;
 }
 
-function buildAppointmentWhatsappUrl(app: Appointment): string | null {
+/** Texto de ayuda en configuración (coincide con el mensaje por defecto si dejás el campo vacío). */
+const WHATSAPP_TEMPLATE_HELP = `Podés usar: {nombre}, {nombre_completo}, {fecha}, {hora}, {servicio}, {barbero}. Si dejás vacío, se usa el mensaje clásico de Lion Barber.`;
+
+function applyWhatsappMessageTemplate(template: string | null | undefined, app: Appointment): string {
+  const t = (template ?? '').trim();
+  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+  const fullName = (app.name ?? '').trim() || greetingName;
+  const fecha = formatAppointmentDateForMessage(app.date);
+  const hora = app.time;
+  const servicio = app.service;
+  const barbero = (app.barber ?? '').trim();
+  if (!t) {
+    const lines = [
+      `Hola ${greetingName}! Te confirmo tu turno en Lion Barber:`,
+      '',
+      `Fecha: ${fecha}`,
+      `Hora: ${hora}`,
+      `Servicio: ${servicio}`,
+    ];
+    if (barbero) lines.push(`Barbero: ${barbero}`);
+    lines.push('', '¿Podés confirmármelo?');
+    return lines.join('\n');
+  }
+  return t
+    .split('{nombre_completo}')
+    .join(fullName)
+    .split('{nombre}')
+    .join(greetingName)
+    .split('{fecha}')
+    .join(fecha)
+    .split('{hora}')
+    .join(hora)
+    .split('{servicio}')
+    .join(servicio)
+    .split('{barbero}')
+    .join(barbero);
+}
+
+function buildAppointmentWhatsappUrl(app: Appointment, messageTemplate: string | null): string | null {
   const phone = buildWhatsappPhone(app.phone ?? '');
   if (!phone) return null;
-  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
-  const lines = [
-    `Hola ${greetingName}! Te confirmo tu turno en Lion Barber:`,
-    '',
-    `Fecha: ${formatAppointmentDateForMessage(app.date)}`,
-    `Hora: ${app.time}`,
-    `Servicio: ${app.service}`,
-  ];
-  if (app.barber) lines.push(`Barbero: ${app.barber}`);
-  lines.push('', '¿Podés confirmármelo?');
-  const text = encodeURIComponent(lines.join('\n'));
+  const body = applyWhatsappMessageTemplate(messageTemplate, app);
+  const text = encodeURIComponent(body);
   return `https://wa.me/${phone}?text=${text}`;
 }
 
@@ -393,6 +422,7 @@ export default function Dashboard() {
   const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
   const [shopClosedDates, setShopClosedDates] = useState<string[]>([]);
   const [closedDateInput, setClosedDateInput] = useState('');
+  const [shopWhatsappMessageTemplate, setShopWhatsappMessageTemplate] = useState('');
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
   const [shopError, setShopError] = useState('');
@@ -773,6 +803,7 @@ export default function Dashboard() {
         setShopCloseTime(s.closeTime || '20:00');
         setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
         setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
+        setShopWhatsappMessageTemplate(s.whatsappMessageTemplate ?? '');
       })
       .catch(() => {});
     return () => {
@@ -795,6 +826,7 @@ export default function Dashboard() {
           setShopCloseTime(s.closeTime || '20:00');
           setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
           setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
+          setShopWhatsappMessageTemplate(s.whatsappMessageTemplate ?? '');
           setClosedDateInput('');
         }
       })
@@ -1512,14 +1544,16 @@ export default function Dashboard() {
     setShopSaving(true);
     setShopError('');
     try {
-      await api.updateShopSettings({
+      const updated = await api.updateShopSettings({
         cutoffHours: shopCutoff,
         openWeekdays: shopDays,
         depositPercent: shopDepositPercent,
         closeTime: shopCloseTime,
         weekdayHours: shopWeekdayHours,
         closedDates: shopClosedDates,
+        whatsappMessageTemplate: shopWhatsappMessageTemplate.trim() === '' ? null : shopWhatsappMessageTemplate.trim(),
       });
+      setShopWhatsappMessageTemplate(updated.whatsappMessageTemplate ?? '');
       showToast('Configuración guardada correctamente');
     } catch (err) {
       setShopError(err instanceof Error ? err.message : 'Error al guardar');
@@ -1893,7 +1927,7 @@ export default function Dashboard() {
                                   <p className="text-zinc-600 text-xs truncate mt-0.5">{app.service}</p>
                                   <div className="flex gap-1 mt-auto pt-2">
                                     {appointmentNeedsManualContact(app) && (() => {
-                                      const waUrl = buildAppointmentWhatsappUrl(app);
+                                      const waUrl = buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate);
                                       if (!waUrl) return null;
                                       return (
                                         <a
@@ -2063,7 +2097,7 @@ export default function Dashboard() {
                                   </div>
                                   <div className="flex items-center gap-1 shrink-0">
                                     {appointmentNeedsManualContact(app) && (() => {
-                                      const waUrl = buildAppointmentWhatsappUrl(app);
+                                      const waUrl = buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate);
                                       if (!waUrl) return null;
                                       return (
                                         <a
@@ -2195,7 +2229,7 @@ export default function Dashboard() {
                                 </div>
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                   {appointmentNeedsManualContact(app) && (() => {
-                                    const waUrl = buildAppointmentWhatsappUrl(app);
+                                    const waUrl = buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate);
                                     if (!waUrl) return null;
                                     return (
                                       <a
@@ -2292,7 +2326,7 @@ export default function Dashboard() {
                 const barberInfo = resolveBarberForApp(app);
                 const phoneDigits = normalizePhoneDigits(app.phone ?? '');
                 const phoneHref = phoneDigits ? `https://wa.me/549${phoneDigits}` : null;
-                const waUrl = appointmentNeedsManualContact(app) ? buildAppointmentWhatsappUrl(app) : null;
+                const waUrl = appointmentNeedsManualContact(app) ? buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate) : null;
                 const showAfipBlock = isAdmin && afipConfigured && app.status !== 'cancelled';
                 const initials = (app.name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
                 return (
@@ -2921,6 +2955,26 @@ export default function Dashboard() {
                   />
                   <span className="text-zinc-600 text-sm font-medium">%</span>
                 </div>
+              </div>
+              <div>
+                <h3 className="font-black text-lg text-zinc-900">Mensaje de WhatsApp</h3>
+                <p className="text-sm text-zinc-500 mt-1">
+                  Texto que se prellena al tocar «WhatsApp» en la agenda para turnos sin seña pagada. Dejalo vacío para usar el
+                  mensaje por defecto.
+                </p>
+                <p className="text-xs text-zinc-500 mt-2">{WHATSAPP_TEMPLATE_HELP}</p>
+                <textarea
+                  value={shopWhatsappMessageTemplate}
+                  onChange={(e) => setShopWhatsappMessageTemplate(e.target.value)}
+                  rows={8}
+                  maxLength={8000}
+                  spellCheck={false}
+                  className="mt-3 w-full border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 font-mono leading-relaxed"
+                  placeholder={`Hola {nombre}! Te confirmo tu turno…\n\nFecha: {fecha}\nHora: {hora}\nServicio: {servicio}\nBarbero: {barbero}`}
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  {shopWhatsappMessageTemplate.length} / 8000 caracteres
+                </p>
               </div>
               <div>
                 <h3 className="font-black text-lg text-zinc-900">Días abiertos</h3>
