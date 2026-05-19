@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle } from 'lucide-react';
 import { BOOKING_FALLBACK_WHATSAPP_URL, checkBackendHealth } from '../utils/backendHealth';
+import { WhatsAppIcon } from '../components/WhatsAppIcon';
 import { api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
@@ -140,7 +141,6 @@ export default function ClientView() {
   const [shopCloseTime, setShopCloseTime] = useState('20:00');
   const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
   const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
-  const [backendRechecking, setBackendRechecking] = useState(false);
 
   const loadBookingCatalog = () => {
     api.getServices().then(setServices).catch(() => setServices([]));
@@ -159,14 +159,6 @@ export default function ClientView() {
         setShopWeekdayHours(next);
       })
       .catch(() => {});
-  };
-
-  const recheckBackend = async () => {
-    setBackendRechecking(true);
-    const ok = await checkBackendHealth();
-    setBackendReachable(ok);
-    setBackendRechecking(false);
-    if (ok) loadBookingCatalog();
   };
 
   useEffect(() => {
@@ -804,20 +796,11 @@ export default function ClientView() {
                     href={BOOKING_FALLBACK_WHATSAPP_URL}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center justify-center gap-2 mt-8 bg-[#25D366] hover:bg-[#1ebe5d] text-white font-sans font-black uppercase tracking-widest px-8 py-4 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-900/30"
+                    className="inline-flex items-center justify-center gap-3 mt-8 bg-[#25D366] hover:bg-[#1ebe5d] text-white font-sans font-black uppercase tracking-widest px-8 py-4 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-900/30"
                   >
-                    <Phone size={20} aria-hidden />
+                    <WhatsAppIcon size={22} />
                     Reservar por WhatsApp
                   </a>
-                  <button
-                    type="button"
-                    onClick={() => void recheckBackend()}
-                    disabled={backendRechecking}
-                    className="mt-6 inline-flex items-center justify-center gap-2 text-sm text-zinc-400 hover:text-[#e5c185] disabled:opacity-50 transition-colors"
-                  >
-                    <RefreshCw size={16} className={backendRechecking ? 'animate-spin' : ''} aria-hidden />
-                    {backendRechecking ? 'Comprobando…' : 'Reintentar conexión'}
-                  </button>
                 </div>
               ) : bookingSuccess ? (
                 <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl sm:rounded-2xl p-8 sm:p-12 text-center animate-in fade-in zoom-in duration-500">
