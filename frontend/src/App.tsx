@@ -44,7 +44,7 @@ export default function App() {
           <Route
             path="/dashboard/estadisticas"
             element={
-              <ProtectedRoute dashboardAccess adminOnly>
+              <ProtectedRoute dashboardAccess adminOnly superAdminOnly>
                 <BarberStatsPage />
               </ProtectedRoute>
             }
@@ -52,7 +52,7 @@ export default function App() {
           <Route
             path="/dashboard/cierre-caja"
             element={
-              <ProtectedRoute dashboardAccess adminOnly>
+              <ProtectedRoute dashboardAccess adminOnly superAdminOnly>
                 <WeeklyCashClosePage />
               </ProtectedRoute>
             }

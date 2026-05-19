@@ -1,14 +1,18 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 import {
   getAfipCertKeyStatus,
   isAfipConfigured,
   invoiceAppointmentAfip,
 } from '../services/afipInvoice.js';
+import {
+  buildBarberInvoicingUsage,
+  currentCalendarYearArgentina,
+} from '../services/barberInvoicingLimits.js';
 
 const router = Router();
 
-router.get('/status', requireAuth, requireAdmin, (_req, res) => {
+router.get('/status', requireAuth, requireSuperAdmin, (_req, res) => {
   const configured = isAfipConfigured();
   const rawCuit = process.env.AFIP_CUIT?.trim();
   const digits = rawCuit ? String(rawCuit).replace(/\D/g, '') : '';
@@ -22,7 +26,22 @@ router.get('/status', requireAuth, requireAdmin, (_req, res) => {
   });
 });
 
-router.post('/invoice/:appointmentId', requireAuth, requireAdmin, async (req, res) => {
+router.get('/barber-invoicing', requireAuth, requireSuperAdmin, async (req, res) => {
+  try {
+    const rawYear = req.query.year;
+    const year =
+      typeof rawYear === 'string' && /^\d{4}$/.test(rawYear)
+        ? parseInt(rawYear, 10)
+        : currentCalendarYearArgentina();
+    const usage = await buildBarberInvoicingUsage(year);
+    res.json({ year, barbers: usage });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Error al calcular facturación por barbero' });
+  }
+});
+
+router.post('/invoice/:appointmentId', requireAuth, requireSuperAdmin, async (req, res) => {
   const id = req.params.appointmentId;
   const body = req.body as { productLines?: { productId: string; quantity: number }[] };
   try {

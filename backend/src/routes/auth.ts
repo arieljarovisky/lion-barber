@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { verifyGoogleToken, isAdminEmail, signJwt } from '../auth.js';
+import { verifyGoogleToken, isAdminEmail, isSuperAdminEmail, signJwt } from '../auth.js';
 import * as userRepo from '../repositories/users.js';
 import * as appointmentRepo from '../repositories/appointments.js';
 import * as staffInvites from '../repositories/staffInvites.js';
@@ -122,6 +122,7 @@ router.post('/google', async (req, res) => {
         barberId: user.barber_id ?? null,
         avatarUrl: user.avatar_url ?? null,
         depositExempt: userRepo.isUserDepositExempt(user),
+        isSuperAdmin: isSuperAdminEmail(user.email),
       },
     });
   } catch (err) {
@@ -143,6 +144,7 @@ router.get('/me', requireAuth, async (req, res) => {
     barberId: user.barber_id ?? null,
     avatarUrl: user.avatar_url ?? null,
     depositExempt: userRepo.isUserDepositExempt(user),
+    isSuperAdmin: isSuperAdminEmail(user.email),
   });
 });
 

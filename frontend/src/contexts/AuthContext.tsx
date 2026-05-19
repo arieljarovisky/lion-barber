@@ -15,6 +15,8 @@ export interface UserProfile {
   avatarUrl?: string | null;
   /** Cliente exento de pagar seña: reserva turnos directo, sin Mercado Pago. */
   depositExempt?: boolean;
+  /** Facturación AFIP, cierre de caja, estadísticas contables y monotributo. */
+  isSuperAdmin?: boolean;
 }
 
 interface AuthContextType {
@@ -24,6 +26,8 @@ interface AuthContextType {
   loginWithGoogle: (idToken: string, linkPhone?: string) => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: boolean;
+  /** Acceso a la parte contable (facturación, cierre de caja, estadísticas). */
+  isSuperAdmin: boolean;
   /** Admin o empleado: puede entrar al panel /dashboard */
   canAccessDashboard: boolean;
   /** True cuando se cerró sesión automáticamente porque el token expiró. */
@@ -39,6 +43,7 @@ const AuthContext = createContext<AuthContextType>({
   loginWithGoogle: async () => {},
   logout: async () => {},
   isAdmin: false,
+  isSuperAdmin: false,
   canAccessDashboard: false,
   sessionExpired: false,
   clearSessionExpired: () => {},
@@ -55,6 +60,7 @@ function profileFromBackend(u: {
   barberId?: string | null;
   avatarUrl?: string | null;
   depositExempt?: boolean;
+  isSuperAdmin?: boolean;
 }): UserProfile {
   const role =
     u.role === 'admin' ? 'admin' : u.role === 'staff' ? 'staff' : 'client';
@@ -67,6 +73,7 @@ function profileFromBackend(u: {
     barberId: u.barberId ?? null,
     avatarUrl: u.avatarUrl ?? null,
     depositExempt: Boolean(u.depositExempt),
+    isSuperAdmin: Boolean(u.isSuperAdmin),
   };
 }
 
@@ -235,6 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [handleSessionExpired]);
 
   const isAdmin = profile?.role === 'admin';
+  const isSuperAdmin = Boolean(profile?.isSuperAdmin);
   const canAccessDashboard = profile?.role === 'admin' || profile?.role === 'staff';
 
   return (
@@ -246,6 +254,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithGoogle,
         logout,
         isAdmin,
+        isSuperAdmin,
         canAccessDashboard,
         sessionExpired,
         clearSessionExpired,

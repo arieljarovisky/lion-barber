@@ -97,4 +97,8 @@ export interface Barber {
   whatsappPhone?: string | null;
   /** Comisión % para el dueño (gestión interna). */
   commissionPercent?: number;
+  /** Etiqueta de categoría monotributo (ej. «Categoría D»). */
+  monotributoCategory?: string | null;
+  /** Tope anual de facturación AFIP en ARS (null = sin límite configurado). */
+  monotributoAnnualLimit?: number | null;
 }

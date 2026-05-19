@@ -62,6 +62,7 @@ import type {
   AdminClientWithHistory,
   type PointsRedemptionOption,
   type ServicePaymentSplit,
+  type BarberInvoicingUsage,
 } from '../api';
 import {
   appointmentLocalPendingArs,
@@ -458,6 +459,9 @@ export default function Dashboard() {
   const [afipInvoiceBusy, setAfipInvoiceBusy] = useState(false);
   const [billingAppointments, setBillingAppointments] = useState<Appointment[]>([]);
   const [billingLoading, setBillingLoading] = useState(false);
+  const [barberInvoicing, setBarberInvoicing] = useState<BarberInvoicingUsage[]>([]);
+  const [barberInvoicingYear, setBarberInvoicingYear] = useState(() => new Date().getFullYear());
+  const [barberInvoicingLoading, setBarberInvoicingLoading] = useState(false);
   const knownPaidAppointmentIdsRef = useRef<Set<string>>(new Set());
   const didInitPaidAppointmentsRef = useRef(false);
   const requestedBrowserNotificationPermissionRef = useRef(false);
@@ -477,7 +481,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  const { profile, isAdmin, canAccessDashboard } = useAuth();
+  const { profile, isAdmin, isSuperAdmin, canAccessDashboard } = useAuth();
   const confirm = useConfirm();
   const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
   const isStaffBarber = Boolean(staffBarberId);
@@ -639,10 +643,30 @@ export default function Dashboard() {
     void loadShopProductsPanel();
   }, [view, loadShopProductsPanel]);
 
+  const loadBarberInvoicing = useCallback(() => {
+    setBarberInvoicingLoading(true);
+    return api
+      .getBarberInvoicingUsage()
+      .then((r) => {
+        setBarberInvoicing(r.barbers);
+        setBarberInvoicingYear(r.year);
+      })
+      .catch(() => {
+        setBarberInvoicing([]);
+      })
+      .finally(() => setBarberInvoicingLoading(false));
+  }, []);
+
   useEffect(() => {
-    if (view !== 'facturacion' || !isAdmin) return;
+    if (view !== 'configuracion' || !isSuperAdmin) return;
+    void loadBarberInvoicing();
+  }, [view, isSuperAdmin, loadBarberInvoicing]);
+
+  useEffect(() => {
+    if (view !== 'facturacion' || !isSuperAdmin) return;
     let cancelled = false;
     setBillingLoading(true);
+    void loadBarberInvoicing();
     api
       .getAppointments()
       .then((list) => {
@@ -657,7 +681,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [view, isAdmin, showToast]);
+  }, [view, isSuperAdmin, showToast, loadBarberInvoicing]);
 
   useEffect(() => {
     if (view !== 'agenda' || barbers.length === 0) {
@@ -747,7 +771,7 @@ export default function Dashboard() {
   }, [profile?.role, view, loadData]);
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isSuperAdmin) {
       setAfipConfigured(false);
       setAfipEmitterCuit(null);
       setAfipCbteTipo(6);
@@ -765,7 +789,7 @@ export default function Dashboard() {
         setAfipEmitterCuit(null);
         setAfipCbteTipo(6);
       });
-  }, [isAdmin]);
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     if (profile?.role === 'staff' && profile.barberId) {
@@ -804,10 +828,13 @@ export default function Dashboard() {
   }, [view, scheduleBarberId, loadSchedule]);
 
   useEffect(() => {
-    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion' || view === 'facturacion')) {
+    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion')) {
       setView('agenda');
     }
-  }, [isAdmin, view]);
+    if (!isSuperAdmin && view === 'facturacion') {
+      setView('agenda');
+    }
+  }, [isAdmin, isSuperAdmin, view]);
 
   /** Cierre y horario por día de la barbería para la grilla de agenda. Sin esto, solo se aplicaba al abrir Configuración. */
   useEffect(() => {
@@ -1333,8 +1360,9 @@ export default function Dashboard() {
     void loadData();
     if (view === 'facturacion') {
       void api.getAppointments().then(setBillingAppointments).catch(() => {});
+      void loadBarberInvoicing();
     }
-  }, [loadData, view]);
+  }, [loadData, view, loadBarberInvoicing]);
 
   const handleBulkAfipInvoice = useCallback(
     async (appointmentIds: string[]) => {
@@ -1355,6 +1383,7 @@ export default function Dashboard() {
       void loadData();
       if (view === 'facturacion') {
         void api.getAppointments().then(setBillingAppointments).catch(() => {});
+        void loadBarberInvoicing();
       }
       if (ok > 0 && failed === 0) {
         showToast(`Facturación masiva completada: ${ok} turno(s) facturado(s).`, 'ok');
@@ -1364,7 +1393,7 @@ export default function Dashboard() {
         showToast('No se pudo facturar ninguno de los turnos seleccionados.', 'err');
       }
     },
-    [loadData, showToast, view]
+    [loadData, showToast, view, loadBarberInvoicing]
   );
 
   const openCreateServiceModal = () => {
@@ -1523,7 +1552,7 @@ export default function Dashboard() {
     return acc + serviceAmount * barberProfileIncomeShare;
   }, 0);
   const barberStats = useMemo(() => {
-    if (!isAdmin) return [];
+    if (!isSuperAdmin) return [];
     return barbers
       .map((b) => {
         const apps = dayAppointments.filter((a) => a.barberId === b.id || a.barber === b.name);
@@ -1537,7 +1566,7 @@ export default function Dashboard() {
         };
       })
       .sort((a, b) => b.estimatedIncome - a.estimatedIncome || b.appointments - a.appointments);
-  }, [isAdmin, barbers, dayAppointments, services]);
+  }, [isSuperAdmin, barbers, dayAppointments, services]);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1832,7 +1861,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-        {isAdmin && !isSingleBarberDayView && barberStats.length > 0 && (
+        {isSuperAdmin && !isSingleBarberDayView && barberStats.length > 0 && (
           <div className="mb-8 rounded-2xl border border-zinc-200 bg-white p-4 sm:p-5 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="text-base font-black text-zinc-900">Estadísticas por barbero</h3>
@@ -2349,7 +2378,7 @@ export default function Dashboard() {
               {isSingleBarberDayView && (
                 <p className="text-[11px] text-zinc-500 mt-0.5">Orden cronológico para revisar o anotar</p>
               )}
-              {isAdmin && !afipConfigured && (
+              {isSuperAdmin && !afipConfigured && (
                 <p className="text-[10px] text-amber-800/90 mt-1 max-w-md">
                   Facturación AFIP: <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_ACCESS_TOKEN</code>,{' '}
                   <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_CUIT</code>; cert/clave opcionales salvo tu CUIT
@@ -2389,7 +2418,7 @@ export default function Dashboard() {
                 const phoneDigits = normalizePhoneDigits(app.phone ?? '');
                 const phoneHref = phoneDigits ? `https://wa.me/549${phoneDigits}` : null;
                 const waUrl = appointmentNeedsManualContact(app) ? buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate) : null;
-                const showAfipBlock = isAdmin && afipConfigured && app.status !== 'cancelled';
+                const showAfipBlock = isSuperAdmin && afipConfigured && app.status !== 'cancelled';
                 const initials = (app.name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
                 return (
                   <li
@@ -2852,7 +2881,7 @@ export default function Dashboard() {
           />
         )}
 
-        {view === 'facturacion' && isAdmin && (
+        {view === 'facturacion' && isSuperAdmin && (
           <BillingPanel
             appointments={billingAppointments}
             services={services}
@@ -2865,6 +2894,9 @@ export default function Dashboard() {
             bulkInvoicing={afipInvoiceBusy && !afipInvoiceApp}
             onInvoiceClick={openAfipInvoiceModal}
             onBulkInvoice={handleBulkAfipInvoice}
+            barberInvoicing={barberInvoicing}
+            barberInvoicingYear={barberInvoicingYear}
+            barberInvoicingLoading={barberInvoicingLoading}
           />
         )}
 
@@ -3153,63 +3185,144 @@ export default function Dashboard() {
               </button>
             </form>
             <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm">
-              <h3 className="font-black text-lg text-zinc-900">Barberos y comisiones</h3>
+              <h3 className="font-black text-lg text-zinc-900">
+                {isSuperAdmin ? 'Barberos, comisiones y monotributo' : 'Barberos y comisiones'}
+              </h3>
               <p className="text-sm text-zinc-500 mt-1">
-                Podés editar el nombre público y la comisión de referencia de cada barbero.
+                {isSuperAdmin
+                  ? 'Nombre, comisión y tope anual de facturación AFIP por barbero. El sistema bloquea emitir facturas que superen el tope del año en curso.'
+                  : 'Nombre público y comisión de referencia. Los límites de monotributo los configuran los super administradores contables.'}
               </p>
               {shopLoading ? (
                 <p className="text-zinc-400 mt-4">Cargando...</p>
               ) : (
                 <ul className="mt-4 divide-y divide-zinc-100">
-                  {barbers.map((b) => (
-                    <li key={b.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                      <div className="flex items-center gap-2 min-w-[260px]">
-                        <input
-                          type="text"
-                          defaultValue={b.name}
-                          key={`${b.id}-${b.name}`}
-                          onBlur={(e) => {
-                            const next = e.target.value.trim();
-                            if (!next || next === b.name) return;
-                            void api
-                              .updateBarber(b.id, { name: next })
-                              .then(() => {
-                                loadData();
-                                showToast(`Nombre de ${b.name} actualizado`);
-                              })
-                              .catch((err) =>
-                                showToast(err instanceof Error ? err.message : 'No se pudo actualizar el nombre', 'err')
-                              );
-                          }}
-                          className="w-48 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
-                        />
-                        <span className="text-xs text-zinc-500">{b.role}</span>
+                  {barbers.map((b) => {
+                    const usage = barberInvoicing.find((u) => u.barberId === b.id);
+                    return (
+                    <li key={b.id} className="py-4 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-[200px]">
+                          <input
+                            type="text"
+                            defaultValue={b.name}
+                            key={`${b.id}-${b.name}`}
+                            onBlur={(e) => {
+                              const next = e.target.value.trim();
+                              if (!next || next === b.name) return;
+                              void api
+                                .updateBarber(b.id, { name: next })
+                                .then(() => {
+                                  loadData();
+                                  showToast(`Nombre de ${b.name} actualizado`);
+                                })
+                                .catch((err) =>
+                                  showToast(err instanceof Error ? err.message : 'No se pudo actualizar el nombre', 'err')
+                                );
+                            }}
+                            className="w-48 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
+                          />
+                          <span className="text-xs text-zinc-500">{b.role}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold uppercase text-zinc-400">Comisión</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={0.5}
+                            defaultValue={b.commissionPercent ?? 0}
+                            key={`${b.id}-comm-${String(b.commissionPercent ?? 0)}`}
+                            onBlur={(e) => {
+                              const v = parseFloat(e.target.value);
+                              if (!Number.isFinite(v)) return;
+                              void api
+                                .updateBarber(b.id, { commissionPercent: v })
+                                .then(() => {
+                                  loadData();
+                                  showToast(`Comisión de ${b.name} guardada`);
+                                })
+                                .catch(() => showToast('No se pudo guardar la comisión', 'err'));
+                            }}
+                            className="w-20 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
+                          />
+                          <span className="text-zinc-500 text-sm">%</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={0.5}
-                          defaultValue={b.commissionPercent ?? 0}
-                          key={`${b.id}-${String(b.commissionPercent ?? 0)}`}
-                          onBlur={(e) => {
-                            const v = parseFloat(e.target.value);
-                            if (!Number.isFinite(v)) return;
-                            void api
-                              .updateBarber(b.id, { commissionPercent: v })
-                              .then(() => {
-                                loadData();
-                                showToast(`Comisión de ${b.name} guardada`);
-                              })
-                              .catch(() => showToast('No se pudo guardar la comisión', 'err'));
-                          }}
-                          className="w-24 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
-                        />
-                        <span className="text-zinc-500 text-sm">%</span>
+                      {isSuperAdmin && (
+                      <div className="flex flex-wrap items-end gap-3 pl-0 sm:pl-2">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
+                            Categoría monotributo
+                          </label>
+                          <input
+                            type="text"
+                            defaultValue={b.monotributoCategory ?? ''}
+                            key={`${b.id}-cat-${b.monotributoCategory ?? ''}`}
+                            placeholder="Ej. Categoría D"
+                            onBlur={(e) => {
+                              const next = e.target.value.trim();
+                              const prev = (b.monotributoCategory ?? '').trim();
+                              if (next === prev) return;
+                              void api
+                                .updateBarber(b.id, { monotributoCategory: next || null })
+                                .then(() => {
+                                  loadData();
+                                  if (view === 'facturacion' || view === 'configuracion') void loadBarberInvoicing();
+                                  showToast(`Monotributo de ${b.name} actualizado`);
+                                })
+                                .catch((err) =>
+                                  showToast(err instanceof Error ? err.message : 'No se pudo guardar', 'err')
+                                );
+                            }}
+                            className="w-40 border border-zinc-200 rounded-lg px-3 py-2 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
+                            Tope anual facturación (ARS)
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={1000}
+                            defaultValue={b.monotributoAnnualLimit ?? ''}
+                            key={`${b.id}-lim-${b.monotributoAnnualLimit ?? ''}`}
+                            placeholder="Sin límite"
+                            onBlur={(e) => {
+                              const raw = e.target.value.trim();
+                              const next = raw === '' ? null : Number(raw);
+                              const prev = b.monotributoAnnualLimit ?? null;
+                              if (next === prev || (next != null && !Number.isFinite(next))) return;
+                              void api
+                                .updateBarber(b.id, { monotributoAnnualLimit: next })
+                                .then(() => {
+                                  loadData();
+                                  if (view === 'facturacion' || view === 'configuracion') void loadBarberInvoicing();
+                                  showToast(`Tope anual de ${b.name} guardado`);
+                                })
+                                .catch((err) =>
+                                  showToast(err instanceof Error ? err.message : 'No se pudo guardar', 'err')
+                                );
+                            }}
+                            className="w-36 border border-zinc-200 rounded-lg px-3 py-2 text-sm tabular-nums"
+                          />
+                        </div>
+                        {usage && usage.annualLimit != null && usage.annualLimit > 0 && (
+                          <p className="text-xs text-zinc-500 pb-2">
+                            Facturado {barberInvoicingYear}:{' '}
+                            <span className="font-bold text-zinc-800">
+                              ${usage.invoicedTotal.toLocaleString('es-AR')}
+                            </span>
+                            {' '}
+                            de ${usage.annualLimit.toLocaleString('es-AR')} ({usage.percentUsed}%)
+                          </p>
+                        )}
                       </div>
+                      )}
                     </li>
-                  ))}
+                  );
+                  })}
                 </ul>
               )}
             </div>
@@ -3217,11 +3330,12 @@ export default function Dashboard() {
         )}
       </DashboardPanelShell>
 
-      {afipInvoiceApp && (
+      {afipInvoiceApp && isSuperAdmin && (
         <AfipInvoiceModal
           appointment={afipInvoiceApp}
           services={services}
           shopProducts={shopProducts}
+          barbers={barbers}
           showToast={showToast}
           onBusyChange={setAfipInvoiceBusy}
           onClose={() => setAfipInvoiceApp(null)}

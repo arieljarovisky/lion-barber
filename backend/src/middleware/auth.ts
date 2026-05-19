@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyJwt, JwtPayload } from '../auth.js';
+import { verifyJwt, JwtPayload, isSuperAdminEmail } from '../auth.js';
 import { findUserById } from '../repositories/users.js';
 
 export interface AuthRequest extends Request {
@@ -72,6 +72,19 @@ export function requireStaffOrAdmin(req: AuthRequest, res: Response, next: NextF
   const r = req.user?.role;
   if (r !== 'admin' && r !== 'staff') {
     res.status(403).json({ error: 'Acceso al panel denegado' });
+    return;
+  }
+  next();
+}
+
+/** Facturación AFIP, cierre de caja, estadísticas contables y topes de monotributo. */
+export function requireSuperAdmin(req: AuthRequest, res: Response, next: NextFunction): void {
+  if (req.user?.role !== 'admin') {
+    res.status(403).json({ error: 'Solo administradores' });
+    return;
+  }
+  if (!req.user.email || !isSuperAdminEmail(req.user.email)) {
+    res.status(403).json({ error: 'Solo super administradores pueden acceder a la parte contable' });
     return;
   }
   next();

@@ -38,7 +38,7 @@ type DashboardPanelShellProps = {
 };
 
 export default function DashboardPanelShell({ activePanel, onNavigate, children }: DashboardPanelShellProps) {
-  const { profile, logout, isAdmin } = useAuth();
+  const { profile, logout, isAdmin, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -155,7 +155,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
               Productos
             </button>
           )}
-          {isAdmin && (
+          {isSuperAdmin && (
             <button
               type="button"
               onClick={() => go('facturacion')}
@@ -169,7 +169,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
               Facturación
             </button>
           )}
-          {isAdmin && (
+          {isSuperAdmin && (
             <button
               type="button"
               onClick={() => go('estadisticas')}
@@ -183,7 +183,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
               Estadísticas
             </button>
           )}
-          {isAdmin && (
+          {isSuperAdmin && (
             <button
               type="button"
               onClick={() => go('cierreCaja')}

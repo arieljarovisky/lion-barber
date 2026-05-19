@@ -9,6 +9,8 @@ interface DbBarber {
   desc: string | null;
   whatsapp_phone?: string | null;
   commission_percent?: string | number | null;
+  monotributo_category?: string | null;
+  monotributo_annual_limit?: string | number | null;
 }
 
 function rowToBarber(r: DbBarber): Barber {
@@ -21,7 +23,16 @@ function rowToBarber(r: DbBarber): Barber {
     desc: r.desc ?? '',
     whatsappPhone: r.whatsapp_phone ?? null,
     commissionPercent: Number.isFinite(pct) ? pct : 0,
+    monotributoCategory: r.monotributo_category?.trim() || null,
+    monotributoAnnualLimit: parseAnnualLimit(r.monotributo_annual_limit),
   };
+}
+
+function parseAnnualLimit(raw: string | number | null | undefined): number | null {
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 100) / 100;
 }
 
 export async function getAllBarbers(): Promise<Barber[]> {
@@ -43,7 +54,13 @@ export async function updateBarberCommission(id: string, commissionPercent: numb
 
 export async function updateBarber(
   id: string,
-  data: { name?: string; commissionPercent?: number; whatsappPhone?: string | null }
+  data: {
+    name?: string;
+    commissionPercent?: number;
+    whatsappPhone?: string | null;
+    monotributoCategory?: string | null;
+    monotributoAnnualLimit?: number | null;
+  }
 ): Promise<Barber | null> {
   const fields: string[] = [];
   const values: Array<string | number | null> = [];
@@ -69,6 +86,26 @@ export async function updateBarber(
     }
     fields.push('whatsapp_phone = ?');
     values.push(w || null);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'monotributoCategory')) {
+    const c =
+      data.monotributoCategory == null ? null : String(data.monotributoCategory).trim().slice(0, 64) || null;
+    fields.push('monotributo_category = ?');
+    values.push(c);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, 'monotributoAnnualLimit')) {
+    const lim = data.monotributoAnnualLimit;
+    if (lim == null) {
+      fields.push('monotributo_annual_limit = ?');
+      values.push(null);
+    } else {
+      const n = Number(lim);
+      if (!Number.isFinite(n) || n < 0) throw new Error('Límite anual de monotributo inválido.');
+      fields.push('monotributo_annual_limit = ?');
+      values.push(n > 0 ? Math.round(n * 100) / 100 : null);
+    }
   }
 
   if (!fields.length) return getBarberById(id);

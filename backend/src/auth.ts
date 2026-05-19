@@ -9,6 +9,20 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAIL ?? '')
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
+/** Acceso a facturación AFIP, cierre de caja, estadísticas contables y topes de monotributo. */
+const SUPER_ADMIN_EMAILS = [
+  ...new Set(
+    [
+      'agustincarluccio@gmail.com',
+      'jaroviskyariel@gmail.com',
+      ...(process.env.SUPER_ADMIN_EMAILS ?? '')
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean),
+    ]
+  ),
+];
+
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
 export interface GoogleTokenPayload {
@@ -31,8 +45,13 @@ export async function verifyGoogleToken(idToken: string): Promise<GoogleTokenPay
   return payload as unknown as GoogleTokenPayload;
 }
 
+export function isSuperAdminEmail(email: string): boolean {
+  return SUPER_ADMIN_EMAILS.includes(email.trim().toLowerCase());
+}
+
 export function isAdminEmail(email: string): boolean {
-  return ADMIN_EMAILS.includes(email.toLowerCase());
+  const e = email.trim().toLowerCase();
+  return ADMIN_EMAILS.includes(e) || isSuperAdminEmail(e);
 }
 
 export interface JwtPayload {

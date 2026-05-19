@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 type ProtectedRouteProps = {
   children: ReactNode;
   adminOnly?: boolean;
+  /** Super admin contable (facturación, cierre de caja, estadísticas). */
+  superAdminOnly?: boolean;
   /** Admin o empleado (staff) — panel /dashboard */
   dashboardAccess?: boolean;
 };
@@ -12,9 +14,10 @@ type ProtectedRouteProps = {
 export default function ProtectedRoute({
   children,
   adminOnly = false,
+  superAdminOnly = false,
   dashboardAccess = false,
 }: ProtectedRouteProps) {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, isSuperAdmin } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -31,6 +34,10 @@ export default function ProtectedRoute({
 
   if (adminOnly && profile?.role !== 'admin') {
     return <Navigate to="/" replace />;
+  }
+
+  if (superAdminOnly && !isSuperAdmin) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   if (

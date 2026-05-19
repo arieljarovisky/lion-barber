@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as repo from '../repositories/barbers.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { isSuperAdminEmail } from '../auth.js';
+import { requireAuth, requireAdmin, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -15,16 +16,33 @@ router.get('/', async (_req, res) => {
 });
 
 router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
-  const { commissionPercent, name, whatsappPhone } = req.body as {
+  const authReq = req as AuthRequest;
+  const body = req.body as {
     commissionPercent?: number;
     name?: string;
     whatsappPhone?: string | null;
+    monotributoCategory?: string | null;
+    monotributoAnnualLimit?: number | null;
   };
+  const { commissionPercent, name, whatsappPhone, monotributoCategory, monotributoAnnualLimit } = body;
   const hasName = name != null && String(name).trim().length > 0;
   const hasCommission = commissionPercent != null;
   const hasWhatsapp = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'whatsappPhone');
-  if (!hasName && !hasCommission && !hasWhatsapp) {
-    return res.status(400).json({ error: 'Se requiere name, commissionPercent o whatsappPhone' });
+  const hasMonotributoCategory = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'monotributoCategory');
+  const hasMonotributoLimit = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'monotributoAnnualLimit');
+  if (!hasName && !hasCommission && !hasWhatsapp && !hasMonotributoCategory && !hasMonotributoLimit) {
+    return res.status(400).json({
+      error:
+        'Se requiere name, commissionPercent, whatsappPhone, monotributoCategory o monotributoAnnualLimit',
+    });
+  }
+  if (
+    (hasMonotributoCategory || hasMonotributoLimit) &&
+    (!authReq.user?.email || !isSuperAdminEmail(authReq.user.email))
+  ) {
+    return res.status(403).json({
+      error: 'Solo super administradores pueden configurar límites de monotributo',
+    });
   }
   try {
     const updated = await repo.updateBarber(req.params.id, {
@@ -34,6 +52,18 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
         ? {
             whatsappPhone:
               whatsappPhone == null ? null : String(whatsappPhone).trim() || null,
+          }
+        : {}),
+      ...(hasMonotributoCategory
+        ? {
+            monotributoCategory:
+              monotributoCategory == null ? null : String(monotributoCategory).trim() || null,
+          }
+        : {}),
+      ...(hasMonotributoLimit
+        ? {
+            monotributoAnnualLimit:
+              monotributoAnnualLimit == null ? null : Number(monotributoAnnualLimit),
           }
         : {}),
     });

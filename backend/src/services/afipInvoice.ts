@@ -4,6 +4,7 @@ import * as repo from '../repositories/appointments.js';
 import { getShopProductById } from '../repositories/shopProducts.js';
 import { getServiceById } from '../repositories/services.js';
 import type { AfipInvoiceDetail, Appointment } from '../types.js';
+import { assertBarberCanInvoice } from './barberInvoicingLimits.js';
 
 const require = createRequire(import.meta.url);
 // Paquete CommonJS (@afipsdk/afip.js)
@@ -253,6 +254,9 @@ export async function invoiceAppointmentAfip(
   }
 
   const amount = Math.round((serviceAmount + productsTotal) * 100) / 100;
+
+  await assertBarberCanInvoice(app.barberId, amount);
+
   const invoiceDetail: AfipInvoiceDetail = {
     serviceAmount: Math.round(serviceAmount * 100) / 100,
     serviceLabel: app.service,

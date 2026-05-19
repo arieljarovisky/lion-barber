@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight, FileDown, Loader2, Receipt, Search, SlidersH
 import type { Appointment, Barber, Service } from '../api';
 import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
 import { printLionBarberInvoice } from '../utils/invoicePrint';
+import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
+import type { BarberInvoicingUsage } from '../api';
 
 const WINDOW_DAYS = 120;
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
@@ -23,6 +25,9 @@ type BillingPanelProps = {
   bulkInvoicing?: boolean;
   onInvoiceClick: (app: Appointment) => void;
   onBulkInvoice: (appointmentIds: string[]) => void;
+  barberInvoicing?: BarberInvoicingUsage[];
+  barberInvoicingYear?: number;
+  barberInvoicingLoading?: boolean;
 };
 
 export default function BillingPanel({
@@ -37,6 +42,9 @@ export default function BillingPanel({
   bulkInvoicing = false,
   onInvoiceClick,
   onBulkInvoice,
+  barberInvoicing = [],
+  barberInvoicingYear = new Date().getFullYear(),
+  barberInvoicingLoading = false,
 }: BillingPanelProps) {
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState(() => format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd'));
@@ -170,6 +178,12 @@ export default function BillingPanel({
 
   return (
     <div className="max-w-6xl space-y-4">
+      <BarberMonotributoLimitsPanel
+        usage={barberInvoicing}
+        year={barberInvoicingYear}
+        loading={barberInvoicingLoading}
+      />
+
       <p className="text-sm text-zinc-600">
         Filtrá por fechas, cliente, estado de factura o barbero. El PDF usa la identidad visual Lion Barber; al
         imprimir elegí «Guardar como PDF» en el navegador.

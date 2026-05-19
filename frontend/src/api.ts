@@ -159,6 +159,20 @@ export interface PointsRedemptionOption {
   sortOrder: number;
 }
 
+export type BarberInvoicingStatus = 'no_limit' | 'ok' | 'warning' | 'exceeded';
+
+export interface BarberInvoicingUsage {
+  barberId: string;
+  barberName: string;
+  year: number;
+  monotributoCategory: string | null;
+  annualLimit: number | null;
+  invoicedTotal: number;
+  remaining: number | null;
+  percentUsed: number | null;
+  status: BarberInvoicingStatus;
+}
+
 export interface Barber {
   id: string;
   name: string;
@@ -166,6 +180,8 @@ export interface Barber {
   photo: string;
   desc: string;
   commissionPercent?: number;
+  monotributoCategory?: string | null;
+  monotributoAnnualLimit?: number | null;
 }
 
 export interface ShopSettings {
@@ -323,6 +339,11 @@ export const api = {
       cbteTipo: number;
     }>('/api/afip/status'),
 
+  getBarberInvoicingUsage: (year?: number) => {
+    const q = year != null ? `?year=${year}` : '';
+    return fetchApi<{ year: number; barbers: BarberInvoicingUsage[] }>(`/api/afip/barber-invoicing${q}`);
+  },
+
   /** Solo admin: emite comprobante electr?nico AFIP para un turno (opcional: productos de venta). */
   createAfipInvoice: (
     appointmentId: string,
@@ -352,7 +373,15 @@ export const api = {
   ) =>
     fetchApi<ShopSettings>('/api/shop-settings', { method: 'PATCH', body: JSON.stringify(data) }),
 
-  updateBarber: (barberId: string, data: { name?: string; commissionPercent?: number }) =>
+  updateBarber: (
+    barberId: string,
+    data: {
+      name?: string;
+      commissionPercent?: number;
+      monotributoCategory?: string | null;
+      monotributoAnnualLimit?: number | null;
+    }
+  ) =>
     fetchApi<Barber>(`/api/barbers/${encodeURIComponent(barberId)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -527,6 +556,7 @@ export const api = {
           barberId?: string | null;
           avatarUrl?: string | null;
           depositExempt?: boolean;
+          isSuperAdmin?: boolean;
         };
       }>('/api/auth/google', {
         method: 'POST',
@@ -547,6 +577,7 @@ export const api = {
         barberId?: string | null;
         avatarUrl?: string | null;
         depositExempt?: boolean;
+        isSuperAdmin?: boolean;
       }>('/api/auth/me'),
   },
 };

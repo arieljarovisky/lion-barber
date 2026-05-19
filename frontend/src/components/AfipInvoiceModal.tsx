@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Receipt, X } from 'lucide-react';
-import type { Appointment, Service, ShopProduct } from '../api';
+import type { Appointment, Barber, BarberInvoicingUsage, Service, ShopProduct } from '../api';
 import { api, ApiError } from '../api';
+import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
 import { formatArs, parseArsAmount, resolveAppointmentServiceAmountArs } from '../utils/money';
 
 type LineDraft = { productId: string; quantity: number };
@@ -10,6 +11,7 @@ type AfipInvoiceModalProps = {
   appointment: Appointment;
   services: Service[];
   shopProducts: ShopProduct[];
+  barbers: Barber[];
   onClose: () => void;
   onSuccess: () => void;
   /** Para deshabilitar botones «Facturar» en la agenda mientras se emite. */
@@ -21,6 +23,7 @@ export default function AfipInvoiceModal({
   appointment,
   services,
   shopProducts,
+  barbers,
   onClose,
   onSuccess,
   onBusyChange,
@@ -31,6 +34,14 @@ export default function AfipInvoiceModal({
   const [pickQty, setPickQty] = useState('1');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [barberUsage, setBarberUsage] = useState<BarberInvoicingUsage | null>(null);
+  const [usageYear, setUsageYear] = useState(new Date().getFullYear());
+  const [usageLoading, setUsageLoading] = useState(true);
+
+  const barberId = useMemo(
+    () => appointment.barberId ?? barbers.find((b) => b.name === appointment.barber)?.id ?? null,
+    [appointment, barbers]
+  );
 
   useEffect(() => {
     onBusyChange?.(submitting);
@@ -38,6 +49,28 @@ export default function AfipInvoiceModal({
       onBusyChange?.(false);
     };
   }, [submitting, onBusyChange]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUsageLoading(true);
+    api
+      .getBarberInvoicingUsage()
+      .then((r) => {
+        if (cancelled) return;
+        setUsageYear(r.year);
+        const u = barberId ? r.barbers.find((b) => b.barberId === barberId) ?? null : null;
+        setBarberUsage(u);
+      })
+      .catch(() => {
+        if (!cancelled) setBarberUsage(null);
+      })
+      .finally(() => {
+        if (!cancelled) setUsageLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [barberId]);
 
   const serviceAmount = useMemo(
     () => resolveAppointmentServiceAmountArs(appointment, services),
@@ -65,6 +98,11 @@ export default function AfipInvoiceModal({
     const s = serviceAmount ?? 0;
     return Math.round((s + productsSubtotal) * 100) / 100;
   }, [serviceAmount, productsSubtotal]);
+
+  const wouldExceedLimit = useMemo(() => {
+    if (!barberUsage?.annualLimit || barberUsage.annualLimit <= 0) return false;
+    return barberUsage.invoicedTotal + total > barberUsage.annualLimit;
+  }, [barberUsage, total]);
 
   const addLine = () => {
     setError('');
@@ -164,6 +202,30 @@ export default function AfipInvoiceModal({
         <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5">
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          )}
+
+          {!barberId && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Este turno no tiene barbero asignado. Asignalo en la agenda antes de facturar para controlar el monotributo.
+            </div>
+          )}
+
+          {barberId && (
+            <BarberMonotributoLimitsPanel
+              usage={barberUsage ? [barberUsage] : []}
+              year={usageYear}
+              loading={usageLoading}
+              compact
+              highlightBarberId={barberId}
+              previewAdditionalAmount={total}
+            />
+          )}
+
+          {wouldExceedLimit && (
+            <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
+              Este comprobante supera el tope anual de monotributo del barbero. Ajustá el importe o actualizá el límite en
+              Configuración.
+            </div>
           )}
 
           <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-4 py-3 text-sm">
@@ -271,7 +333,7 @@ export default function AfipInvoiceModal({
             </button>
             <button
               type="submit"
-              disabled={submitting || serviceAmount == null}
+              disabled={submitting || serviceAmount == null || wouldExceedLimit || !barberId}
               className="flex-1 rounded-xl bg-zinc-900 py-3 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
             >
               {submitting ? 'Emitiendo…' : 'Emitir factura'}
