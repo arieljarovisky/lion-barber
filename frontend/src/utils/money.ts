@@ -32,6 +32,13 @@ export function formatArs(n: number): string {
   return n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Misma lógica que el backend al crear la preferencia de seña en Mercado Pago. */
+export function calculateDepositAmountArs(servicePriceArs: number, depositPercent: number): number {
+  const raw = (servicePriceArs * depositPercent) / 100;
+  const rounded = Math.round(raw);
+  return Math.max(1, rounded);
+}
+
 /** Importe del servicio del turno según catálogo (misma lógica que AFIP en backend). */
 export function resolveAppointmentServiceAmountArs(app: Appointment, services: Service[]): number | null {
   if (app.serviceId) {

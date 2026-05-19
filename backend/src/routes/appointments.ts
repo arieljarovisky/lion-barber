@@ -20,6 +20,19 @@ import {
 import { isRealClientEmail, sendAppointmentScheduledEmail } from '../services/email.js';
 import { findUserById } from '../repositories/users.js';
 import type { Appointment } from '../types.js';
+import { parseServicePaymentMethod, parseServicePaymentSplits } from '../servicePaymentMethod.js';
+import type { ServicePaymentSplit } from '../types.js';
+
+function parseSplitsBodyField(raw: unknown): ServicePaymentSplit[] | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  const parsed = parseServicePaymentSplits(raw);
+  if (!parsed) {
+    if (Array.isArray(raw) && raw.length === 0) return null;
+    return null;
+  }
+  return parsed;
+}
 
 const router = Router();
 
@@ -275,15 +288,59 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
         return res.status(403).json({ error: 'No autorizado' });
       }
     }
-    const payload =
-      authReq.user!.role === 'staff'
-        ? (() => {
-            const b = { ...req.body } as Record<string, unknown>;
-            delete b.barberId;
-            delete b.barber;
-            return b;
-          })()
-        : req.body;
+    const body = req.body as Record<string, unknown>;
+    let payload: Partial<Appointment>;
+    if (authReq.user!.role === 'staff') {
+      payload = {};
+      if ('servicePaymentSplits' in body) {
+        const parsed = parseSplitsBodyField(body.servicePaymentSplits);
+        if (body.servicePaymentSplits != null && parsed === null && !Array.isArray(body.servicePaymentSplits)) {
+          return res.status(400).json({ error: 'Cobros por método no válidos' });
+        }
+        payload.servicePaymentSplits = parsed ?? null;
+      }
+      if ('servicePaymentMethod' in body) {
+        const raw = body.servicePaymentMethod;
+        payload.servicePaymentMethod =
+          raw === null || raw === ''
+            ? null
+            : parseServicePaymentMethod(raw) ?? undefined;
+        if (raw != null && raw !== '' && payload.servicePaymentMethod === undefined) {
+          return res.status(400).json({ error: 'Método de pago no válido' });
+        }
+      }
+      const allowedStaff = ['name', 'phone', 'service', 'serviceId', 'date', 'time', 'durationMinutes'];
+      for (const key of allowedStaff) {
+        if (key in body) (payload as Record<string, unknown>)[key] = body[key];
+      }
+    } else {
+      payload = { ...body } as Partial<Appointment>;
+      delete (payload as Record<string, unknown>).servicePaymentSplits;
+      delete (payload as Record<string, unknown>).servicePaymentMethod;
+      if ('servicePaymentSplits' in body) {
+        const parsed = parseSplitsBodyField(body.servicePaymentSplits);
+        if (
+          body.servicePaymentSplits != null &&
+          parsed === null &&
+          !(Array.isArray(body.servicePaymentSplits) && body.servicePaymentSplits.length === 0)
+        ) {
+          return res.status(400).json({ error: 'Cobros por método no válidos' });
+        }
+        payload.servicePaymentSplits = parsed ?? null;
+      }
+      if ('servicePaymentMethod' in body) {
+        const raw = body.servicePaymentMethod;
+        if (raw === null || raw === '') {
+          payload.servicePaymentMethod = null;
+        } else {
+          const parsed = parseServicePaymentMethod(raw);
+          if (!parsed) {
+            return res.status(400).json({ error: 'Método de pago no válido' });
+          }
+          payload.servicePaymentMethod = parsed;
+        }
+      }
+    }
     const updated = await repo.updateAppointment(req.params.id, payload);
     if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
     res.json(updated);

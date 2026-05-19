@@ -3,6 +3,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import ClientView from './pages/ClientView';
 import Dashboard from './pages/Dashboard';
 import BarberStatsPage from './pages/BarberStatsPage';
+import WeeklyCashClosePage from './pages/WeeklyCashClosePage';
 import AdminClientsListPage from './pages/AdminClientsListPage';
 import AdminClientDetailPage from './pages/AdminClientDetailPage';
 import Login from './pages/Login';
@@ -45,6 +46,14 @@ export default function App() {
             element={
               <ProtectedRoute dashboardAccess adminOnly>
                 <BarberStatsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/cierre-caja"
+            element={
+              <ProtectedRoute dashboardAccess adminOnly>
+                <WeeklyCashClosePage />
               </ProtectedRoute>
             }
           />

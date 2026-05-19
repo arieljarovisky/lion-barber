@@ -1,6 +1,7 @@
 import { mysqlDatetimeUtcNaiveFromDate, mysqlUtcNaiveToIsoInstant } from '../mysqlUtcDatetime.js';
 import pool, { query } from '../db.js';
-import type { AfipInvoiceDetail, Appointment, AppointmentStatus } from '../types.js';
+import type { AfipInvoiceDetail, Appointment, AppointmentStatus, ServicePaymentMethod } from '../types.js';
+import { parseServicePaymentMethod, parseServicePaymentSplits } from '../servicePaymentMethod.js';
 import * as userRepo from './users.js';
 import { getBarberById, getAllBarbers } from './barbers.js';
 import { getServiceById } from './services.js';
@@ -63,6 +64,8 @@ interface DbAppointment {
   afip_facturado_at?: string | null;
   afip_invoice_detail?: string | null;
   reminder_1h_sent?: number;
+  service_payment_method?: string | null;
+  service_payment_splits?: string | unknown | null;
 }
 
 function parseAfipDetail(raw: string | null | undefined): AfipInvoiceDetail | undefined {
@@ -100,6 +103,8 @@ function rowToAppointment(row: DbAppointment): Appointment {
     afipPtoVta: row.afip_pto_vta != null ? Number(row.afip_pto_vta) : undefined,
     afipFacturadoAt: mysqlUtcNaiveToIsoInstant(row.afip_facturado_at) ?? undefined,
     afipInvoiceDetail: parseAfipDetail(row.afip_invoice_detail),
+    servicePaymentMethod: parseServicePaymentMethod(row.service_payment_method),
+    servicePaymentSplits: parseServicePaymentSplits(row.service_payment_splits),
   };
 }
 
@@ -454,8 +459,31 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
     barberName = barber?.name ?? updated.barber;
   }
 
+  let servicePaymentSplits =
+    data.servicePaymentSplits !== undefined
+      ? parseServicePaymentSplits(data.servicePaymentSplits)
+      : current.servicePaymentSplits ?? null;
+
+  let servicePaymentMethod: ServicePaymentMethod | null = null;
+  if (data.servicePaymentMethod !== undefined) {
+    servicePaymentMethod = parseServicePaymentMethod(data.servicePaymentMethod);
+    if (data.servicePaymentSplits === undefined && servicePaymentMethod) {
+      servicePaymentSplits = null;
+    }
+  } else if (data.servicePaymentSplits !== undefined) {
+    servicePaymentMethod =
+      servicePaymentSplits?.length === 1 ? servicePaymentSplits[0].method : null;
+  } else {
+    servicePaymentMethod = parseServicePaymentMethod(current.servicePaymentMethod);
+  }
+
+  const splitsJson =
+    servicePaymentSplits && servicePaymentSplits.length > 0
+      ? JSON.stringify(servicePaymentSplits)
+      : null;
+
   await query(
-    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?
+    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?
      WHERE id = ?`,
     [
       updated.name,
@@ -470,6 +498,8 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       updated.depositPaid ? 1 : 0,
       updated.status ?? 'scheduled',
       updated.paymentDueAt ?? null,
+      servicePaymentMethod,
+      splitsJson,
       id,
     ]
   );

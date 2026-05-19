@@ -284,6 +284,20 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute(
+      "ALTER TABLE appointments ADD COLUMN service_payment_method VARCHAR(32) NULL"
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE appointments ADD COLUMN service_payment_splits JSON NULL'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
 
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS shop_settings (

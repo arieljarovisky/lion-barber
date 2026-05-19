@@ -34,6 +34,7 @@ import {
   AlertCircle,
   Receipt,
   MessageCircle,
+  Banknote,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,6 +46,8 @@ import ShopProductsPanel from '../components/ShopProductsPanel';
 import ProductPointsPanel from '../components/ProductPointsPanel';
 import BillingPanel from '../components/BillingPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
+import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplitsModal';
+import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError } from '../api';
 import { resolveAppointmentServiceAmountArs } from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
@@ -58,8 +61,14 @@ import type {
   ShopProduct,
   AdminClientWithHistory,
   type PointsRedemptionOption,
+  type ServicePaymentSplit,
 } from '../api';
-
+import {
+  appointmentLocalPendingArs,
+  cleanServicePaymentSplits,
+  formatServicePaymentSplits,
+  initialSplitsFromAppointment,
+} from '../utils/servicePaymentMethod';
 function normalizePhoneDigits(phone: string): string {
   return phone.replace(/\D/g, '');
 }
@@ -355,7 +364,16 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', service: '', barberId: '', date: '', time: '' });
+  const [form, setForm] = useState({
+    name: '',
+    phone: '',
+    service: '',
+    barberId: '',
+    date: '',
+    time: '',
+    servicePaymentSplits: [] as ServicePaymentSplit[],
+  });
+  const [paymentSplitsModalApp, setPaymentSplitsModalApp] = useState<Appointment | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   /** Solo admin — modal nueva cita: '' | 'new' | id de cliente */
@@ -1113,6 +1131,7 @@ export default function Dashboard() {
       barberId: defaultBarber,
       date: dateStr,
       time: agendaTimeSlots[0] ?? '10:00',
+      servicePaymentSplits: [],
     });
     setError('');
     setModalOpen(true);
@@ -1132,6 +1151,7 @@ export default function Dashboard() {
       barberId: defaultBarber,
       date: slotDateStr,
       time: slotTime,
+      servicePaymentSplits: [],
     });
     setError('');
     setModalOpen(true);
@@ -1149,9 +1169,44 @@ export default function Dashboard() {
       barberId,
       date: app.date,
       time: app.time,
+      servicePaymentSplits: initialSplitsFromAppointment(app, services, shopDepositPercent),
     });
     setError('');
     setModalOpen(true);
+  };
+
+  const patchAppointmentInState = useCallback((updated: Appointment) => {
+    setAppointments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+  }, []);
+
+  const renderPaymentSplitsTrigger = (app: Appointment, compact?: boolean) => {
+    if (app.status !== 'scheduled') return null;
+    const local = appointmentLocalPendingArs(app, services, shopDepositPercent);
+    const label = formatServicePaymentSplits(
+      app.servicePaymentSplits,
+      app.servicePaymentMethod,
+      local
+    );
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setPaymentSplitsModalApp(app);
+        }}
+        className={
+          compact
+            ? 'mt-1.5 w-full max-w-full rounded-lg border border-zinc-200 bg-white px-2 py-1 text-left text-[10px] font-semibold text-zinc-800 hover:border-[#e5c185] hover:bg-amber-50/80 truncate'
+            : 'w-full max-w-[11rem] rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-left text-[11px] font-semibold text-zinc-800 hover:border-[#e5c185] hover:bg-amber-50/80'
+        }
+        title="Registrar cobros (varios métodos)"
+      >
+        <span className="inline-flex items-center gap-1 truncate">
+          <Banknote size={compact ? 12 : 14} className="shrink-0 text-[#b39055]" />
+          <span className="truncate">{label}</span>
+        </span>
+      </button>
+    );
   };
 
   const closeModal = () => {
@@ -1171,7 +1226,7 @@ export default function Dashboard() {
     const barber = barbers.find((b) => b.id === effectiveBarberId);
     try {
       if (editingAppointment) {
-        await api.updateAppointment(editingAppointment.id, {
+        const updated = await api.updateAppointment(editingAppointment.id, {
           name: form.name,
           phone: form.phone,
           service: serviceName,
@@ -1179,7 +1234,9 @@ export default function Dashboard() {
           barberId: effectiveBarberId,
           date: form.date,
           time: form.time,
+          servicePaymentSplits: cleanServicePaymentSplits(form.servicePaymentSplits),
         });
+        patchAppointmentInState(updated);
       } else {
         let userId: number | undefined;
         let nameForApp = form.name.trim();
@@ -1498,6 +1555,10 @@ export default function Dashboard() {
     }
     if (panel === 'estadisticas') {
       navigate('/dashboard/estadisticas');
+      return;
+    }
+    if (panel === 'cierreCaja') {
+      navigate('/dashboard/cierre-caja');
       return;
     }
     setView(panel);
@@ -1921,6 +1982,7 @@ export default function Dashboard() {
                                   >
                                     {getAppointmentPaymentBadge(app).label}
                                   </span>
+                                  {renderPaymentSplitsTrigger(app, true)}
                                   <p className="text-zinc-500 text-[10px] mt-0.5 tabular-nums">
                                     {normalizeAppointmentTime(app.time)} – {endClock} · {dm} min
                                   </p>
@@ -2397,21 +2459,24 @@ export default function Dashboard() {
                     </div>
 
                     {/* Estado pago + AFIP */}
-                    <div className="flex flex-wrap items-center gap-1.5 sm:w-40 sm:flex-shrink-0 sm:flex-nowrap">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${badge.className}`}
-                      >
-                        {badge.label}
-                      </span>
-                      {showAfipBlock && app.afipCae && (
+                    <div className="flex flex-col gap-1.5 sm:w-44 sm:flex-shrink-0">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
                         <span
-                          className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-800"
-                          title={`AFIP ${app.afipPtoVta}-${app.afipCbteNro} · CAE ${app.afipCae}${app.afipCaeVto ? ` · vto ${app.afipCaeVto}` : ''}`}
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${badge.className}`}
                         >
-                          <Receipt size={11} className="shrink-0" />
-                          <span className="tabular-nums">#{app.afipCbteNro}</span>
+                          {badge.label}
                         </span>
-                      )}
+                        {showAfipBlock && app.afipCae && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-800"
+                            title={`AFIP ${app.afipPtoVta}-${app.afipCbteNro} · CAE ${app.afipCae}${app.afipCaeVto ? ` · vto ${app.afipCaeVto}` : ''}`}
+                          >
+                            <Receipt size={11} className="shrink-0" />
+                            <span className="tabular-nums">#{app.afipCbteNro}</span>
+                          </span>
+                        )}
+                      </div>
+                      {renderPaymentSplitsTrigger(app)}
                     </div>
 
                     {/* Acciones (ancho fijo para mantener alineación entre filas) */}
@@ -3164,6 +3229,18 @@ export default function Dashboard() {
         />
       )}
 
+      <AppointmentPaymentSplitsModal
+        app={paymentSplitsModalApp}
+        services={services}
+        depositPercent={shopDepositPercent}
+        onClose={() => setPaymentSplitsModalApp(null)}
+        onSaved={(updated) => {
+          patchAppointmentInState(updated);
+          showToast('Cobros guardados', 'ok');
+        }}
+        onError={(msg) => showToast(msg, 'err')}
+      />
+
       {/* Modal crear/editar cita */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto" onClick={closeModal}>
@@ -3410,6 +3487,30 @@ export default function Dashboard() {
                 ) : null}
                 </div>
               </div>
+              {editingAppointment &&
+                editingAppointment.status !== 'cancelled' &&
+                editingAppointment.status !== 'pending_payment' && (
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                      Cobros del servicio en local
+                    </label>
+                    <ServicePaymentSplitsEditor
+                      splits={form.servicePaymentSplits}
+                      onChange={(servicePaymentSplits) =>
+                        setForm((f) => ({ ...f, servicePaymentSplits }))
+                      }
+                      expectedLocalAmount={appointmentLocalPendingArs(
+                        editingAppointment,
+                        services,
+                        shopDepositPercent
+                      )}
+                    />
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Combiná métodos y montos hasta cubrir el saldo en local. La seña por Mercado Pago no se incluye
+                      acá.
+                    </p>
+                  </div>
+                )}
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"

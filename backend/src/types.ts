@@ -1,5 +1,12 @@
 export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
+export type ServicePaymentMethod = 'cash' | 'card' | 'transfer' | 'mercadopago';
+
+export interface ServicePaymentSplit {
+  method: ServicePaymentMethod;
+  amount: number;
+}
+
 export interface Appointment {
   id: string;
   userId?: number;
@@ -27,6 +34,10 @@ export interface Appointment {
   afipFacturadoAt?: string;
   /** Detalle guardado al emitir (servicio + productos). */
   afipInvoiceDetail?: AfipInvoiceDetail;
+  /** @deprecated Usar servicePaymentSplits. Un solo método (datos viejos). */
+  servicePaymentMethod?: ServicePaymentMethod | null;
+  /** Cobro del saldo en local repartido entre métodos (suma de montos). */
+  servicePaymentSplits?: ServicePaymentSplit[] | null;
 }
 
 /** Desglose persistido al facturar con AFIP. */

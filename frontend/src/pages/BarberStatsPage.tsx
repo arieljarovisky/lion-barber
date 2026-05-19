@@ -52,6 +52,10 @@ export default function BarberStatsPage() {
         navigate('/dashboard/estadisticas');
         return;
       }
+      if (panel === 'cierreCaja') {
+        navigate('/dashboard/cierre-caja');
+        return;
+      }
       navigate('/dashboard', { state: { openView: panel } });
     },
     [navigate]

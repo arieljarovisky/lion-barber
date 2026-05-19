@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Calendar as CalendarIcon,
   BarChart3,
+  Wallet,
   Package,
   Ban,
   UserPlus,
@@ -25,6 +26,7 @@ export type DashboardPanelId =
   | 'productos'
   | 'facturacion'
   | 'estadisticas'
+  | 'cierreCaja'
   | 'equipo'
   | 'clientes'
   | 'configuracion';
@@ -179,6 +181,20 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             >
               <BarChart3 size={18} className="flex-shrink-0" />
               Estadísticas
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => go('cierreCaja')}
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+                activePanel === 'cierreCaja'
+                  ? 'bg-[#e5c185] text-zinc-950'
+                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              <Wallet size={18} className="flex-shrink-0" />
+              Cierre de caja
             </button>
           )}
           {isAdmin && (

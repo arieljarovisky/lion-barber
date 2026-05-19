@@ -73,6 +73,13 @@ export const ANY_BARBER_ID = '__any__';
 
 export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
+export type ServicePaymentMethod = 'cash' | 'card' | 'transfer' | 'mercadopago';
+
+export interface ServicePaymentSplit {
+  method: ServicePaymentMethod;
+  amount: number;
+}
+
 export interface Appointment {
   id: string;
   /** Usuario cliente vinculado (si reserv? con cuenta o turno manual enlazado). */
@@ -101,6 +108,10 @@ export interface Appointment {
   afipFacturadoAt?: string;
   /** Desglose guardado al emitir AFIP */
   afipInvoiceDetail?: AfipInvoiceDetail;
+  /** @deprecated Usar servicePaymentSplits */
+  servicePaymentMethod?: ServicePaymentMethod | null;
+  /** Cobro del saldo en local combinando métodos (cada línea: método + monto ARS). */
+  servicePaymentSplits?: ServicePaymentSplit[] | null;
 }
 
 export interface AfipInvoiceDetail {
