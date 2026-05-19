@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Printer, Wallet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Printer, Wallet } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api } from '../api';
 import type { Appointment, Barber, Service } from '../api';
@@ -16,6 +16,11 @@ import {
   SERVICE_PAYMENT_METHOD_LABELS,
   formatServicePaymentSplits,
 } from '../utils/servicePaymentMethod';
+import {
+  exportWeeklyCashCloseExcel,
+  exportWeeklyCashClosePdf,
+  type WeeklyCashCloseExportData,
+} from '../utils/weeklyCashCloseExport';
 
 export default function WeeklyCashClosePage() {
   const navigate = useNavigate();
@@ -26,6 +31,7 @@ export default function WeeklyCashClosePage() {
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [depositPercent, setDepositPercent] = useState(30);
+  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
 
   const { start, end, fromYmd, toYmd } = useMemo(() => weekBoundsFromAnchor(weekAnchor), [weekAnchor]);
   const weekLabel = useMemo(() => formatWeekLabel(start, end), [start, end]);
@@ -78,8 +84,39 @@ export default function WeeklyCashClosePage() {
     [appointments, services, barbers, depositPercent, start, end]
   );
 
+  const exportData = useMemo<WeeklyCashCloseExportData>(
+    () => ({
+      weekLabel,
+      fromYmd,
+      toYmd,
+      depositPercent,
+      summary,
+      byBarber,
+      rows,
+    }),
+    [weekLabel, fromYmd, toYmd, depositPercent, summary, byBarber, rows]
+  );
+
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleExportExcel = () => {
+    setExporting('excel');
+    try {
+      exportWeeklyCashCloseExcel(exportData);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportPdf = () => {
+    setExporting('pdf');
+    try {
+      exportWeeklyCashClosePdf(exportData);
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
@@ -91,6 +128,17 @@ export default function WeeklyCashClosePage() {
           aside { display: none !important; }
           main.lg\\:ml-64 { margin-left: 0 !important; }
           main { padding: 1rem !important; max-width: 100% !important; }
+          .cash-close-table-wrap {
+            overflow: visible !important;
+            max-height: none !important;
+          }
+          .cash-close-table-wrap table {
+            min-width: 0 !important;
+            width: 100% !important;
+            font-size: 9px !important;
+          }
+          section { break-inside: avoid; page-break-inside: avoid; }
+          .cash-close-detail-section { break-inside: auto; page-break-inside: auto; }
         }
         .print-only { display: none; }
       `}</style>
@@ -139,8 +187,27 @@ export default function WeeklyCashClosePage() {
               </button>
               <button
                 type="button"
+                disabled={loading || exporting !== null}
+                onClick={handleExportExcel}
+                className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                <FileSpreadsheet size={16} />
+                {exporting === 'excel' ? 'Generando…' : 'Excel'}
+              </button>
+              <button
+                type="button"
+                disabled={loading || exporting !== null}
+                onClick={handleExportPdf}
+                className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-900 hover:bg-red-100 disabled:opacity-50"
+              >
+                <FileText size={16} />
+                {exporting === 'pdf' ? 'Generando…' : 'PDF'}
+              </button>
+              <button
+                type="button"
+                disabled={loading}
                 onClick={handlePrint}
-                className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-bold text-white hover:bg-zinc-800"
+                className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
               >
                 <Printer size={16} />
                 Imprimir
@@ -219,7 +286,7 @@ export default function WeeklyCashClosePage() {
                     Saldo estimado (servicio − seña) según el método registrado en cada turno.
                   </p>
                 </div>
-                <div className="overflow-x-auto p-4">
+                <div className="cash-close-table-wrap overflow-x-auto p-4">
                   <table className="w-full min-w-[480px] text-sm">
                     <thead className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
                       <tr>
@@ -252,7 +319,7 @@ export default function WeeklyCashClosePage() {
                 {byBarber.length === 0 ? (
                   <p className="px-4 py-8 text-center text-sm text-zinc-500">Sin turnos en esta semana.</p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="cash-close-table-wrap overflow-x-auto">
                     <table className="w-full min-w-[720px] text-left text-sm">
                       <thead className="bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
                         <tr>
@@ -304,7 +371,7 @@ export default function WeeklyCashClosePage() {
                 )}
               </section>
 
-              <section className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+              <section className="cash-close-detail-section overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
                 <div className="border-b border-zinc-100 bg-zinc-50/80 px-4 py-3 flex items-center justify-between">
                   <h2 className="font-black text-zinc-900">Detalle de turnos</h2>
                   <span className="text-xs font-bold text-zinc-500">{rows.length} filas</span>
@@ -314,9 +381,9 @@ export default function WeeklyCashClosePage() {
                     No hay turnos confirmados en esta semana.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto max-h-[min(50vh,520px)] overflow-y-auto">
+                  <div className="cash-close-table-wrap overflow-x-auto md:max-h-[min(50vh,520px)] md:overflow-y-auto">
                     <table className="w-full min-w-[960px] text-left text-sm">
-                      <thead className="sticky top-0 z-10 bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                      <thead className="bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500 md:sticky md:top-0 md:z-10">
                         <tr>
                           <th className="px-3 py-2">Fecha</th>
                           <th className="px-3 py-2">Hora</th>
