@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard } from 'lucide-react';
+import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle, RefreshCw } from 'lucide-react';
+import { BOOKING_FALLBACK_WHATSAPP_URL, checkBackendHealth } from '../utils/backendHealth';
 import { api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
@@ -138,8 +139,10 @@ export default function ClientView() {
   const [closedDates, setClosedDates] = useState<string[]>([]);
   const [shopCloseTime, setShopCloseTime] = useState('20:00');
   const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
+  const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
+  const [backendRechecking, setBackendRechecking] = useState(false);
 
-  useEffect(() => {
+  const loadBookingCatalog = () => {
     api.getServices().then(setServices).catch(() => setServices([]));
     api.getBarbers().then(setBarbers).catch(() => setBarbers([]));
     api
@@ -156,6 +159,26 @@ export default function ClientView() {
         setShopWeekdayHours(next);
       })
       .catch(() => {});
+  };
+
+  const recheckBackend = async () => {
+    setBackendRechecking(true);
+    const ok = await checkBackendHealth();
+    setBackendReachable(ok);
+    setBackendRechecking(false);
+    if (ok) loadBookingCatalog();
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    void checkBackendHealth().then((ok) => {
+      if (cancelled) return;
+      setBackendReachable(ok);
+      if (ok) loadBookingCatalog();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Booking state
@@ -747,7 +770,7 @@ export default function ClientView() {
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black uppercase tracking-tight mb-2 text-white">Reserva tu lugar</h2>
               <p className="text-sm sm:text-base text-zinc-400 mb-8 sm:mb-10 font-sans font-light">Completa los datos para agendar tu próximo corte.</p>
 
-              {!profile && (
+              {backendReachable !== false && !profile && (
                 <div className="mb-6 p-4 rounded-xl border border-amber-500/40 bg-amber-950/30 text-amber-100/90 text-sm">
                   Para confirmar el turno con la seña online tenés que{' '}
                   <Link to="/login" state={{ from: { pathname: '/', hash: '#reserva' } }} className="font-bold text-[#e5c185] underline underline-offset-2 hover:text-[#d4b074]">
@@ -757,11 +780,46 @@ export default function ClientView() {
                 </div>
               )}
 
-              {bookingError && (
+              {bookingError && backendReachable && (
                 <div className="mb-6 p-4 bg-red-950/30 border border-red-500/30 rounded-xl text-red-400 text-sm">{bookingError}</div>
               )}
 
-              {bookingSuccess ? (
+              {backendReachable === null ? (
+                <div className="rounded-xl sm:rounded-2xl border border-zinc-800 bg-zinc-900/50 p-10 sm:p-12 text-center">
+                  <p className="text-zinc-400 text-sm font-sans">Comprobando disponibilidad del sistema…</p>
+                </div>
+              ) : backendReachable === false && !bookingSuccess ? (
+                <div className="rounded-xl sm:rounded-2xl border border-amber-500/40 bg-amber-950/25 p-8 sm:p-12 text-center">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-amber-500/15 rounded-full flex items-center justify-center mx-auto mb-5 sm:mb-6 text-amber-400">
+                    <AlertTriangle size={36} className="sm:w-10 sm:h-10" aria-hidden />
+                  </div>
+                  <h3 className="text-2xl sm:text-3xl font-serif font-black text-white mb-3 uppercase tracking-tight">
+                    Sistema caído
+                  </h3>
+                  <p className="text-amber-100/85 text-base sm:text-lg font-sans max-w-md mx-auto leading-relaxed">
+                    La reserva online no está disponible en este momento. Reservá tu turno por WhatsApp y te respondemos a la
+                    brevedad.
+                  </p>
+                  <a
+                    href={BOOKING_FALLBACK_WHATSAPP_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-2 mt-8 bg-[#25D366] hover:bg-[#1ebe5d] text-white font-sans font-black uppercase tracking-widest px-8 py-4 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-900/30"
+                  >
+                    <Phone size={20} aria-hidden />
+                    Reservar por WhatsApp
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void recheckBackend()}
+                    disabled={backendRechecking}
+                    className="mt-6 inline-flex items-center justify-center gap-2 text-sm text-zinc-400 hover:text-[#e5c185] disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw size={16} className={backendRechecking ? 'animate-spin' : ''} aria-hidden />
+                    {backendRechecking ? 'Comprobando…' : 'Reintentar conexión'}
+                  </button>
+                </div>
+              ) : bookingSuccess ? (
                 <div className="bg-emerald-950/30 border border-emerald-500/20 rounded-xl sm:rounded-2xl p-8 sm:p-12 text-center animate-in fade-in zoom-in duration-500">
                   <div className="w-16 h-16 sm:w-20 sm:h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 text-emerald-400">
                     <CheckCircle2 size={32} className="sm:w-10 sm:h-10" />
