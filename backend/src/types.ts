@@ -16,6 +16,8 @@ export interface Appointment {
   serviceId?: string;
   barber?: string;
   barberId?: string;
+  /** El cliente eligió "cualquier barbero" al reservar (barberId ya está asignado). */
+  clientChoseAnyBarber?: boolean;
   date: string;
   time: string;
   /** Duración reservada en minutos (para evitar solapamientos). */

@@ -13,11 +13,19 @@ function fmtDate(ymd: string): string {
   return `${d}/${m}/${y}`;
 }
 
+function formatBarberLine(app: Appointment): string {
+  const assigned = app.barber ?? app.barberId ?? '-';
+  if (app.clientChoseAnyBarber) {
+    return `Barbero: Sin preferencia (asignado: ${assigned})`;
+  }
+  return `Barbero: ${assigned}`;
+}
+
 function appointmentBaseLines(app: Appointment): string[] {
   return [
     `Cliente: ${app.name}`,
     `Servicio: ${app.service}`,
-    `Barbero: ${app.barber ?? app.barberId ?? '-'}`,
+    formatBarberLine(app),
     `Fecha: ${fmtDate(app.date)}`,
     `Hora: ${app.time}`,
     `Telefono: ${app.phone}`,
@@ -49,7 +57,7 @@ function buildAppointmentRescheduledMessage(prev: Appointment, next: Appointment
     '',
     `Cliente: ${next.name}`,
     `Servicio: ${next.service}`,
-    `Barbero: ${next.barber ?? next.barberId ?? '-'}`,
+    formatBarberLine(next),
     `Antes: ${fmtDate(prev.date)} ${prev.time}`,
     `Ahora: ${fmtDate(next.date)} ${next.time}`,
     `Telefono: ${next.phone}`,

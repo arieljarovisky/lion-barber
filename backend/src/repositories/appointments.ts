@@ -66,6 +66,7 @@ interface DbAppointment {
   reminder_1h_sent?: number;
   service_payment_method?: string | null;
   service_payment_splits?: string | unknown | null;
+  client_chose_any_barber?: number;
 }
 
 function parseAfipDetail(raw: string | null | undefined): AfipInvoiceDetail | undefined {
@@ -90,6 +91,7 @@ function rowToAppointment(row: DbAppointment): Appointment {
     serviceId: row.service_id ?? undefined,
     barber: row.barber ?? undefined,
     barberId: row.barber_id ?? undefined,
+    clientChoseAnyBarber: Boolean(row.client_chose_any_barber),
     date: rowDateToYmd(row.date),
     time: rowTimeToHHmm(row.time),
     durationMinutes: row.duration_minutes ?? 30,
@@ -359,6 +361,7 @@ export async function getEarliestAvailableAnyBarber(
 export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<Appointment> {
   await expireStalePendingAppointments();
   let barberId = data.barberId;
+  const clientChoseAnyBarber = barberId === ANY_BARBER_ID;
   const durationMinutes = data.durationMinutes ?? (await resolveDurationMinutes(data.serviceId, data.service));
   const { closeTime, weekdayHours, closedDates } = await getShopSettings();
   if (isDateClosed(data.date, closedDates)) {
@@ -391,8 +394,8 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
   const paymentDueAt = data.paymentDueAt ?? null;
 
   const [res] = await pool.execute(
-    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, date, time, duration_minutes, deposit_paid, mercadopago_payment_id, status, payment_due_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, client_chose_any_barber, date, time, duration_minutes, deposit_paid, mercadopago_payment_id, status, payment_due_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.userId ?? null,
       data.name,
@@ -401,6 +404,7 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
       serviceId,
       barberName,
       barberId ?? null,
+      clientChoseAnyBarber ? 1 : 0,
       data.date,
       data.time,
       durationMinutes,
