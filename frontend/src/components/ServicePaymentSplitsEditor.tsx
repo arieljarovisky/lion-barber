@@ -5,7 +5,6 @@ import {
   SERVICE_PAYMENT_METHOD_LABELS,
   sumServicePaymentSplits,
 } from '../utils/servicePaymentMethod';
-import MercadoPagoLogo from './MercadoPagoLogo';
 import { formatArs } from '../utils/money';
 
 type Props = {
@@ -63,7 +62,6 @@ export default function ServicePaymentSplitsEditor({
         splits.map((row, index) => (
           <div key={`${row.method}-${index}`} className={rowClass}>
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              {row.method === 'mercadopago' && <MercadoPagoLogo size="xs" />}
               <select
               value={row.method}
               disabled={disabled}

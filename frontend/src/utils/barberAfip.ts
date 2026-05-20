@@ -56,7 +56,7 @@ export function resolveBarberForAppointment(
 }
 
 export function isBarberAfipReady(barber: Barber | undefined | null): boolean {
-  return Boolean(barber?.afipCredentialsConfigured && bar.afipCuit);
+  return Boolean(barber?.afipCredentialsConfigured && barber.afipCuit);
 }
 
 export function canInvoiceAppointmentAfip(

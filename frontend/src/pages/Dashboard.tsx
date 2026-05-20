@@ -50,7 +50,6 @@ import BillingPanel from '../components/BillingPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplitsModal';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
-import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError, downloadDatabaseBackup } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
@@ -1205,10 +1204,6 @@ export default function Dashboard() {
       app.servicePaymentMethod,
       local
     );
-    const showMpLogo =
-      app.depositPaid ||
-      app.servicePaymentMethod === 'mercadopago' ||
-      app.servicePaymentSplits?.some((s) => s.method === 'mercadopago');
     return (
       <button
         type="button"
@@ -1224,11 +1219,7 @@ export default function Dashboard() {
         title="Registrar cobros (varios métodos)"
       >
         <span className="inline-flex items-center gap-1 truncate">
-          {showMpLogo ? (
-            <MercadoPagoLogo size="xs" />
-          ) : (
-            <Banknote size={compact ? 12 : 14} className="shrink-0 text-[#b39055]" />
-          )}
+          <Banknote size={compact ? 12 : 14} className="shrink-0 text-[#b39055]" />
           <span className="truncate">{label}</span>
         </span>
       </button>
