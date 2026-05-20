@@ -3,6 +3,7 @@ import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, FileDown, Loader2, Receipt, Search, SlidersHorizontal } from 'lucide-react';
 import type { Appointment, Barber, Service } from '../api';
+import { canInvoiceAppointmentAfip, resolveBarberForAppointment } from '../utils/barberAfip';
 import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
 import { printLionBarberInvoice } from '../utils/invoicePrint';
 import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
@@ -19,8 +20,7 @@ type BillingPanelProps = {
   barbers: Barber[];
   loading: boolean;
   afipConfigured: boolean;
-  afipEmitterCuit?: string | null;
-  afipCbteTipo?: number;
+  afipReadyCount?: number;
   invoicingId: string | null;
   bulkInvoicing?: boolean;
   onInvoiceClick: (app: Appointment) => void;
@@ -36,8 +36,7 @@ export default function BillingPanel({
   barbers,
   loading,
   afipConfigured,
-  afipEmitterCuit,
-  afipCbteTipo,
+  afipReadyCount = 0,
   invoicingId,
   bulkInvoicing = false,
   onInvoiceClick,
@@ -86,13 +85,25 @@ export default function BillingPanel({
   const startIdx = (pageClamped - 1) * pageSize;
   const pageRows = rows.slice(startIdx, startIdx + pageSize);
   const selectableRows = useMemo(
-    () => rows.filter((a) => !a.afipCae && resolveAppointmentServiceAmountArs(a, services) != null),
-    [rows, services]
+    () =>
+      rows.filter(
+        (a) =>
+          !a.afipCae &&
+          resolveAppointmentServiceAmountArs(a, services) != null &&
+          canInvoiceAppointmentAfip(a, barbers)
+      ),
+    [rows, services, barbers]
   );
   const selectableIds = useMemo(() => new Set(selectableRows.map((a) => a.id)), [selectableRows]);
   const pageSelectableRows = useMemo(
-    () => pageRows.filter((a) => !a.afipCae && resolveAppointmentServiceAmountArs(a, services) != null),
-    [pageRows, services]
+    () =>
+      pageRows.filter(
+        (a) =>
+          !a.afipCae &&
+          resolveAppointmentServiceAmountArs(a, services) != null &&
+          canInvoiceAppointmentAfip(a, barbers)
+      ),
+    [pageRows, services, barbers]
   );
   const pageSelectableIds = useMemo(() => pageSelectableRows.map((a) => a.id), [pageSelectableRows]);
   const selectedCount = selectedIds.length;
@@ -153,15 +164,8 @@ export default function BillingPanel({
       <div className="max-w-3xl rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-950">
         <p className="font-bold">AFIP no configurado</p>
         <p className="mt-1 text-amber-900/90">
-          Definí <code className="rounded bg-white/80 px-1 text-xs">AFIP_ACCESS_TOKEN</code> y{' '}
-          <code className="rounded bg-white/80 px-1 text-xs">AFIP_CUIT</code> en el servidor; para tu CUIT,
-          sumá certificado y clave con <code className="rounded bg-white/80 px-1 text-xs">AFIP_CERT_PATH</code> +{' '}
-          <code className="rounded bg-white/80 px-1 text-xs">AFIP_KEY_PATH</code> (en el servidor con archivos), o
-          pegá el <strong>contenido PEM completo</strong> (no la ruta del archivo) en{' '}
-          <code className="rounded bg-white/80 px-1 text-xs">AFIP_CERT</code> y{' '}
-          <code className="rounded bg-white/80 px-1 text-xs">AFIP_KEY</code>. Si definís cert/clave a medias, la
-          integración queda inválida hasta completarlas. Monotributo: en el servidor usá{' '}
-          <code className="rounded bg-white/80 px-1 text-xs">AFIP_CBTE_TIPO=11</code> (Factura C).
+          Cada barbero necesita su <strong>access token</strong> de Afip SDK, <strong>CUIT</strong>, certificado y clave ARCA en
+          Configuración. Emiten Factura C a <strong>consumidor final</strong> por el importe completo del turno.
         </p>
       </div>
     );
@@ -178,6 +182,11 @@ export default function BillingPanel({
 
   return (
     <div className="max-w-6xl space-y-4">
+      {afipConfigured && afipReadyCount === 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Ningún barbero tiene AFIP listo. Cargá CUIT y certificado en Configuración para poder facturar.
+        </div>
+      )}
       <BarberMonotributoLimitsPanel
         usage={barberInvoicing}
         year={barberInvoicingYear}
@@ -341,7 +350,8 @@ export default function BillingPanel({
               ) : (
                 pageRows.map((app) => {
                   const amt = resolveAppointmentServiceAmountArs(app, services);
-                  const selectable = !app.afipCae && amt != null;
+                  const selectable = !app.afipCae && amt != null && canInvoiceAppointmentAfip(app, barbers);
+                  const barberForAfip = resolveBarberForAppointment(app, barbers);
                   const checked = selectedIds.includes(app.id);
                   return (
                     <tr key={app.id} className="bg-white hover:bg-zinc-50/80">
@@ -384,8 +394,9 @@ export default function BillingPanel({
                                   appointment: app,
                                   services,
                                   barbers,
-                                  emitterCuit: afipEmitterCuit,
-                                  cbteTipo: afipCbteTipo,
+                                  emitterCuit:
+                                    app.afipInvoiceDetail?.emitterCuit ?? barberForAfip?.afipCuit ?? undefined,
+                                  cbteTipo: barberForAfip?.afipCbteTipo ?? 11,
                                 })
                               }
                               className="inline-flex items-center gap-1 rounded-lg border border-[#b39055]/50 bg-[#fefce8] px-2.5 py-1.5 text-[11px] font-bold text-[#7a5c32] hover:bg-[#fef9c3]"
@@ -398,7 +409,12 @@ export default function BillingPanel({
                             <button
                               type="button"
                               onClick={() => onInvoiceClick(app)}
-                              disabled={invoicingId === app.id || amt == null}
+                              disabled={invoicingId === app.id || amt == null || !canInvoiceAppointmentAfip(app, barbers)}
+                              title={
+                                !canInvoiceAppointmentAfip(app, barbers)
+                                  ? 'Barbero sin AFIP configurado'
+                                  : undefined
+                              }
                               className="inline-flex items-center gap-1 rounded-lg bg-zinc-900 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
                             >
                               <Receipt size={12} />

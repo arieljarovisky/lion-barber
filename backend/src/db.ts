@@ -265,6 +265,36 @@ export async function initDb(): Promise<void> {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
   try {
+    await pool.execute('ALTER TABLE barbers ADD COLUMN afip_cuit VARCHAR(11) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE barbers ADD COLUMN afip_pto_vta SMALLINT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE barbers ADD COLUMN afip_cbte_tipo SMALLINT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE barbers ADD COLUMN afip_cert MEDIUMTEXT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE barbers ADD COLUMN afip_key MEDIUMTEXT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE barbers ADD COLUMN afip_access_token VARCHAR(512) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
     await pool.execute('ALTER TABLE appointments ADD COLUMN afip_cae VARCHAR(20) NULL');
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;

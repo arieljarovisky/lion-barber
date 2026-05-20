@@ -50,6 +50,7 @@ import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplit
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError } from '../api';
 import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { canInvoiceAppointmentAfip } from '../utils/barberAfip';
 import { resolveAppointmentServiceAmountArs } from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
 import type {
@@ -454,8 +455,7 @@ export default function Dashboard() {
   const [redemptionOptions, setRedemptionOptions] = useState<PointsRedemptionOption[]>([]);
   const [redemptionOptionsLoading, setRedemptionOptionsLoading] = useState(false);
   const [afipConfigured, setAfipConfigured] = useState(false);
-  const [afipEmitterCuit, setAfipEmitterCuit] = useState<string | null>(null);
-  const [afipCbteTipo, setAfipCbteTipo] = useState(6);
+  const [afipReadyCount, setAfipReadyCount] = useState(0);
   const [afipInvoiceApp, setAfipInvoiceApp] = useState<Appointment | null>(null);
   const [afipInvoiceBusy, setAfipInvoiceBusy] = useState(false);
   const [billingAppointments, setBillingAppointments] = useState<Appointment[]>([]);
@@ -774,21 +774,18 @@ export default function Dashboard() {
   useEffect(() => {
     if (!isSuperAdmin) {
       setAfipConfigured(false);
-      setAfipEmitterCuit(null);
-      setAfipCbteTipo(6);
+      setAfipReadyCount(0);
       return;
     }
     api
       .getAfipStatus()
       .then((s) => {
         setAfipConfigured(s.configured);
-        setAfipEmitterCuit(s.emitterCuit ?? null);
-        setAfipCbteTipo(typeof s.cbteTipo === 'number' ? s.cbteTipo : 6);
+        setAfipReadyCount(s.readyCount ?? 0);
       })
       .catch(() => {
         setAfipConfigured(false);
-        setAfipEmitterCuit(null);
-        setAfipCbteTipo(6);
+        setAfipReadyCount(0);
       });
   }, [isSuperAdmin]);
 
@@ -2381,10 +2378,13 @@ export default function Dashboard() {
               )}
               {isSuperAdmin && !afipConfigured && (
                 <p className="text-[10px] text-amber-800/90 mt-1 max-w-md">
-                  Facturación AFIP: <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_ACCESS_TOKEN</code>,{' '}
-                  <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_CUIT</code>; cert/clave opcionales salvo tu CUIT
-                  real (<code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_CERT_PATH</code> +{' '}
-                  <code className="text-[10px] bg-zinc-100 px-1 rounded">AFIP_KEY_PATH</code>).
+                  AFIP: cargá en Configuración el <strong>token Afip SDK</strong>, CUIT y certificado de cada barbero.
+                </p>
+              )}
+              {isSuperAdmin && afipConfigured && afipReadyCount === 0 && (
+                <p className="text-[10px] text-amber-800/90 mt-1 max-w-md">
+                  Ningún barbero tiene AFIP listo. Cargá CUIT y certificado ARCA en Configuración (cada uno factura con su CUIT a
+                  consumidor final).
                 </p>
               )}
             </div>
@@ -2420,6 +2420,7 @@ export default function Dashboard() {
                 const phoneHref = phoneDigits ? `https://wa.me/549${phoneDigits}` : null;
                 const waUrl = appointmentNeedsManualContact(app) ? buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate) : null;
                 const showAfipBlock = isSuperAdmin && afipConfigured && app.status !== 'cancelled';
+                const canAfipInvoice = canInvoiceAppointmentAfip(app, barbers);
                 const initials = (app.name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
                 return (
                   <li
@@ -2515,8 +2516,16 @@ export default function Dashboard() {
                         <button
                           type="button"
                           onClick={() => openAfipInvoiceModal(app)}
-                          disabled={afipInvoiceBusy && afipInvoiceApp?.id === app.id}
-                          title={afipInvoiceBusy && afipInvoiceApp?.id === app.id ? 'Facturando…' : 'Facturar AFIP'}
+                          disabled={(afipInvoiceBusy && afipInvoiceApp?.id === app.id) || !canAfipInvoice}
+                          title={
+                            afipInvoiceBusy && afipInvoiceApp?.id === app.id
+                              ? 'Facturando…'
+                              : !canAfipInvoice
+                                ? !app.barberId && !app.barber
+                                  ? 'Asigná un barbero al turno'
+                                  : `Configurá AFIP del barbero ${app.barber ?? ''}`
+                                : 'Facturar AFIP (consumidor final)'
+                          }
                           className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors"
                         >
                           <Receipt size={16} />
@@ -2889,8 +2898,7 @@ export default function Dashboard() {
             barbers={barbers}
             loading={billingLoading}
             afipConfigured={afipConfigured}
-            afipEmitterCuit={afipEmitterCuit}
-            afipCbteTipo={afipCbteTipo}
+            afipReadyCount={afipReadyCount}
             invoicingId={afipInvoiceBusy && afipInvoiceApp ? afipInvoiceApp.id : null}
             bulkInvoicing={afipInvoiceBusy && !afipInvoiceApp}
             onInvoiceClick={openAfipInvoiceModal}
@@ -3319,6 +3327,139 @@ export default function Dashboard() {
                             de ${usage.annualLimit.toLocaleString('es-AR')} ({usage.percentUsed}%)
                           </p>
                         )}
+                        <div className="w-full space-y-2 border-t border-zinc-100 pt-3 mt-2">
+                          <p className="text-[10px] font-bold uppercase text-zinc-500">
+                            AFIP — token propio + CUIT + certificado (consumidor final)
+                          </p>
+                          <div className="w-full max-w-md">
+                            <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
+                              Access token (Afip SDK)
+                            </label>
+                            <input
+                              type="password"
+                              autoComplete="off"
+                              key={`${b.id}-afip-token-${b.afipAccessTokenConfigured}`}
+                              placeholder={b.afipAccessTokenConfigured ? '•••••••• (dejá vacío para no cambiar)' : 'Pegar token de app.afipsdk.com'}
+                              className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-sm font-mono"
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                if (!v) return;
+                                void api
+                                  .updateBarber(b.id, { afipAccessToken: v })
+                                  .then(() => {
+                                    e.target.value = '';
+                                    loadData();
+                                    showToast(`Token Afip SDK de ${b.name} guardado`);
+                                  })
+                                  .catch((err) =>
+                                    showToast(err instanceof Error ? err.message : 'Token inválido', 'err')
+                                  );
+                              }}
+                            />
+                          </div>
+                          <div className="flex flex-wrap items-end gap-3">
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">CUIT</label>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                defaultValue={b.afipCuit ?? ''}
+                                key={`${b.id}-cuit-${b.afipCuit ?? ''}`}
+                                placeholder="11 dígitos"
+                                onBlur={(e) => {
+                                  const next = e.target.value.replace(/\D/g, '');
+                                  const prev = (b.afipCuit ?? '').replace(/\D/g, '');
+                                  if (next === prev) return;
+                                  void api
+                                    .updateBarber(b.id, { afipCuit: next || null })
+                                    .then(() => {
+                                      loadData();
+                                      showToast(`CUIT AFIP de ${b.name} guardado`);
+                                    })
+                                    .catch((err) =>
+                                      showToast(err instanceof Error ? err.message : 'CUIT inválido', 'err')
+                                    );
+                                }}
+                                className="w-36 border border-zinc-200 rounded-lg px-3 py-2 text-sm font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Pto. venta</label>
+                              <input
+                                type="number"
+                                min={1}
+                                max={9999}
+                                defaultValue={b.afipPtoVta ?? 1}
+                                key={`${b.id}-pv-${b.afipPtoVta ?? 1}`}
+                                onBlur={(e) => {
+                                  const v = parseInt(e.target.value, 10);
+                                  if (!Number.isFinite(v) || v === (b.afipPtoVta ?? 1)) return;
+                                  void api
+                                    .updateBarber(b.id, { afipPtoVta: v })
+                                    .then(() => {
+                                      loadData();
+                                      showToast(`Punto de venta de ${b.name} guardado`);
+                                    })
+                                    .catch(() => showToast('Punto de venta inválido', 'err'));
+                                }}
+                                className="w-20 border border-zinc-200 rounded-lg px-3 py-2 text-sm"
+                              />
+                            </div>
+                            <p className="text-xs pb-2">
+                              {b.afipCredentialsConfigured ? (
+                                <span className="text-emerald-700 font-semibold">AFIP listo para facturar</span>
+                              ) : (
+                                <span className="text-amber-800">
+                                  {!b.afipAccessTokenConfigured
+                                    ? 'Falta access token'
+                                    : !b.afipCuit
+                                      ? 'Falta CUIT'
+                                      : 'Falta certificado y clave (.crt / .key en PEM)'}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <textarea
+                            key={`${b.id}-afip-cert-${b.afipCredentialsConfigured}`}
+                            rows={3}
+                            placeholder="Pegar certificado .crt (PEM completo). Dejá vacío si no cambia."
+                            className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-xs font-mono text-zinc-800"
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              if (!v) return;
+                              void api
+                                .updateBarber(b.id, { afipCert: v })
+                                .then(() => {
+                                  e.target.value = '';
+                                  loadData();
+                                  showToast(`Certificado AFIP de ${b.name} guardado`);
+                                })
+                                .catch((err) =>
+                                  showToast(err instanceof Error ? err.message : 'Certificado inválido', 'err')
+                                );
+                            }}
+                          />
+                          <textarea
+                            key={`${b.id}-afip-key-${b.afipCredentialsConfigured}`}
+                            rows={3}
+                            placeholder="Pegar clave privada .key (PEM completo). Dejá vacío si no cambia."
+                            className="w-full border border-zinc-200 rounded-lg px-3 py-2 text-xs font-mono text-zinc-800"
+                            onBlur={(e) => {
+                              const v = e.target.value.trim();
+                              if (!v) return;
+                              void api
+                                .updateBarber(b.id, { afipKey: v })
+                                .then(() => {
+                                  e.target.value = '';
+                                  loadData();
+                                  showToast(`Clave AFIP de ${b.name} guardada`);
+                                })
+                                .catch((err) =>
+                                  showToast(err instanceof Error ? err.message : 'Clave inválida', 'err')
+                                );
+                            }}
+                          />
+                        </div>
                       </div>
                       )}
                     </li>

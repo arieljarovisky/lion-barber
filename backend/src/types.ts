@@ -52,6 +52,9 @@ export interface AfipInvoiceDetail {
     subtotal: number;
   }[];
   total: number;
+  /** CUIT emisor al momento de facturar (barbero del turno). */
+  emitterCuit?: string;
+  emitterBarberId?: string;
 }
 
 export interface Service {
@@ -101,4 +104,13 @@ export interface Barber {
   monotributoCategory?: string | null;
   /** Tope anual de facturación AFIP en ARS (null = sin límite configurado). */
   monotributoAnnualLimit?: number | null;
+  /** CUIT del barbero como emisor AFIP (11 dígitos). */
+  afipCuit?: string | null;
+  afipPtoVta?: number;
+  /** Tipo de comprobante WSFE (11 = Factura C monotributo). */
+  afipCbteTipo?: number;
+  /** Token Afip SDK cargado (no se expone al frontend). */
+  afipAccessTokenConfigured?: boolean;
+  /** CUIT + token + certificado y clave ARCA listos para emitir. */
+  afipCredentialsConfigured?: boolean;
 }

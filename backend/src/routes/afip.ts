@@ -1,10 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
-import {
-  getAfipCertKeyStatus,
-  isAfipConfigured,
-  invoiceAppointmentAfip,
-} from '../services/afipInvoice.js';
+import { getAfipStatusPayload, invoiceAppointmentAfip } from '../services/afipInvoice.js';
 import {
   buildBarberInvoicingUsage,
   currentCalendarYearArgentina,
@@ -12,18 +8,13 @@ import {
 
 const router = Router();
 
-router.get('/status', requireAuth, requireSuperAdmin, (_req, res) => {
-  const configured = isAfipConfigured();
-  const rawCuit = process.env.AFIP_CUIT?.trim();
-  const digits = rawCuit ? String(rawCuit).replace(/\D/g, '') : '';
-  const cbteTipo = Math.min(32767, Math.max(1, parseInt(process.env.AFIP_CBTE_TIPO ?? '6', 10) || 6));
-  res.json({
-    configured,
-    production: process.env.AFIP_PRODUCTION === 'true',
-    certKey: getAfipCertKeyStatus(),
-    emitterCuit: configured && digits.length === 11 ? digits : null,
-    cbteTipo,
-  });
+router.get('/status', requireAuth, requireSuperAdmin, async (_req, res) => {
+  try {
+    res.json(await getAfipStatusPayload());
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Error al consultar estado AFIP' });
+  }
 });
 
 router.get('/barber-invoicing', requireAuth, requireSuperAdmin, async (req, res) => {

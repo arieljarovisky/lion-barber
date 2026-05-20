@@ -125,6 +125,8 @@ export interface AfipInvoiceDetail {
     subtotal: number;
   }[];
   total: number;
+  emitterCuit?: string;
+  emitterBarberId?: string;
 }
 
 export type CancelAppointmentNotice = 'refund_processed' | 'deposit_retained_short_notice' | 'no_deposit';
@@ -182,7 +184,22 @@ export interface Barber {
   commissionPercent?: number;
   monotributoCategory?: string | null;
   monotributoAnnualLimit?: number | null;
+  afipCuit?: string | null;
+  afipPtoVta?: number;
+  afipCbteTipo?: number;
+  afipAccessTokenConfigured?: boolean;
+  afipCredentialsConfigured?: boolean;
 }
+
+export type AfipBarberStatusRow = {
+  id: string;
+  name: string;
+  afipCuit: string | null;
+  afipPtoVta: number;
+  afipCbteTipo: number;
+  afipAccessTokenConfigured: boolean;
+  afipReady: boolean;
+};
 
 export interface ShopSettings {
   cutoffHours: number;
@@ -334,9 +351,9 @@ export const api = {
     fetchApi<{
       configured: boolean;
       production: boolean;
-      certKey: 'absent' | 'ok' | 'bad';
-      emitterCuit: string | null;
-      cbteTipo: number;
+      mode: 'per_barber';
+      barbers: AfipBarberStatusRow[];
+      readyCount: number;
     }>('/api/afip/status'),
 
   getBarberInvoicingUsage: (year?: number) => {
@@ -380,6 +397,12 @@ export const api = {
       commissionPercent?: number;
       monotributoCategory?: string | null;
       monotributoAnnualLimit?: number | null;
+      afipCuit?: string | null;
+      afipPtoVta?: number | null;
+      afipCbteTipo?: number | null;
+      afipCert?: string | null;
+      afipKey?: string | null;
+      afipAccessToken?: string | null;
     }
   ) =>
     fetchApi<Barber>(`/api/barbers/${encodeURIComponent(barberId)}`, {

@@ -23,25 +23,66 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
     whatsappPhone?: string | null;
     monotributoCategory?: string | null;
     monotributoAnnualLimit?: number | null;
+    afipCuit?: string | null;
+    afipPtoVta?: number | null;
+    afipCbteTipo?: number | null;
+    afipCert?: string | null;
+    afipKey?: string | null;
+    afipAccessToken?: string | null;
   };
-  const { commissionPercent, name, whatsappPhone, monotributoCategory, monotributoAnnualLimit } = body;
+  const {
+    commissionPercent,
+    name,
+    whatsappPhone,
+    monotributoCategory,
+    monotributoAnnualLimit,
+    afipCuit,
+    afipPtoVta,
+    afipCbteTipo,
+    afipCert,
+    afipKey,
+    afipAccessToken,
+  } = body;
   const hasName = name != null && String(name).trim().length > 0;
   const hasCommission = commissionPercent != null;
   const hasWhatsapp = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'whatsappPhone');
   const hasMonotributoCategory = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'monotributoCategory');
   const hasMonotributoLimit = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'monotributoAnnualLimit');
-  if (!hasName && !hasCommission && !hasWhatsapp && !hasMonotributoCategory && !hasMonotributoLimit) {
+  const hasAfipCuit = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'afipCuit');
+  const hasAfipPtoVta = afipPtoVta != null;
+  const hasAfipCbteTipo = afipCbteTipo != null;
+  const hasAfipCert = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'afipCert');
+  const hasAfipKey = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'afipKey');
+  const hasAfipAccessToken = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'afipAccessToken');
+  if (
+    !hasName &&
+    !hasCommission &&
+    !hasWhatsapp &&
+    !hasMonotributoCategory &&
+    !hasMonotributoLimit &&
+    !hasAfipCuit &&
+    !hasAfipPtoVta &&
+    !hasAfipCbteTipo &&
+    !hasAfipCert &&
+    !hasAfipKey &&
+    !hasAfipAccessToken
+  ) {
     return res.status(400).json({
-      error:
-        'Se requiere name, commissionPercent, whatsappPhone, monotributoCategory o monotributoAnnualLimit',
+      error: 'No hay campos para actualizar',
     });
   }
-  if (
-    (hasMonotributoCategory || hasMonotributoLimit) &&
-    (!authReq.user?.email || !isSuperAdminEmail(authReq.user.email))
-  ) {
+  const needsSuperAdmin =
+    hasMonotributoCategory ||
+    hasMonotributoLimit ||
+    hasAfipCuit ||
+    hasAfipPtoVta ||
+    hasAfipCbteTipo ||
+    hasAfipCert ||
+    hasAfipKey ||
+    hasAfipAccessToken;
+  if (needsSuperAdmin && (!authReq.user?.email || !isSuperAdminEmail(authReq.user.email))) {
     return res.status(403).json({
-      error: 'Solo super administradores pueden configurar límites de monotributo',
+      error: 'Solo super administradores pueden configurar monotributo y AFIP por barbero',
     });
   }
   try {
@@ -65,6 +106,14 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
             monotributoAnnualLimit:
               monotributoAnnualLimit == null ? null : Number(monotributoAnnualLimit),
           }
+        : {}),
+      ...(hasAfipCuit ? { afipCuit: afipCuit == null ? null : String(afipCuit) } : {}),
+      ...(hasAfipPtoVta ? { afipPtoVta: Number(afipPtoVta) } : {}),
+      ...(hasAfipCbteTipo ? { afipCbteTipo: Number(afipCbteTipo) } : {}),
+      ...(hasAfipCert ? { afipCert: afipCert == null ? null : String(afipCert) } : {}),
+      ...(hasAfipKey ? { afipKey: afipKey == null ? null : String(afipKey) } : {}),
+      ...(hasAfipAccessToken
+        ? { afipAccessToken: afipAccessToken == null ? null : String(afipAccessToken) }
         : {}),
     });
     if (!updated) return res.status(404).json({ error: 'Barbero no encontrado' });

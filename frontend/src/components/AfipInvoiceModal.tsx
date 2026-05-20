@@ -4,6 +4,7 @@ import type { Appointment, Barber, BarberInvoicingUsage, Service, ShopProduct } 
 import { api, ApiError } from '../api';
 import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
 import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { isBarberAfipReady, resolveBarberForAppointment } from '../utils/barberAfip';
 import { formatArs, parseArsAmount, resolveAppointmentServiceAmountArs } from '../utils/money';
 
 type LineDraft = { productId: string; quantity: number };
@@ -39,10 +40,12 @@ export default function AfipInvoiceModal({
   const [usageYear, setUsageYear] = useState(new Date().getFullYear());
   const [usageLoading, setUsageLoading] = useState(true);
 
-  const barberId = useMemo(
-    () => appointment.barberId ?? barbers.find((b) => b.name === appointment.barber)?.id ?? null,
+  const billingBarber = useMemo(
+    () => resolveBarberForAppointment(appointment, barbers),
     [appointment, barbers]
   );
+  const barberId = billingBarber?.id ?? appointment.barberId ?? null;
+  const barberAfipReady = isBarberAfipReady(billingBarber);
 
   useEffect(() => {
     onBusyChange?.(submitting);
@@ -207,7 +210,24 @@ export default function AfipInvoiceModal({
 
           {!barberId && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              Este turno no tiene barbero asignado. Asignalo en la agenda antes de facturar para controlar el monotributo.
+              Este turno no tiene barbero asignado. Asignalo en la agenda antes de facturar.
+            </div>
+          )}
+
+          {billingBarber && (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+              <p className="font-semibold text-zinc-900">Emisor: {billingBarber.name}</p>
+              <p className="mt-0.5 text-xs text-zinc-600">
+                Token Afip SDK {billingBarber.afipAccessTokenConfigured ? 'cargado' : 'sin cargar'} · CUIT{' '}
+                {billingBarber.afipCuit ?? 'sin cargar'} · Pto. venta {billingBarber.afipPtoVta ?? 1} · Factura C a{' '}
+                <strong>consumidor final</strong> (importe total del turno)
+              </p>
+            </div>
+          )}
+
+          {barberId && !barberAfipReady && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              Este barbero no tiene AFIP listo. En Configuración cargá su CUIT y el certificado/clave ARCA (PEM).
             </div>
           )}
 
@@ -338,7 +358,7 @@ export default function AfipInvoiceModal({
             </button>
             <button
               type="submit"
-              disabled={submitting || serviceAmount == null || wouldExceedLimit || !barberId}
+              disabled={submitting || serviceAmount == null || wouldExceedLimit || !barberId || !barberAfipReady}
               className="flex-1 rounded-xl bg-zinc-900 py-3 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
             >
               {submitting ? 'Emitiendo…' : 'Emitir factura'}

@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import {
+  AFIP_CONSUMIDOR_FINAL_CONDICION_IVA,
+  type BarberAfipCredentials,
+} from '../barberAfip.js';
 import * as repo from '../repositories/appointments.js';
+import { getBarberAfipCredentials, getBarberById, getAllBarbers } from '../repositories/barbers.js';
 import { getShopProductById } from '../repositories/shopProducts.js';
 import { getServiceById } from '../repositories/services.js';
 import type { AfipInvoiceDetail, Appointment } from '../types.js';
@@ -173,9 +178,68 @@ function loadAfipCertKey(): { cert: string; key: string } | undefined {
   return undefined;
 }
 
+/** Legacy: token global en env (ya no se usa para emitir; cada barbero tiene el suyo). */
+export function isAfipSdkAvailable(): boolean {
+  return Boolean(process.env.AFIP_ACCESS_TOKEN?.trim());
+}
+
 export function isAfipConfigured(): boolean {
-  if (!process.env.AFIP_ACCESS_TOKEN?.trim() || !process.env.AFIP_CUIT?.trim()) return false;
-  return getAfipCertKeyStatus() !== 'bad';
+  return isAfipSdkAvailable();
+}
+
+export async function getAfipStatusPayload(): Promise<{
+  configured: boolean;
+  production: boolean;
+  mode: 'per_barber';
+  barbers: {
+    id: string;
+    name: string;
+    afipCuit: string | null;
+    afipPtoVta: number;
+    afipCbteTipo: number;
+    afipAccessTokenConfigured: boolean;
+    afipReady: boolean;
+  }[];
+  readyCount: number;
+}> {
+  const barbers = await getAllBarbers();
+  const mapped = barbers.map((b) => ({
+    id: b.id,
+    name: b.name,
+    afipCuit: b.afipCuit ?? null,
+    afipPtoVta: b.afipPtoVta ?? 1,
+    afipCbteTipo: b.afipCbteTipo ?? 11,
+    afipReady: Boolean(b.afipCredentialsConfigured && b.afipCuit && b.afipAccessTokenConfigured),
+    afipAccessTokenConfigured: Boolean(b.afipAccessTokenConfigured),
+  }));
+  const readyCount = mapped.filter((b) => b.afipReady).length;
+  return {
+    configured: readyCount > 0,
+    production: process.env.AFIP_PRODUCTION === 'true',
+    mode: 'per_barber',
+    barbers: mapped,
+    readyCount,
+  };
+}
+
+async function resolveBarberAfipForAppointment(app: Appointment): Promise<{
+  barberId: string;
+  barberName: string;
+  creds: BarberAfipCredentials;
+}> {
+  const barberId = app.barberId?.trim();
+  if (!barberId) {
+    throw new Error('Asigná un barbero al turno antes de facturar con AFIP.');
+  }
+  const barber = await getBarberById(barberId);
+  const barberName = barber?.name ?? app.barber ?? 'Barbero';
+  const creds = await getBarberAfipCredentials(barberId);
+  if (!creds) {
+    throw new Error(
+      `El barbero «${barberName}» no tiene AFIP configurado. En Configuración cargá su token de Afip SDK, CUIT (11 dígitos), certificado y clave ARCA.`
+    );
+  }
+  return { barberId, barberName, creds };
 }
 
 export type InvoiceProductLineInput = { productId: string; quantity: number };
@@ -194,9 +258,8 @@ async function resolveAmountArs(app: Appointment): Promise<number> {
 }
 
 /**
- * Emite comprobante AFIP según `AFIP_CBTE_TIPO`: por defecto Factura B (6), consumidor final, IVA 21 % discriminado.
- * Monotributo / no RI en IVA: usar `AFIP_CBTE_TIPO=11` (Factura C: total = neto, sin alícuotas IVA en el request).
- * Requiere token de Afip SDK y CUIT del emisor.
+ * Emite comprobante AFIP con el CUIT del barbero del turno (consumidor final: DocTipo 99).
+ * Por defecto Factura C (tipo 11) para monotributo; configurable por barbero.
  */
 export async function invoiceAppointmentAfip(
   appointmentId: string,
@@ -207,14 +270,13 @@ export async function invoiceAppointmentAfip(
   cbteNro: number;
   ptoVta: number;
 }> {
-  if (!isAfipConfigured()) {
-    throw new Error('AFIP no configurado: definí AFIP_ACCESS_TOKEN y AFIP_CUIT en el servidor.');
-  }
   await repo.expireStalePendingAppointments();
   const app = await repo.getAppointmentById(appointmentId);
   if (!app) throw new Error('Turno no encontrado');
   if (app.status === 'cancelled') throw new Error('No se puede facturar un turno cancelado.');
   if (app.afipCae) throw new Error('Este turno ya tiene factura registrada.');
+
+  const { barberId, creds } = await resolveBarberAfipForAppointment(app);
 
   /** Siempre el precio completo del servicio en catálogo (no la comisión ni el saldo en local). */
   const serviceAmount = await resolveAmountArs(app);
@@ -256,23 +318,22 @@ export async function invoiceAppointmentAfip(
 
   const amount = Math.round((serviceAmount + productsTotal) * 100) / 100;
 
-  await assertBarberCanInvoice(app.barberId, amount);
+  await assertBarberCanInvoice(barberId, amount);
 
   const invoiceDetail: AfipInvoiceDetail = {
     serviceAmount: Math.round(serviceAmount * 100) / 100,
     serviceLabel: app.service,
     productLines,
     total: amount,
+    emitterCuit: creds.cuit,
+    emitterBarberId: barberId,
   };
 
-  const ptoVta = Math.min(9999, Math.max(1, parseInt(process.env.AFIP_PTO_VTA ?? '1', 10) || 1));
-  const cbteTipo = Math.min(32767, Math.max(1, parseInt(process.env.AFIP_CBTE_TIPO ?? '6', 10) || 6));
+  const ptoVta = creds.ptoVta;
+  const cbteTipo = creds.cbteTipo;
   /** Factura C (monotributo): WSFE no debe recibir alícuotas IVA en el detalle. */
   const isFacturaC = cbteTipo === 11;
-  const condIvaReceptor = Math.min(
-    32767,
-    Math.max(1, parseInt(process.env.AFIP_CONDICION_IVA_RECEPTOR_ID ?? '5', 10) || 5)
-  );
+  const condIvaReceptor = AFIP_CONSUMIDOR_FINAL_CONDICION_IVA;
 
   const total = amount;
   const neto = Math.round((total / 1.21) * 100) / 100;
@@ -283,12 +344,12 @@ export async function invoiceAppointmentAfip(
   /** AFIP (10036): FchVtoPago no puede ser anterior a CbteFch; si el turno fue días atrás, el vencimiento de pago alinea al día del comprobante. */
   const fchVtoPago = Math.max(fechaCbte, fechaServ);
 
-  const tls = loadAfipCertKey();
   const afip = new Afip({
-    access_token: process.env.AFIP_ACCESS_TOKEN!.trim(),
-    CUIT: Number(String(process.env.AFIP_CUIT).replace(/\D/g, '')),
+    access_token: creds.accessToken,
+    CUIT: Number(creds.cuit),
     production: process.env.AFIP_PRODUCTION === 'true',
-    ...(tls ? { cert: tls.cert, key: tls.key } : {}),
+    cert: creds.cert,
+    key: creds.key,
   });
 
   const voucherData: Record<string, unknown> = {
