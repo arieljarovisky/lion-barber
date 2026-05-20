@@ -66,6 +66,19 @@ export default function AfipInvoiceModal({
   }, [submitting, onBusyChange]);
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose, submitting]);
+
+  useEffect(() => {
     let cancelled = false;
     setUsageLoading(true);
     api
@@ -197,40 +210,42 @@ export default function AfipInvoiceModal({
 
   return (
     <div
-      className="fixed inset-0 z-[220] flex items-center justify-center bg-black/55 p-3 backdrop-blur-sm"
+      className="fixed inset-0 z-[220] overflow-y-auto bg-black/55 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="afip-invoice-title"
       onClick={onClose}
     >
-      <div
-        className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white shadow-2xl"
-        onClick={(ev) => ev.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3 border-b border-zinc-100 px-5 py-4">
-          <div className="flex items-center gap-2 min-w-0">
-            <Receipt className="h-6 w-6 shrink-0 text-[#b39055]" aria-hidden />
-            <div className="min-w-0">
-              <h2 id="afip-invoice-title" className="text-lg font-black text-zinc-900">
-                Facturar AFIP
-              </h2>
-              <p className="text-xs text-zinc-500 truncate">
-                {appointment.name} · {appointment.date} {appointment.time}
-              </p>
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-4">
+        <div
+          className="my-auto flex w-full max-w-lg max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+          onClick={(ev) => ev.stopPropagation()}
+        >
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-100 bg-white px-5 py-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <Receipt className="h-6 w-6 shrink-0 text-[#b39055]" aria-hidden />
+              <div className="min-w-0">
+                <h2 id="afip-invoice-title" className="text-lg font-black text-zinc-900">
+                  Facturar AFIP
+                </h2>
+                <p className="truncate text-xs text-zinc-500">
+                  {appointment.name} · {appointment.date} {appointment.time}
+                </p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="shrink-0 rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-50"
+              aria-label="Cerrar"
+            >
+              <X size={22} />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50"
-            aria-label="Cerrar"
-          >
-            <X size={20} />
-          </button>
-        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           )}
@@ -410,36 +425,38 @@ export default function AfipInvoiceModal({
             )}
           </div>
 
-          <div className="flex items-center justify-between border-t border-zinc-100 pt-3 text-sm">
-            <span className="font-bold text-zinc-700">Total factura (IVA incl.)</span>
-            <span className="font-mono text-lg font-black text-zinc-900">$ {formatArs(total)}</span>
-          </div>
+              <div className="flex items-center justify-between border-t border-zinc-100 pt-3 text-sm">
+                <span className="font-bold text-zinc-700">Total factura (IVA incl.)</span>
+                <span className="font-mono text-lg font-black text-zinc-900">$ {formatArs(total)}</span>
+              </div>
+            </div>
 
-          <div className="flex gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={submitting}
-              className="flex-1 rounded-xl border border-zinc-200 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={
-                submitting ||
-                blockedByScope ||
-                serviceAmount == null ||
-                wouldExceedLimit ||
-                !barberId ||
-                !barberAfipReady
-              }
-              className="flex-1 rounded-xl bg-zinc-900 py-3 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
-            >
-              {submitting ? 'Emitiendo…' : 'Emitir factura'}
-            </button>
-          </div>
-        </form>
+            <div className="flex shrink-0 gap-3 border-t border-zinc-100 bg-white px-5 py-4">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={submitting}
+                className="flex-1 rounded-xl border border-zinc-200 py-3 text-sm font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={
+                  submitting ||
+                  blockedByScope ||
+                  serviceAmount == null ||
+                  wouldExceedLimit ||
+                  !barberId ||
+                  !barberAfipReady
+                }
+                className="flex-1 rounded-xl bg-zinc-900 py-3 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {submitting ? 'Emitiendo…' : 'Emitir factura'}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
