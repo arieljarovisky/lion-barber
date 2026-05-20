@@ -4,7 +4,11 @@ import type { Appointment, Barber, BarberInvoicingUsage, Service, ShopProduct } 
 import { api, ApiError } from '../api';
 import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
 import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
-import { isBarberAfipReady, resolveBarberForAppointment } from '../utils/barberAfip';
+import {
+  appointmentMatchesInvoiceScope,
+  isBarberAfipReady,
+  resolveBarberForAppointment,
+} from '../utils/barberAfip';
 import { formatArs, parseArsAmount, resolveAppointmentServiceAmountArs } from '../utils/money';
 
 type LineDraft = { productId: string; quantity: number };
@@ -14,6 +18,8 @@ type AfipInvoiceModalProps = {
   services: Service[];
   shopProducts: ShopProduct[];
   barbers: Barber[];
+  invoiceScopeBarberId?: string | null;
+  invoiceScopeBarberName?: string | null;
   onClose: () => void;
   onSuccess: () => void;
   /** Para deshabilitar botones «Facturar» en la agenda mientras se emite. */
@@ -26,6 +32,8 @@ export default function AfipInvoiceModal({
   services,
   shopProducts,
   barbers,
+  invoiceScopeBarberId = null,
+  invoiceScopeBarberName = null,
   onClose,
   onSuccess,
   onBusyChange,
@@ -46,6 +54,9 @@ export default function AfipInvoiceModal({
   );
   const barberId = billingBarber?.id ?? appointment.barberId ?? null;
   const barberAfipReady = isBarberAfipReady(billingBarber);
+  const blockedByScope =
+    Boolean(invoiceScopeBarberId) &&
+    !appointmentMatchesInvoiceScope(appointment, barbers, invoiceScopeBarberId);
 
   useEffect(() => {
     onBusyChange?.(submitting);
@@ -151,6 +162,12 @@ export default function AfipInvoiceModal({
       setError('No se pudo calcular el importe del servicio. Revisá el catálogo o el texto del turno.');
       return;
     }
+    if (blockedByScope) {
+      setError(
+        `Solo podés facturar turnos de ${invoiceScopeBarberName ?? 'tu agenda'}. Este turno es de otro barbero.`
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       const productLines = lines.map((l) => ({ productId: l.productId, quantity: l.quantity }));
@@ -206,6 +223,13 @@ export default function AfipInvoiceModal({
         <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5">
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          )}
+
+          {blockedByScope && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              Solo podés facturar turnos de <strong>{invoiceScopeBarberName ?? 'tu agenda'}</strong>. Este turno pertenece
+              a otro barbero.
+            </div>
           )}
 
           {!barberId && (
@@ -358,7 +382,14 @@ export default function AfipInvoiceModal({
             </button>
             <button
               type="submit"
-              disabled={submitting || serviceAmount == null || wouldExceedLimit || !barberId || !barberAfipReady}
+              disabled={
+                submitting ||
+                blockedByScope ||
+                serviceAmount == null ||
+                wouldExceedLimit ||
+                !barberId ||
+                !barberAfipReady
+              }
               className="flex-1 rounded-xl bg-zinc-900 py-3 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
             >
               {submitting ? 'Emitiendo…' : 'Emitir factura'}

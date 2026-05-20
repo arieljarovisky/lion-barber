@@ -5,12 +5,12 @@ import { es } from 'date-fns/locale';
 import { ChevronLeft, Trash2, ShieldCheck } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
+import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
 import { api, ApiError } from '../api';
 import type { AdminClientWithHistory } from '../api';
 import {
   adminAppointmentStatusBadge,
   formatAppointmentDateYmd,
-  getAdminAppointmentPaymentBadge,
   normalizeAppointmentTime,
 } from '../utils/adminClientHistory';
 import { displayClientEmail } from '../utils/manualClientEmail';
@@ -264,7 +264,6 @@ export default function AdminClientDetailPage() {
                     <tbody className="divide-y divide-zinc-100">
                       {client.appointments.map((app) => {
                         const st = adminAppointmentStatusBadge(app);
-                        const pay = getAdminAppointmentPaymentBadge(app);
                         return (
                           <tr key={app.id} className="bg-white hover:bg-zinc-50/90">
                             <td className="whitespace-nowrap px-4 py-3 tabular-nums text-zinc-700">
@@ -283,11 +282,7 @@ export default function AdminClientDetailPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              <span
-                                className={`inline-block rounded-md border px-2 py-0.5 text-[10px] font-bold ${pay.className}`}
-                              >
-                                {pay.label}
-                              </span>
+                              <AppointmentPaymentBadge app={app} />
                             </td>
                           </tr>
                         );

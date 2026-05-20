@@ -28,21 +28,4 @@ export function adminAppointmentStatusBadge(app: Appointment): { label: string; 
   return { label: 'Programado', className: 'bg-emerald-50 text-emerald-900 border-emerald-200' };
 }
 
-export function getAdminAppointmentPaymentBadge(app: Appointment): { label: string; className: string } {
-  if (app.status === 'pending_payment') {
-    return {
-      label: 'Pago pendiente',
-      className: 'bg-amber-100 text-amber-900 border border-amber-300',
-    };
-  }
-  if (app.depositPaid) {
-    return {
-      label: 'Seña pagada',
-      className: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
-    };
-  }
-  return {
-    label: 'Sin seña',
-    className: 'bg-zinc-100 text-zinc-700 border border-zinc-200',
-  };
-}
+export { getAppointmentPaymentBadgeInfo as getAdminAppointmentPaymentBadge } from '../components/AppointmentPaymentBadge';

@@ -21,6 +21,9 @@ type BillingPanelProps = {
   loading: boolean;
   afipConfigured: boolean;
   afipReadyCount?: number;
+  /** Si está definido, solo se pueden facturar turnos de ese barbero. */
+  invoiceScopeBarberId?: string | null;
+  invoiceScopeBarberName?: string | null;
   invoicingId: string | null;
   bulkInvoicing?: boolean;
   onInvoiceClick: (app: Appointment) => void;
@@ -37,6 +40,8 @@ export default function BillingPanel({
   loading,
   afipConfigured,
   afipReadyCount = 0,
+  invoiceScopeBarberId = null,
+  invoiceScopeBarberName = null,
   invoicingId,
   bulkInvoicing = false,
   onInvoiceClick,
@@ -49,7 +54,7 @@ export default function BillingPanel({
   const [dateFrom, setDateFrom] = useState(() => format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd'));
   const [dateTo, setDateTo] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [invoiceFilter, setInvoiceFilter] = useState<InvoiceFilter>('all');
-  const [barberId, setBarberId] = useState<string>('');
+  const [barberId, setBarberId] = useState<string>(() => invoiceScopeBarberId ?? '');
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -90,9 +95,9 @@ export default function BillingPanel({
         (a) =>
           !a.afipCae &&
           resolveAppointmentServiceAmountArs(a, services) != null &&
-          canInvoiceAppointmentAfip(a, barbers)
+          canInvoiceAppointmentAfip(a, barbers, invoiceScopeBarberId)
       ),
-    [rows, services, barbers]
+    [rows, services, barbers, invoiceScopeBarberId]
   );
   const selectableIds = useMemo(() => new Set(selectableRows.map((a) => a.id)), [selectableRows]);
   const pageSelectableRows = useMemo(
@@ -101,15 +106,19 @@ export default function BillingPanel({
         (a) =>
           !a.afipCae &&
           resolveAppointmentServiceAmountArs(a, services) != null &&
-          canInvoiceAppointmentAfip(a, barbers)
+          canInvoiceAppointmentAfip(a, barbers, invoiceScopeBarberId)
       ),
-    [pageRows, services, barbers]
+    [pageRows, services, barbers, invoiceScopeBarberId]
   );
   const pageSelectableIds = useMemo(() => pageSelectableRows.map((a) => a.id), [pageSelectableRows]);
   const selectedCount = selectedIds.length;
   const allSelectableSelected = selectableRows.length > 0 && selectedCount === selectableRows.length;
   const allPageSelected =
     pageSelectableIds.length > 0 && pageSelectableIds.every((id) => selectedIds.includes(id));
+
+  useEffect(() => {
+    if (invoiceScopeBarberId) setBarberId(invoiceScopeBarberId);
+  }, [invoiceScopeBarberId]);
 
   useEffect(() => {
     setPage(1);
@@ -128,7 +137,7 @@ export default function BillingPanel({
     setDateFrom(format(subDays(new Date(), WINDOW_DAYS), 'yyyy-MM-dd'));
     setDateTo(format(new Date(), 'yyyy-MM-dd'));
     setInvoiceFilter('all');
-    setBarberId('');
+    setBarberId(invoiceScopeBarberId ?? '');
     setPage(1);
   };
 
@@ -193,6 +202,13 @@ export default function BillingPanel({
         loading={barberInvoicingLoading}
       />
 
+      {invoiceScopeBarberId && (
+        <div className="rounded-xl border border-[#e5c185]/40 bg-[#e5c185]/10 px-4 py-3 text-sm text-zinc-800">
+          Solo podés facturar turnos de <strong>{invoiceScopeBarberName ?? 'tu agenda'}</strong>. Los turnos de otros
+          barberos no aparecen como facturables.
+        </div>
+      )}
+
       <p className="text-sm text-zinc-600">
         Filtrá por fechas, cliente, estado de factura o barbero. El PDF usa la identidad visual Lion Barber; al
         imprimir elegí «Guardar como PDF» en el navegador.
@@ -251,8 +267,9 @@ export default function BillingPanel({
             <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-zinc-500">Barbero</span>
             <select
               value={barberId}
+              disabled={Boolean(invoiceScopeBarberId)}
               onChange={(e) => setBarberId(e.target.value)}
-              className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm text-zinc-900 outline-none focus:border-[#b39055]"
+              className="w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm text-zinc-900 outline-none focus:border-[#b39055] disabled:bg-zinc-100 disabled:text-zinc-500"
             >
               <option value="">Todos</option>
               {barbers.map((b) => (
@@ -350,7 +367,8 @@ export default function BillingPanel({
               ) : (
                 pageRows.map((app) => {
                   const amt = resolveAppointmentServiceAmountArs(app, services);
-                  const selectable = !app.afipCae && amt != null && canInvoiceAppointmentAfip(app, barbers);
+                  const selectable =
+                    !app.afipCae && amt != null && canInvoiceAppointmentAfip(app, barbers, invoiceScopeBarberId);
                   const barberForAfip = resolveBarberForAppointment(app, barbers);
                   const checked = selectedIds.includes(app.id);
                   return (
@@ -409,9 +427,13 @@ export default function BillingPanel({
                             <button
                               type="button"
                               onClick={() => onInvoiceClick(app)}
-                              disabled={invoicingId === app.id || amt == null || !canInvoiceAppointmentAfip(app, barbers)}
+                              disabled={
+                                invoicingId === app.id ||
+                                amt == null ||
+                                !canInvoiceAppointmentAfip(app, barbers, invoiceScopeBarberId)
+                              }
                               title={
-                                !canInvoiceAppointmentAfip(app, barbers)
+                                !canInvoiceAppointmentAfip(app, barbers, invoiceScopeBarberId)
                                   ? 'Barbero sin AFIP configurado'
                                   : undefined
                               }

@@ -3,6 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle } from 'lucide-react';
 import { BOOKING_FALLBACK_WHATSAPP_URL, checkBackendHealth } from '../utils/backendHealth';
 import { WhatsAppIcon } from '../components/WhatsAppIcon';
+import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import { api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
@@ -1098,23 +1099,35 @@ export default function ClientView() {
                       disabled={senaCheckoutLoading}
                       className="bg-[#e5c185] hover:bg-[#d4b074] disabled:opacity-60 disabled:pointer-events-none text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      {senaCheckoutLoading
-                        ? profile?.depositExempt
-                          ? 'Confirmando turno…'
-                          : 'Preparando pago…'
-                        : profile
-                          ? profile.depositExempt
-                            ? 'Confirmar turno'
-                            : senaCheckoutPreferenceId
+                      {senaCheckoutLoading ? (
+                        profile?.depositExempt ? (
+                          'Confirmando turno…'
+                        ) : (
+                          'Preparando pago…'
+                        )
+                      ) : profile ? (
+                        profile.depositExempt ? (
+                          'Confirmar turno'
+                        ) : (
+                          <span className="inline-flex items-center justify-center gap-2">
+                            <MercadoPagoLogo size="sm" />
+                            {senaCheckoutPreferenceId
                               ? 'Preferencia lista — pagá abajo'
-                              : 'Pagar seña y confirmar turno'
-                          : 'Iniciar sesión para confirmar'}
+                              : 'Pagar seña y confirmar turno'}
+                          </span>
+                        )
+                      ) : (
+                        'Iniciar sesión para confirmar'
+                      )}
                     </button>
                     {senaCheckoutPreferenceId && (
                       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 min-h-[120px]">
-                        <p className="text-xs text-zinc-400 mb-3 text-center">
-                          Completá el pago con Mercado Pago. Si te redirige al checkout, al volver podés ver el estado del
-                          turno en tu perfil.
+                        <p className="text-xs text-zinc-400 mb-3 text-center inline-flex flex-wrap items-center justify-center gap-2 w-full">
+                          <MercadoPagoLogo size="sm" />
+                          <span>
+                            Completá el pago con Mercado Pago. Si te redirige al checkout, al volver podés ver el estado del
+                            turno en tu perfil.
+                          </span>
                         </p>
                         <Wallet
                           initialization={{ preferenceId: senaCheckoutPreferenceId, redirectMode: 'self' }}

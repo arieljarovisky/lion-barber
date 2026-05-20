@@ -47,10 +47,12 @@ import ProductPointsPanel from '../components/ProductPointsPanel';
 import BillingPanel from '../components/BillingPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplitsModal';
+import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
+import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError } from '../api';
 import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
-import { canInvoiceAppointmentAfip } from '../utils/barberAfip';
+import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barberAfip';
 import { resolveAppointmentServiceAmountArs } from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
 import type {
@@ -223,25 +225,6 @@ function addMinutesToClock(hhmm: string, minutes: number): string {
   const H = Math.floor(total / 60);
   const M = total % 60;
   return `${String(H).padStart(2, '0')}:${String(M).padStart(2, '0')}`;
-}
-
-function getAppointmentPaymentBadge(app: Appointment): { label: string; className: string } {
-  if (app.status === 'pending_payment') {
-    return {
-      label: 'Pago pendiente',
-      className: 'bg-amber-100 text-amber-900 border border-amber-300',
-    };
-  }
-  if (app.depositPaid) {
-    return {
-      label: 'Senia pagada',
-      className: 'bg-emerald-100 text-emerald-800 border border-emerald-300',
-    };
-  }
-  return {
-    label: 'Sin senia',
-    className: 'bg-zinc-100 text-zinc-700 border border-zinc-200',
-  };
 }
 
 /** El botón de WhatsApp se ofrece para turnos confirmados sin seña pagada (hay que coordinar manualmente). */
@@ -1212,6 +1195,10 @@ export default function Dashboard() {
       app.servicePaymentMethod,
       local
     );
+    const showMpLogo =
+      app.depositPaid ||
+      app.servicePaymentMethod === 'mercadopago' ||
+      app.servicePaymentSplits?.some((s) => s.method === 'mercadopago');
     return (
       <button
         type="button"
@@ -1227,7 +1214,11 @@ export default function Dashboard() {
         title="Registrar cobros (varios métodos)"
       >
         <span className="inline-flex items-center gap-1 truncate">
-          <Banknote size={compact ? 12 : 14} className="shrink-0 text-[#b39055]" />
+          {showMpLogo ? (
+            <MercadoPagoLogo size="xs" />
+          ) : (
+            <Banknote size={compact ? 12 : 14} className="shrink-0 text-[#b39055]" />
+          )}
           <span className="truncate">{label}</span>
         </span>
       </button>
@@ -1549,6 +1540,15 @@ export default function Dashboard() {
     const serviceAmount = resolveAppointmentServiceAmountArs(curr, services) ?? 0;
     return acc + serviceAmount * barberProfileIncomeShare;
   }, 0);
+  const invoiceScopeBarberId = useMemo(
+    () => getInvoiceBarberScope(profile, barbers),
+    [profile, barbers]
+  );
+  const invoiceScopeBarberName = useMemo(() => {
+    if (!invoiceScopeBarberId) return null;
+    return barbers.find((b) => b.id === invoiceScopeBarberId)?.name ?? null;
+  }, [invoiceScopeBarberId, barbers]);
+
   const barberStats = useMemo(() => {
     if (!isSuperAdmin) return [];
     return barbers
@@ -2004,11 +2004,7 @@ export default function Dashboard() {
                                   <p className="font-bold text-zinc-900 truncate" title={app.name}>
                                     {app.name}
                                   </p>
-                                  <span
-                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
-                                  >
-                                    {getAppointmentPaymentBadge(app).label}
-                                  </span>
+                                  <AppointmentPaymentBadge app={app} className="mt-1" />
                                   {renderPaymentSplitsTrigger(app, true)}
                                   <p className="text-zinc-500 text-[10px] mt-0.5 tabular-nums">
                                     {normalizeAppointmentTime(app.time)} – {endClock} · {dm} min
@@ -2178,11 +2174,7 @@ export default function Dashboard() {
                                     <p className="text-[11px] text-zinc-500 mt-1">
                                       {slot} – {endClock} · {dm} min
                                     </p>
-                                    <span
-                                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-2 ${getAppointmentPaymentBadge(app).className}`}
-                                    >
-                                      {getAppointmentPaymentBadge(app).label}
-                                    </span>
+                                    <AppointmentPaymentBadge app={app} className="mt-2" />
                                   </div>
                                   <div className="flex items-center gap-1 shrink-0">
                                     {appointmentNeedsManualContact(app) && (() => {
@@ -2310,11 +2302,7 @@ export default function Dashboard() {
                                 <div className="min-w-0">
                                   <span className="font-medium text-zinc-800 truncate block">{app.name}</span>
                                   <span className="text-[10px] text-zinc-500">{dm} min</span>
-                                  <span
-                                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide mt-1 ${getAppointmentPaymentBadge(app).className}`}
-                                  >
-                                    {getAppointmentPaymentBadge(app).label}
-                                  </span>
+                                  <AppointmentPaymentBadge app={app} className="mt-1" />
                                 </div>
                                 <div className="flex items-center gap-1 flex-shrink-0">
                                   {appointmentNeedsManualContact(app) && (() => {
@@ -2414,13 +2402,12 @@ export default function Dashboard() {
               {dayAppointments.map((app) => {
                 const dm = app.durationMinutes ?? 30;
                 const endClock = addMinutesToClock(app.time, dm);
-                const badge = getAppointmentPaymentBadge(app);
                 const barberInfo = resolveBarberForApp(app);
                 const phoneDigits = normalizePhoneDigits(app.phone ?? '');
                 const phoneHref = phoneDigits ? `https://wa.me/549${phoneDigits}` : null;
                 const waUrl = appointmentNeedsManualContact(app) ? buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate) : null;
                 const showAfipBlock = isSuperAdmin && afipConfigured && app.status !== 'cancelled';
-                const canAfipInvoice = canInvoiceAppointmentAfip(app, barbers);
+                const canAfipInvoice = canInvoiceAppointmentAfip(app, barbers, invoiceScopeBarberId);
                 const initials = (app.name || '?').trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('') || '?';
                 return (
                   <li
@@ -2492,11 +2479,7 @@ export default function Dashboard() {
                     {/* Estado pago + AFIP */}
                     <div className="flex flex-col gap-1.5 sm:w-44 sm:flex-shrink-0">
                       <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap ${badge.className}`}
-                        >
-                          {badge.label}
-                        </span>
+                        <AppointmentPaymentBadge app={app} className="whitespace-nowrap" />
                         {showAfipBlock && app.afipCae && (
                           <span
                             className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-800"
@@ -2521,9 +2504,13 @@ export default function Dashboard() {
                             afipInvoiceBusy && afipInvoiceApp?.id === app.id
                               ? 'Facturando…'
                               : !canAfipInvoice
-                                ? !app.barberId && !app.barber
-                                  ? 'Asigná un barbero al turno'
-                                  : `Configurá AFIP del barbero ${app.barber ?? ''}`
+                                ? invoiceScopeBarberId &&
+                                    (app.barberId ?? barbers.find((b) => b.name === app.barber)?.id) !==
+                                      invoiceScopeBarberId
+                                  ? `Solo podés facturar turnos de ${invoiceScopeBarberName ?? 'tu agenda'}`
+                                  : !app.barberId && !app.barber
+                                    ? 'Asigná un barbero al turno'
+                                    : `Configurá AFIP del barbero ${app.barber ?? ''}`
                                 : 'Facturar AFIP (consumidor final)'
                           }
                           className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors"
@@ -2899,6 +2886,8 @@ export default function Dashboard() {
             loading={billingLoading}
             afipConfigured={afipConfigured}
             afipReadyCount={afipReadyCount}
+            invoiceScopeBarberId={invoiceScopeBarberId}
+            invoiceScopeBarberName={invoiceScopeBarberName}
             invoicingId={afipInvoiceBusy && afipInvoiceApp ? afipInvoiceApp.id : null}
             bulkInvoicing={afipInvoiceBusy && !afipInvoiceApp}
             onInvoiceClick={openAfipInvoiceModal}
@@ -3477,6 +3466,8 @@ export default function Dashboard() {
           services={services}
           shopProducts={shopProducts}
           barbers={barbers}
+          invoiceScopeBarberId={invoiceScopeBarberId}
+          invoiceScopeBarberName={invoiceScopeBarberName}
           showToast={showToast}
           onBusyChange={setAfipInvoiceBusy}
           onClose={() => setAfipInvoiceApp(null)}

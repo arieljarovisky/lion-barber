@@ -14,9 +14,10 @@ import {
 } from '../utils/weeklyCashClose';
 import {
   SERVICE_PAYMENT_METHODS,
-  SERVICE_PAYMENT_METHOD_LABELS,
   formatServicePaymentSplits,
 } from '../utils/servicePaymentMethod';
+import MercadoPagoLogo from '../components/MercadoPagoLogo';
+import ServicePaymentMethodLabel from '../components/ServicePaymentMethodLabel';
 import {
   exportWeeklyCashCloseExcel,
   exportWeeklyCashClosePdf,
@@ -243,6 +244,7 @@ export default function WeeklyCashClosePage() {
                   value={`$${formatArs(summary.depositsMp)}`}
                   hint={`${depositPercent}% del servicio`}
                   accent="emerald"
+                  mercadoPago
                 />
                 <SummaryCard
                   label="Por cobrar en local (est.)"
@@ -298,7 +300,9 @@ export default function WeeklyCashClosePage() {
                     <tbody className="divide-y divide-zinc-100">
                       {SERVICE_PAYMENT_METHODS.map((m) => (
                         <tr key={m}>
-                          <td className="py-2 font-medium text-zinc-800">{SERVICE_PAYMENT_METHOD_LABELS[m]}</td>
+                          <td className="py-2 font-medium text-zinc-800">
+                            <ServicePaymentMethodLabel method={m} size="xs" />
+                          </td>
                           <td className="py-2 text-right tabular-nums">${formatArs(summary.localByMethod[m])}</td>
                         </tr>
                       ))}
@@ -409,7 +413,14 @@ export default function WeeklyCashClosePage() {
                             <td className="max-w-[8rem] truncate px-3 py-2">{r.barberName}</td>
                             <td className="px-3 py-2 text-right tabular-nums">${formatArs(r.serviceAmount)}</td>
                             <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
-                              {r.depositPaid ? `$${formatArs(r.depositAmount)}` : '—'}
+                              {r.depositPaid ? (
+                                <span className="inline-flex items-center justify-end gap-1">
+                                  <MercadoPagoLogo size="xs" />
+                                  ${formatArs(r.depositAmount)}
+                                </span>
+                              ) : (
+                                '—'
+                              )}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums text-amber-800">
                               ${formatArs(r.localPending)}
@@ -461,11 +472,13 @@ function SummaryCard({
   value,
   hint,
   accent,
+  mercadoPago,
 }: {
   label: string;
   value: string;
   hint?: string;
   accent?: 'emerald' | 'amber' | 'gold';
+  mercadoPago?: boolean;
 }) {
   const border =
     accent === 'emerald'
@@ -480,7 +493,10 @@ function SummaryCard({
 
   return (
     <div className={`rounded-xl border p-4 shadow-sm ${border}`}>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 inline-flex items-center gap-1.5 flex-wrap">
+        {mercadoPago && <MercadoPagoLogo size="xs" />}
+        {label}
+      </p>
       <p className={`mt-1 text-xl font-black tabular-nums ${valueColor}`}>{value}</p>
       {hint && <p className="mt-1 text-[11px] text-zinc-500">{hint}</p>}
     </div>

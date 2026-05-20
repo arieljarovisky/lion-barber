@@ -461,6 +461,8 @@ export async function initDb(): Promise<void> {
 
   const { importLegacyAfipEnvToBarbers } = await import('./importLegacyAfipEnv.js');
   await importLegacyAfipEnvToBarbers();
+  const { syncSuperAdminBarberLinks } = await import('./invoiceBarberScope.js');
+  await syncSuperAdminBarberLinks();
 }
 
 export default pool;

@@ -17,6 +17,7 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import { api } from '../api';
 import type { Appointment } from '../api';
 import { Wallet } from '@mercadopago/sdk-react';
+import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import { format, isBefore, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -101,7 +102,10 @@ function FutureAppointmentCardBody({
           </p>
         )}
         {a.depositPaid && !awaitingSena && (
-          <p className="text-xs text-amber-400/90 mt-1">Seña abonada</p>
+          <p className="text-xs text-amber-400/90 mt-1 inline-flex items-center gap-1.5">
+            <MercadoPagoLogo size="xs" />
+            Seña abonada
+          </p>
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
@@ -114,9 +118,16 @@ function FutureAppointmentCardBody({
               (a.paymentDueAt != null && sec <= 0)
             }
             onClick={() => void onPaySena(a)}
-            className="px-3 py-2 rounded-lg bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 text-xs font-bold disabled:opacity-50"
+            className="px-3 py-2 rounded-lg bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 text-xs font-bold disabled:opacity-50 inline-flex items-center gap-1.5"
           >
-            {senaLoadingId === a.id ? 'Preparando…' : 'Pagar seña'}
+            {senaLoadingId === a.id ? (
+              'Preparando…'
+            ) : (
+              <>
+                <MercadoPagoLogo size="xs" />
+                Pagar seña
+              </>
+            )}
           </button>
         ) : null}
         {a.canReschedule && a.barberId ? (
@@ -526,9 +537,12 @@ export default function Perfil() {
                   />
                   {senaWallet?.appointmentId === a.id && (
                     <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 p-4">
-                      <p className="text-xs text-zinc-400 mb-3 text-center">
-                        Completá el pago con Mercado Pago. Si te redirige al checkout, al volver verás el turno confirmado
-                        acá.
+                      <p className="text-xs text-zinc-400 mb-3 text-center inline-flex flex-wrap items-center justify-center gap-2 w-full">
+                        <MercadoPagoLogo size="sm" />
+                        <span>
+                          Completá el pago con Mercado Pago. Si te redirige al checkout, al volver verás el turno confirmado
+                          acá.
+                        </span>
                       </p>
                       <SenaWalletBrick
                         preferenceId={senaWallet.preferenceId}
@@ -584,9 +598,14 @@ export default function Perfil() {
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-0.5 shrink-0">
-                        <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-400/95">
-                          {a.depositPaid ? 'Seña' : '—'}
-                        </span>
+                        {a.depositPaid ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-emerald-400/95">
+                            <MercadoPagoLogo size="xs" />
+                            Seña
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">—</span>
+                        )}
                       </div>
                     </li>
                   ))}
