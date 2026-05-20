@@ -281,6 +281,55 @@ async function fetchApi<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+function parseContentDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const star = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (star?.[1]) {
+    try {
+      return decodeURIComponent(star[1].trim());
+    } catch {
+      /* ignore */
+    }
+  }
+  const plain = header.match(/filename="?([^";]+)"?/i);
+  return plain?.[1]?.trim() ?? null;
+}
+
+/** Descarga un archivo .sql con copia de seguridad de MySQL (solo super admin). */
+export async function downloadDatabaseBackup(): Promise<{ filename: string; tableCount: number; rowCount: number }> {
+  if (authToken && isJwtExpired(authToken)) {
+    notifyUnauthorized('expired');
+    throw new ApiError('Tu sesión expiró', 401);
+  }
+  const res = await fetch(`${API_URL}/api/admin/backup`, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = (err as { error?: string }).error ?? res.statusText;
+    if (res.status === 401 && authToken) {
+      notifyUnauthorized(isJwtExpired(authToken) ? 'expired' : 'invalid');
+    }
+    throw new ApiError(msg, res.status);
+  }
+  const blob = await res.blob();
+  const filename =
+    parseContentDispositionFilename(res.headers.get('Content-Disposition')) ??
+    'lion-barber-backup.sql';
+  const tableCount = Number(res.headers.get('X-Backup-Tables') ?? 0);
+  const rowCount = Number(res.headers.get('X-Backup-Rows') ?? 0);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return { filename, tableCount, rowCount };
+}
+
 export const api = {
   getAppointments: (params?: { date?: string; barberId?: string }) => {
     const q = new URLSearchParams();

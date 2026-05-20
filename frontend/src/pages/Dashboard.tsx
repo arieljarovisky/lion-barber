@@ -35,6 +35,8 @@ import {
   Receipt,
   MessageCircle,
   Banknote,
+  DatabaseBackup,
+  Download,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -50,7 +52,7 @@ import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplit
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
 import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
-import { api, ApiError } from '../api';
+import { api, ApiError, downloadDatabaseBackup } from '../api';
 import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barberAfip';
 import { resolveAppointmentServiceAmountArs } from '../utils/money';
@@ -429,6 +431,7 @@ export default function Dashboard() {
   const [shopWhatsappMessageTemplate, setShopWhatsappMessageTemplate] = useState('');
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
+  const [backupDownloading, setBackupDownloading] = useState(false);
   const [shopError, setShopError] = useState('');
   const [toast, setToast] = useState<{ message: string; kind: 'ok' | 'err' } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -3007,6 +3010,53 @@ export default function Dashboard() {
           <div className="max-w-3xl space-y-6">
             {shopError && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{shopError}</div>
+            )}
+            {isSuperAdmin && (
+              <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700">
+                    <DatabaseBackup size={20} aria-hidden />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-black text-lg text-zinc-900">Copia de seguridad</h3>
+                    <p className="text-sm text-zinc-500 mt-1">
+                      Descargá un archivo <strong className="font-semibold text-zinc-700">.sql</strong> con la estructura y
+                      todos los datos de la base (turnos, clientes, barberos, configuración). Guardalo en un lugar seguro.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={backupDownloading}
+                      onClick={() => {
+                        setBackupDownloading(true);
+                        void downloadDatabaseBackup()
+                          .then((r) => {
+                            showToast(
+                              `Copia descargada (${r.tableCount} tablas, ${r.rowCount.toLocaleString('es-AR')} filas)`,
+                              'ok'
+                            );
+                          })
+                          .catch((err) => {
+                            showToast(
+                              err instanceof Error ? err.message : 'No se pudo generar la copia',
+                              'err'
+                            );
+                          })
+                          .finally(() => setBackupDownloading(false));
+                      }}
+                      className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-zinc-900 text-white font-bold rounded-xl hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                    >
+                      {backupDownloading ? (
+                        <>Generando copia…</>
+                      ) : (
+                        <>
+                          <Download size={18} aria-hidden />
+                          Descargar copia de seguridad
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
             <form
               onSubmit={handleSaveShopSettings}

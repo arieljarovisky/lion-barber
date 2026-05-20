@@ -11,6 +11,7 @@ import shopSettings from './routes/shopSettings.js';
 import auth from './routes/auth.js';
 import checkout, { logMercadoPagoEnvHint, mercadopagoWebhook } from './routes/checkout.js';
 import afip from './routes/afip.js';
+import admin from './routes/admin.js';
 import users from './routes/users.js';
 import shopProducts from './routes/shopProducts.js';
 import pointsRedemptionOptions from './routes/pointsRedemptionOptions.js';
@@ -43,6 +44,7 @@ app.use('/api/barber-schedule', barberSchedule);
 app.use('/api/staff-invites', staffInvites);
 app.use('/api/shop-settings', shopSettings);
 app.use('/api/afip', afip);
+app.use('/api/admin', admin);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
