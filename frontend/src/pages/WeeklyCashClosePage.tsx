@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Printer, Wallet }
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api } from '../api';
 import type { Appointment, Barber, Service } from '../api';
+import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { formatArs } from '../utils/money';
 import {
   buildWeeklyCashClose,
@@ -150,8 +151,8 @@ export default function WeeklyCashClosePage() {
                 Cierre de caja semanal
               </h1>
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
-                Resumen de turnos confirmados (lunes a domingo): señas por Mercado Pago, saldo estimado en local,
-                comisiones por barbero y facturación AFIP. No incluye turnos con pago de seña pendiente.
+                Resumen de turnos confirmados (lunes a domingo): señas por Mercado Pago, saldo en local, comisión del barbero
+                ({BARBER_COMMISSION_PERCENT}% del servicio) y facturación AFIP por el importe completo del turno. No incluye turnos con seña pendiente.
               </p>
             </div>
             <div className="no-print flex flex-wrap items-center gap-2">

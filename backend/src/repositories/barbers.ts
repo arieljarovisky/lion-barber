@@ -1,3 +1,4 @@
+import { effectiveBarberCommissionPercent } from '../barberCommission.js';
 import pool, { query } from '../db.js';
 import type { Barber } from '../types.js';
 
@@ -14,7 +15,8 @@ interface DbBarber {
 }
 
 function rowToBarber(r: DbBarber): Barber {
-  const pct = r.commission_percent != null ? Number(r.commission_percent) : 0;
+  const raw = r.commission_percent != null ? Number(r.commission_percent) : 0;
+  const pct = effectiveBarberCommissionPercent(Number.isFinite(raw) ? raw : 0);
   return {
     id: r.id,
     name: r.name,
@@ -22,7 +24,7 @@ function rowToBarber(r: DbBarber): Barber {
     photo: r.photo ?? '',
     desc: r.desc ?? '',
     whatsappPhone: r.whatsapp_phone ?? null,
-    commissionPercent: Number.isFinite(pct) ? pct : 0,
+    commissionPercent: pct,
     monotributoCategory: r.monotributo_category?.trim() || null,
     monotributoAnnualLimit: parseAnnualLimit(r.monotributo_annual_limit),
   };

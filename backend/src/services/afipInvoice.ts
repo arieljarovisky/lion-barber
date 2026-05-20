@@ -216,6 +216,7 @@ export async function invoiceAppointmentAfip(
   if (app.status === 'cancelled') throw new Error('No se puede facturar un turno cancelado.');
   if (app.afipCae) throw new Error('Este turno ya tiene factura registrada.');
 
+  /** Siempre el precio completo del servicio en catálogo (no la comisión ni el saldo en local). */
   const serviceAmount = await resolveAmountArs(app);
   const merged = new Map<string, number>();
   for (const line of opts?.productLines ?? []) {

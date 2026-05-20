@@ -3,6 +3,7 @@ import { Receipt, X } from 'lucide-react';
 import type { Appointment, Barber, BarberInvoicingUsage, Service, ShopProduct } from '../api';
 import { api, ApiError } from '../api';
 import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
+import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { formatArs, parseArsAmount, resolveAppointmentServiceAmountArs } from '../utils/money';
 
 type LineDraft = { productId: string; quantity: number };
@@ -229,15 +230,19 @@ export default function AfipInvoiceModal({
           )}
 
           <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-4 py-3 text-sm">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Servicio</p>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Servicio (turno completo)</p>
             <p className="font-semibold text-zinc-900">{appointment.service}</p>
             <p className="mt-1 text-zinc-700">
-              Subtotal:{' '}
+              Subtotal a facturar:{' '}
               {serviceAmount != null ? (
                 <span className="font-mono font-bold">$ {formatArs(serviceAmount)}</span>
               ) : (
                 <span className="text-amber-800">No disponible — revisá precio en Servicios</span>
               )}
+            </p>
+            <p className="mt-2 text-xs text-zinc-500">
+              AFIP emite por el importe total del servicio (+ productos). La comisión del barbero ({BARBER_COMMISSION_PERCENT}
+              %) es solo para liquidación interna y no reduce lo facturado.
             </p>
           </div>
 

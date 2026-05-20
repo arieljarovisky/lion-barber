@@ -9,6 +9,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Appointment, Barber, Service, ServicePaymentMethod } from '../api';
+import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { calculateDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
 import { SERVICE_PAYMENT_METHODS, applySplitsToMethodTotals } from './servicePaymentMethod';
 import type { ServicePaymentSplit } from '../api';
@@ -104,11 +105,11 @@ function resolveBarber(
     return {
       key: id,
       name: b?.name ?? app.barber ?? 'Sin barbero',
-      commissionPercent: b?.commissionPercent ?? 0,
+      commissionPercent: BARBER_COMMISSION_PERCENT,
     };
   }
   const name = app.barber ?? 'Sin barbero';
-  return { key: `name:${name}`, name, commissionPercent: 0 };
+  return { key: `name:${name}`, name, commissionPercent: BARBER_COMMISSION_PERCENT };
 }
 
 function afipAmountForAppointment(app: Appointment, fallbackService: number): number | null {
@@ -154,7 +155,7 @@ export function buildWeeklyCashClose(
         : 0;
     const localPending = Math.max(0, serviceAmount - depositAmount);
     const commissionAmount =
-      serviceAmount > 0 && commissionPercent > 0
+      serviceAmount > 0
         ? Math.round((serviceAmount * commissionPercent) / 100)
         : 0;
     const afipTotal = afipAmountForAppointment(app, serviceAmount);

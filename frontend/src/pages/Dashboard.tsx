@@ -49,6 +49,7 @@ import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplitsModal';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError } from '../api';
+import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { resolveAppointmentServiceAmountArs } from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
 import type {
@@ -146,8 +147,8 @@ function normalizeAppointmentTime(t: string | undefined): string {
 const SLOT_STEP_MINUTES = 20;
 /** Altura visual mínima por “franja” de 20 min en el timeline (rem). */
 const TIMELINE_ROW_UNIT_REM = 3.75;
-/** Regla fija solicitada: ingreso estimado del barbero = 50% del servicio. */
-const BARBER_ESTIMATED_SHARE = 0.5;
+/** Ingreso estimado del barbero = comisión sobre el servicio. */
+const BARBER_ESTIMATED_SHARE = BARBER_COMMISSION_PERCENT / 100;
 
 function appointmentSlotSpan(app: Appointment): number {
   const dm = app.durationMinutes ?? 30;
@@ -1866,7 +1867,7 @@ export default function Dashboard() {
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="text-base font-black text-zinc-900">Estadísticas por barbero</h3>
               <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-                Ingreso estimado: 50% del servicio
+                Ingreso estimado: {BARBER_COMMISSION_PERCENT}% del servicio
               </span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -3190,8 +3191,8 @@ export default function Dashboard() {
               </h3>
               <p className="text-sm text-zinc-500 mt-1">
                 {isSuperAdmin
-                  ? 'Nombre, comisión y tope anual de facturación AFIP por barbero. El sistema bloquea emitir facturas que superen el tope del año en curso.'
-                  : 'Nombre público y comisión de referencia. Los límites de monotributo los configuran los super administradores contables.'}
+                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% del servicio, solo liquidación) y tope anual AFIP por barbero. La factura AFIP siempre es por el importe completo del turno.`
+                  : `Nombre público y comisión de referencia (${BARBER_COMMISSION_PERCENT}% del servicio). La factura AFIP es siempre por el turno completo.`}
               </p>
               {shopLoading ? (
                 <p className="text-zinc-400 mt-4">Cargando...</p>
@@ -3231,7 +3232,7 @@ export default function Dashboard() {
                             min={0}
                             max={100}
                             step={0.5}
-                            defaultValue={b.commissionPercent ?? 0}
+                            defaultValue={b.commissionPercent ?? BARBER_COMMISSION_PERCENT}
                             key={`${b.id}-comm-${String(b.commissionPercent ?? 0)}`}
                             onBlur={(e) => {
                               const v = parseFloat(e.target.value);

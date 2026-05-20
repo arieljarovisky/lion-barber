@@ -237,10 +237,17 @@ export async function initDb(): Promise<void> {
   }
   try {
     await pool.execute(
-      'ALTER TABLE barbers ADD COLUMN commission_percent DECIMAL(6,2) NOT NULL DEFAULT 0'
+      'ALTER TABLE barbers ADD COLUMN commission_percent DECIMAL(6,2) NOT NULL DEFAULT 50'
     );
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'UPDATE barbers SET commission_percent = 50 WHERE commission_percent IS NULL OR commission_percent = 0'
+    );
+  } catch {
+    /* columna puede no existir aún en el primer arranque */
   }
   try {
     await pool.execute('ALTER TABLE barbers ADD COLUMN monotributo_category VARCHAR(64) NULL');

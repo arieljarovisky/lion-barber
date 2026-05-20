@@ -240,61 +240,6 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
     margin: { left: 10, right: 10 },
   });
 
-  if (data.rows.length > 0) {
-    doc.addPage('a4', 'landscape');
-    const landscapeW = doc.internal.pageSize.getWidth();
-    addSectionTitle(doc, `Detalle de turnos (${data.rows.length})`, 16);
-
-    autoTable(doc, {
-      startY: 22,
-      head: [
-        [
-          'Fecha',
-          'Hora',
-          'Cliente',
-          'Servicio',
-          'Barbero',
-          'Serv.',
-          'Seña',
-          'Local',
-          'Pago',
-          'Com.',
-          'AFIP',
-        ],
-      ],
-      body: data.rows.map((r) => [
-        r.date,
-        r.time,
-        r.clientName,
-        r.serviceName,
-        r.barberName,
-        `$${r.serviceAmount.toLocaleString('es-AR')}`,
-        r.depositPaid ? `$${r.depositAmount.toLocaleString('es-AR')}` : NA,
-        `$${r.localPending.toLocaleString('es-AR')}`,
-        paymentLabel(r),
-        `$${r.commissionAmount.toLocaleString('es-AR')}`,
-        r.afipInvoiced ? 'Sí' : 'No',
-      ]),
-      styles: { fontSize: 7, cellPadding: 1.2, overflow: 'linebreak' },
-      headStyles: { fillColor: PDF_GOLD, textColor: [30, 30, 30], fontStyle: 'bold', fontSize: 7 },
-      columnStyles: {
-        0: { cellWidth: 18 },
-        1: { cellWidth: 12 },
-        2: { cellWidth: 28 },
-        3: { cellWidth: 32 },
-        4: { cellWidth: 22 },
-        5: { cellWidth: 18, halign: 'right' },
-        6: { cellWidth: 16, halign: 'right' },
-        7: { cellWidth: 18, halign: 'right' },
-        8: { cellWidth: 36 },
-        9: { cellWidth: 16, halign: 'right' },
-        10: { cellWidth: 10, halign: 'center' },
-      },
-      margin: { left: 8, right: 8 },
-      showHead: 'everyPage',
-    });
-  }
-
   const pageCount = doc.getNumberOfPages();
   const generatedAt = new Date().toLocaleString('es-AR');
   for (let i = 1; i <= pageCount; i++) {
