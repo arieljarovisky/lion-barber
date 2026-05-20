@@ -27,14 +27,14 @@ export function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd
   return aStart < bEnd && bStart < aEnd;
 }
 
-/** El turno [start, start+duration) debe quedar dentro del horario de atención. */
+/** El turno debe empezar dentro del horario y terminar a más tardar al cierre (17:00 + 60 min con cierre 18:00 es válido). */
 export function slotFitsBusinessHours(
   startTime: string,
   durationMinutes: number,
   closeMinutes = CLOSE_MINUTES
 ): boolean {
   const start = timeToMinutes(startTime);
-  return start >= OPEN_MINUTES && start + durationMinutes < closeMinutes;
+  return start >= OPEN_MINUTES && start + durationMinutes <= closeMinutes;
 }
 
 export function closeTimeToMinutes(closeTime: string | undefined): number {

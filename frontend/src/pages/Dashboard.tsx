@@ -3560,8 +3560,11 @@ export default function Dashboard() {
       {/* Modal crear/editar cita */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto" onClick={closeModal}>
-          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto my-4" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-zinc-200 flex justify-between items-center">
+          <div
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg max-h-[min(90dvh,calc(100vh-2rem))] flex flex-col overflow-hidden my-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-zinc-200 flex justify-between items-center shrink-0">
               <h3 className="text-xl font-black text-zinc-900">
                 {editingAppointment ? 'Editar cita' : 'Nueva cita'}
               </h3>
@@ -3569,7 +3572,8 @@ export default function Dashboard() {
                 <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleSaveAppointment} className="p-6 space-y-4">
+            <form onSubmit={handleSaveAppointment} className="flex flex-col min-h-0 flex-1">
+              <div className="p-6 space-y-4 min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {error && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Nombre</label>
@@ -3845,7 +3849,8 @@ export default function Dashboard() {
                   </div>
                   </>
                 )}
-              <div className="flex gap-3 pt-4">
+              </div>
+              <div className="flex gap-3 p-6 pt-4 border-t border-zinc-200 shrink-0 bg-white">
                 <button
                   type="button"
                   onClick={closeModal}
