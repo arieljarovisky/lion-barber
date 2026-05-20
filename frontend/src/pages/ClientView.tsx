@@ -8,6 +8,7 @@ import { api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
 import {
   format,
   parse,
@@ -1142,7 +1143,7 @@ export default function ClientView() {
                   </div>
                   {!profile?.depositExempt && (
                     <p className="text-center text-[11px] text-zinc-500 mt-2">
-                      Reservamos el horario por 15 minutos: si el pago de la seña no se aprueba en ese tiempo, la reserva se
+                      Reservamos el horario por {DEPOSIT_PAYMENT_MINUTES} minutos: si el pago de la seña no se aprueba en ese tiempo, la reserva se
                       cancela automáticamente. Podés volver a pagar desde tu perfil mientras no venza el plazo.
                     </p>
                   )}

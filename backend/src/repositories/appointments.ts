@@ -67,6 +67,7 @@ interface DbAppointment {
   service_payment_method?: string | null;
   service_payment_splits?: string | unknown | null;
   client_chose_any_barber?: number;
+  tip_amount?: number | string | null;
 }
 
 function parseAfipDetail(raw: string | null | undefined): AfipInvoiceDetail | undefined {
@@ -97,7 +98,7 @@ function rowToAppointment(row: DbAppointment): Appointment {
     durationMinutes: row.duration_minutes ?? 30,
     depositPaid: Boolean(row.deposit_paid),
     mercadopagoPaymentId: row.mercadopago_payment_id ?? undefined,
-    paymentDueAt: row.payment_due_at ?? undefined,
+    paymentDueAt: mysqlUtcNaiveToIsoInstant(row.payment_due_at) ?? undefined,
     status: st,
     afipCae: row.afip_cae ?? undefined,
     afipCaeVto: row.afip_cae_vto ? String(row.afip_cae_vto).slice(0, 10) : undefined,
@@ -107,12 +108,20 @@ function rowToAppointment(row: DbAppointment): Appointment {
     afipInvoiceDetail: parseAfipDetail(row.afip_invoice_detail),
     servicePaymentMethod: parseServicePaymentMethod(row.service_payment_method),
     servicePaymentSplits: parseServicePaymentSplits(row.service_payment_splits),
+    tipAmount:
+      row.tip_amount != null && Number.isFinite(Number(row.tip_amount))
+        ? Math.round(Number(row.tip_amount) * 100) / 100
+        : 0,
   };
 }
 
 export async function expireStalePendingAppointments(): Promise<void> {
   await query(
-    "UPDATE appointments SET status = 'cancelled' WHERE status = 'pending_payment' AND payment_due_at IS NOT NULL AND payment_due_at < NOW()"
+    `UPDATE appointments SET status = 'cancelled'
+     WHERE status = 'pending_payment'
+       AND deposit_paid = 0
+       AND payment_due_at IS NOT NULL
+       AND payment_due_at < UTC_TIMESTAMP()`
   );
 }
 
@@ -486,8 +495,16 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       ? JSON.stringify(servicePaymentSplits)
       : null;
 
+  const tipAmount =
+    data.tipAmount !== undefined
+      ? Math.max(0, Math.round(Number(data.tipAmount) * 100) / 100)
+      : current.tipAmount ?? 0;
+  if (!Number.isFinite(tipAmount) || tipAmount < 0) {
+    throw new Error('Propina inválida');
+  }
+
   await query(
-    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?
+    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?, tip_amount = ?
      WHERE id = ?`,
     [
       updated.name,
@@ -504,6 +521,7 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       updated.paymentDueAt ?? null,
       servicePaymentMethod,
       splitsJson,
+      tipAmount,
       id,
     ]
   );

@@ -53,9 +53,9 @@ import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
 import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError, downloadDatabaseBackup } from '../api';
-import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barberAfip';
-import { resolveAppointmentServiceAmountArs } from '../utils/money';
+import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
 import type {
   Appointment,
@@ -360,6 +360,7 @@ export default function Dashboard() {
     date: '',
     time: '',
     servicePaymentSplits: [] as ServicePaymentSplit[],
+    tipAmount: '',
   });
   const [paymentSplitsModalApp, setPaymentSplitsModalApp] = useState<Appointment | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1143,6 +1144,7 @@ export default function Dashboard() {
       date: dateStr,
       time: agendaTimeSlots[0] ?? '10:00',
       servicePaymentSplits: [],
+      tipAmount: '',
     });
     setError('');
     setModalOpen(true);
@@ -1163,6 +1165,7 @@ export default function Dashboard() {
       date: slotDateStr,
       time: slotTime,
       servicePaymentSplits: [],
+      tipAmount: '',
     });
     setError('');
     setModalOpen(true);
@@ -1181,6 +1184,10 @@ export default function Dashboard() {
       date: app.date,
       time: app.time,
       servicePaymentSplits: initialSplitsFromAppointment(app, services, shopDepositPercent),
+      tipAmount:
+        app.tipAmount != null && app.tipAmount > 0
+          ? String(app.tipAmount).replace('.', ',')
+          : '',
     });
     setError('');
     setModalOpen(true);
@@ -1245,6 +1252,17 @@ export default function Dashboard() {
     const barber = barbers.find((b) => b.id === effectiveBarberId);
     try {
       if (editingAppointment) {
+        const tipRaw = form.tipAmount.trim().replace(',', '.');
+        let tipAmount = 0;
+        if (tipRaw !== '') {
+          tipAmount = parseFloat(tipRaw);
+          if (!Number.isFinite(tipAmount) || tipAmount < 0) {
+            setError('La propina debe ser un número ≥ 0.');
+            setSaving(false);
+            return;
+          }
+          tipAmount = Math.round(tipAmount * 100) / 100;
+        }
         const updated = await api.updateAppointment(editingAppointment.id, {
           name: form.name,
           phone: form.phone,
@@ -1254,6 +1272,7 @@ export default function Dashboard() {
           date: form.date,
           time: form.time,
           servicePaymentSplits: cleanServicePaymentSplits(form.servicePaymentSplits),
+          tipAmount,
         });
         patchAppointmentInState(updated);
       } else {
@@ -2009,6 +2028,11 @@ export default function Dashboard() {
                                   </p>
                                   <AppointmentPaymentBadge app={app} className="mt-1" />
                                   {renderPaymentSplitsTrigger(app, true)}
+                                  {(app.tipAmount ?? 0) > 0 && (
+                                    <p className="text-[10px] font-semibold text-violet-700 mt-0.5">
+                                      Propina ${formatArs(app.tipAmount!)}
+                                    </p>
+                                  )}
                                   <p className="text-zinc-500 text-[10px] mt-0.5 tabular-nums">
                                     {normalizeAppointmentTime(app.time)} – {endClock} · {dm} min
                                   </p>
@@ -2494,6 +2518,11 @@ export default function Dashboard() {
                         )}
                       </div>
                       {renderPaymentSplitsTrigger(app)}
+                      {(app.tipAmount ?? 0) > 0 && (
+                        <p className="text-[11px] font-semibold text-violet-700 mt-1">
+                          Propina ${formatArs(app.tipAmount!)}
+                        </p>
+                      )}
                     </div>
 
                     {/* Acciones (ancho fijo para mantener alineación entre filas) */}
@@ -3238,8 +3267,8 @@ export default function Dashboard() {
               </h3>
               <p className="text-sm text-zinc-500 mt-1">
                 {isSuperAdmin
-                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% del servicio, solo liquidación) y tope anual AFIP por barbero. La factura AFIP siempre es por el importe completo del turno.`
-                  : `Nombre público y comisión de referencia (${BARBER_COMMISSION_PERCENT}% del servicio). La factura AFIP es siempre por el turno completo.`}
+                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al facturar) y tope anual AFIP. La factura AFIP es por el importe completo.`
+                  : `Nombre público y comisión de referencia (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos).`}
               </p>
               {shopLoading ? (
                 <p className="text-zinc-400 mt-4">Cargando...</p>
@@ -3786,7 +3815,24 @@ export default function Dashboard() {
               {editingAppointment &&
                 editingAppointment.status !== 'cancelled' &&
                 editingAppointment.status !== 'pending_payment' && (
-                  <div>
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                        Propina (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={form.tipAmount}
+                        onChange={(e) => setForm((f) => ({ ...f, tipAmount: e.target.value }))}
+                        placeholder="0"
+                        className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+                      />
+                      <p className="mt-1 text-xs text-zinc-500">
+                        No se factura con AFIP. Se muestra en el cierre de caja.
+                      </p>
+                    </div>
+                    <div>
                     <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                       Cobros del servicio en local
                     </label>
@@ -3806,6 +3852,7 @@ export default function Dashboard() {
                       acá.
                     </p>
                   </div>
+                  </>
                 )}
               <div className="flex gap-3 pt-4">
                 <button

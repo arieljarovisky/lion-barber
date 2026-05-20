@@ -2,12 +2,26 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { format, parseISO, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Users, ChevronRight, LayoutGrid, List, Plus, X, Search, SlidersHorizontal, RotateCcw, Trash2, ShieldCheck } from 'lucide-react';
+import {
+  Users,
+  ChevronRight,
+  LayoutGrid,
+  List,
+  Plus,
+  X,
+  Search,
+  SlidersHorizontal,
+  RotateCcw,
+  Trash2,
+  ShieldCheck,
+  StickyNote,
+} from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
 import type { AdminClientWithHistory } from '../api';
-import { displayClientEmail } from '../utils/manualClientEmail';
+import { displayClientEmail, isPlaceholderManualClientEmail } from '../utils/manualClientEmail';
+import { formatPhonesForInput, parsePhonesInput } from '../utils/adminClientHistory';
 
 const VIEW_STORAGE_KEY = 'lion-barber-admin-clients-view';
 
@@ -34,20 +48,6 @@ type ClientFilterPreset =
 const VIP_POINTS_MIN = 25;
 const FREQUENT_BOOKINGS_MIN = 3;
 const NEW_CLIENT_DAYS = 30;
-
-function parsePhonesInput(raw: string): string[] {
-  const seen = new Set<string>();
-  return raw
-    .split(/\r?\n|,/g)
-    .map((p) => p.trim())
-    .filter((p) => {
-      if (!p) return false;
-      const key = p.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
 
 function clientPhones(c: AdminClientWithHistory): string[] {
   if (Array.isArray(c.phones) && c.phones.length > 0) return c.phones.filter((p) => p.trim().length > 0);
@@ -206,6 +206,7 @@ export default function AdminClientsListPage() {
         (c) =>
           c.name.toLowerCase().includes(q) ||
           c.email.toLowerCase().includes(q) ||
+          (c.adminNotes ?? '').toLowerCase().includes(q) ||
           clientPhones(c).some((p) => p.toLowerCase().includes(q))
       );
     }
@@ -450,6 +451,14 @@ export default function AdminClientsListPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start gap-2">
                           <p className="font-bold text-zinc-900 group-hover:text-zinc-950 truncate flex-1">{c.name}</p>
+                          {c.adminNotes?.trim() && (
+                            <span
+                              className="inline-flex shrink-0 items-center text-amber-600"
+                              title={c.adminNotes.trim()}
+                            >
+                              <StickyNote size={14} />
+                            </span>
+                          )}
                           {c.depositExempt && (
                             <span
                               className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700"
@@ -542,6 +551,14 @@ export default function AdminClientsListPage() {
                           <div className="flex items-center gap-3">
                             <AdminClientAvatar name={c.name} avatarUrl={c.avatarUrl} size="sm" />
                             <span className="font-semibold text-zinc-900">{c.name}</span>
+                            {c.adminNotes?.trim() && (
+                              <span
+                                className="inline-flex text-amber-600"
+                                title={c.adminNotes.trim()}
+                              >
+                                <StickyNote size={14} aria-label="Tiene nota recordatoria" />
+                              </span>
+                            )}
                             {c.depositExempt && (
                               <span
                                 className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700"

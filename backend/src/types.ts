@@ -40,6 +40,8 @@ export interface Appointment {
   servicePaymentMethod?: ServicePaymentMethod | null;
   /** Cobro del saldo en local repartido entre métodos (suma de montos). */
   servicePaymentSplits?: ServicePaymentSplit[] | null;
+  /** Propina en ARS; no se incluye en factura AFIP. */
+  tipAmount?: number;
 }
 
 /** Desglose persistido al facturar con AFIP. */
@@ -54,6 +56,12 @@ export interface AfipInvoiceDetail {
     subtotal: number;
   }[];
   total: number;
+  /** Suma de subtotales de productLines (redundante, útil para liquidación). */
+  productsTotal?: number;
+  /** % comisión barbero sobre productos al emitir. */
+  productsCommissionPercent?: number;
+  /** Comisión barbero en ARS sobre productos. */
+  productsCommissionAmount?: number;
   /** CUIT emisor al momento de facturar (barbero del turno). */
   emitterCuit?: string;
   emitterBarberId?: string;

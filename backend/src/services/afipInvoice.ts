@@ -8,6 +8,10 @@ import * as repo from '../repositories/appointments.js';
 import { getBarberAfipCredentials, getBarberById, getAllBarbers } from '../repositories/barbers.js';
 import { getShopProductById } from '../repositories/shopProducts.js';
 import { getServiceById } from '../repositories/services.js';
+import {
+  DEFAULT_BARBER_PRODUCT_COMMISSION_PERCENT,
+  barberProductCommissionAmount,
+} from '../barberCommission.js';
 import type { AfipInvoiceDetail, Appointment } from '../types.js';
 import { assertBarberCanInvoice } from './barberInvoicingLimits.js';
 
@@ -320,11 +324,15 @@ export async function invoiceAppointmentAfip(
 
   await assertBarberCanInvoice(barberId, amount);
 
+  const productsCommissionAmount = barberProductCommissionAmount(productsTotal);
   const invoiceDetail: AfipInvoiceDetail = {
     serviceAmount: Math.round(serviceAmount * 100) / 100,
     serviceLabel: app.service,
     productLines,
     total: amount,
+    productsTotal: Math.round(productsTotal * 100) / 100,
+    productsCommissionPercent: productLines.length > 0 ? DEFAULT_BARBER_PRODUCT_COMMISSION_PERCENT : undefined,
+    productsCommissionAmount: productLines.length > 0 ? productsCommissionAmount : undefined,
     emitterCuit: creds.cuit,
     emitterBarberId: barberId,
   };

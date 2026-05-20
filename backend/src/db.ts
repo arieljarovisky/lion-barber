@@ -81,6 +81,11 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE users ADD COLUMN admin_notes TEXT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS client_phones (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -348,6 +353,13 @@ export async function initDb(): Promise<void> {
   try {
     await pool.execute(
       'ALTER TABLE appointments ADD COLUMN client_chose_any_barber TINYINT(1) NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE appointments ADD COLUMN tip_amount DECIMAL(12,2) NOT NULL DEFAULT 0'
     );
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;

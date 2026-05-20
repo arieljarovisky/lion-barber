@@ -16,6 +16,7 @@ import users from './routes/users.js';
 import shopProducts from './routes/shopProducts.js';
 import pointsRedemptionOptions from './routes/pointsRedemptionOptions.js';
 import { runAppointmentReminderEmails } from './jobs/runAppointmentReminderEmails.js';
+import { runExpirePendingPayments } from './jobs/runExpirePendingPayments.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -68,6 +69,12 @@ async function start() {
     void runAppointmentReminderEmails().catch((e) => console.error('[Reminder] job', e));
   }, reminderMs);
   void runAppointmentReminderEmails().catch((e) => console.error('[Reminder] job inicial', e));
+
+  const expirePendingMs = 60 * 1000;
+  setInterval(() => {
+    void runExpirePendingPayments().catch((e) => console.error('[ExpirePending] job', e));
+  }, expirePendingMs);
+  void runExpirePendingPayments().catch((e) => console.error('[ExpirePending] job inicial', e));
 }
 
 start();

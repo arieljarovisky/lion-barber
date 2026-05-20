@@ -38,8 +38,19 @@ export interface DbUser {
   phones?: string[];
   /** Si es true, el cliente queda exento de pagar seña: sus turnos se confirman directo. */
   deposit_exempt?: number | boolean | null;
+  /** Notas internas del panel (recordatorios para el equipo). */
+  admin_notes?: string | null;
   created_at: Date;
 }
+
+export type UpdateAdminClientInput = {
+  name?: string;
+  email?: string;
+  phones?: string[];
+  points?: number;
+  depositExempt?: boolean;
+  adminNotes?: string | null;
+};
 
 export function isUserDepositExempt(u: Pick<DbUser, 'deposit_exempt'>): boolean {
   const v = u.deposit_exempt;
@@ -55,6 +66,82 @@ export async function setClientDepositExempt(userId: number, exempt: boolean): P
     userId,
     'client',
   ]);
+  return findUserById(userId);
+}
+
+export async function replaceClientPhones(userId: number, phones: string[]): Promise<void> {
+  const normalized = normalizePhones(phones);
+  await query('DELETE FROM client_phones WHERE user_id = ?', [userId]);
+  for (const p of normalized) {
+    await query('INSERT INTO client_phones (user_id, phone) VALUES (?, ?)', [userId, p]);
+  }
+  await query('UPDATE users SET phone = ? WHERE id = ? AND role = ?', [
+    normalized[0] ?? null,
+    userId,
+    'client',
+  ]);
+}
+
+function normalizeAdminNotes(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const t = String(raw).trim();
+  if (!t) return null;
+  return t.slice(0, 8000);
+}
+
+/** Actualiza ficha de cliente (panel admin). */
+export async function updateAdminClientById(
+  userId: number,
+  input: UpdateAdminClientInput
+): Promise<DbUser | null> {
+  const existing = await findUserById(userId);
+  if (!existing || existing.role !== 'client') return null;
+
+  if (input.name != null) {
+    const name = input.name.trim();
+    if (!name) throw new Error('El nombre no puede estar vacío');
+    await query('UPDATE users SET name = ? WHERE id = ? AND role = ?', [name, userId, 'client']);
+  }
+
+  if (input.email != null && !existing.google_uid) {
+    let email = input.email.trim().toLowerCase();
+    if (!email) {
+      email = `local-${randomUUID()}@${PLACEHOLDER_EMAIL_HOST}`;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error('Email inválido');
+    }
+    const dup = await findUserByEmail(email);
+    if (dup && dup.id !== userId) throw new Error('Ya existe un usuario con ese email');
+    await query('UPDATE users SET email = ? WHERE id = ? AND role = ?', [email, userId, 'client']);
+  }
+
+  if (input.points != null) {
+    const n = Number(input.points);
+    if (!Number.isFinite(n) || n < 0) throw new Error('Los puntos deben ser un número ≥ 0');
+    const pts = Math.min(999_999, Math.floor(n));
+    await query('UPDATE users SET points = ? WHERE id = ? AND role = ?', [pts, userId, 'client']);
+  }
+
+  if (input.depositExempt != null) {
+    await query('UPDATE users SET deposit_exempt = ? WHERE id = ? AND role = ?', [
+      input.depositExempt ? 1 : 0,
+      userId,
+      'client',
+    ]);
+  }
+
+  if (input.adminNotes !== undefined) {
+    await query('UPDATE users SET admin_notes = ? WHERE id = ? AND role = ?', [
+      normalizeAdminNotes(input.adminNotes),
+      userId,
+      'client',
+    ]);
+  }
+
+  if (input.phones != null) {
+    await replaceClientPhones(userId, input.phones);
+  }
+
   return findUserById(userId);
 }
 

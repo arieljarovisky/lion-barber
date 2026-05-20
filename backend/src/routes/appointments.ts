@@ -21,6 +21,7 @@ import { isRealClientEmail, sendAppointmentScheduledEmail } from '../services/em
 import { findUserById } from '../repositories/users.js';
 import type { Appointment } from '../types.js';
 import { parseServicePaymentMethod, parseServicePaymentSplits } from '../servicePaymentMethod.js';
+import { parseTipAmountBody } from '../tipAmount.js';
 import type { ServicePaymentSplit } from '../types.js';
 
 function parseSplitsBodyField(raw: unknown): ServicePaymentSplit[] | null | undefined {
@@ -292,6 +293,14 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
     let payload: Partial<Appointment>;
     if (authReq.user!.role === 'staff') {
       payload = {};
+      if ('tipAmount' in body) {
+        try {
+          payload.tipAmount = parseTipAmountBody(body.tipAmount);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Propina inválida';
+          return res.status(400).json({ error: msg });
+        }
+      }
       if ('servicePaymentSplits' in body) {
         const parsed = parseSplitsBodyField(body.servicePaymentSplits);
         if (body.servicePaymentSplits != null && parsed === null && !Array.isArray(body.servicePaymentSplits)) {
@@ -317,6 +326,14 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
       payload = { ...body } as Partial<Appointment>;
       delete (payload as Record<string, unknown>).servicePaymentSplits;
       delete (payload as Record<string, unknown>).servicePaymentMethod;
+      if ('tipAmount' in body) {
+        try {
+          payload.tipAmount = parseTipAmountBody(body.tipAmount);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Propina inválida';
+          return res.status(400).json({ error: msg });
+        }
+      }
       if ('servicePaymentSplits' in body) {
         const parsed = parseSplitsBodyField(body.servicePaymentSplits);
         if (

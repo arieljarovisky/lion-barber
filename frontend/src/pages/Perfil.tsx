@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { api } from '../api';
 import type { Appointment } from '../api';
+import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
 import { Wallet } from '@mercadopago/sdk-react';
 import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import { format, isBefore, parse } from 'date-fns';
@@ -34,7 +35,8 @@ function appointmentDateTime(a: Appointment): Date {
 }
 
 function secondsUntilPaymentDue(paymentDueAt: string): number {
-  const due = Date.parse(paymentDueAt.trim().replace(' ', 'T') + 'Z');
+  const raw = paymentDueAt.trim();
+  const due = Date.parse(raw.includes('T') ? raw : raw.replace(' ', 'T') + 'Z');
   if (!Number.isFinite(due)) return 0;
   return Math.max(0, Math.floor((due - Date.now()) / 1000));
 }
@@ -505,7 +507,8 @@ export default function Perfil() {
               <ChevronDown className="ml-auto h-4 w-4 shrink-0 text-zinc-500 transition group-open:rotate-180" />
             </summary>
             <p className="border-t border-zinc-800/80 px-3 pb-3 pt-2 text-[11px] leading-relaxed text-zinc-500 sm:text-xs">
-              Al reservar con seña online tenés <strong className="text-zinc-300">15 minutos</strong> para que el pago se
+              Al reservar con seña online tenés{' '}
+              <strong className="text-zinc-300">{DEPOSIT_PAYMENT_MINUTES} minutos</strong> para que el pago se
               apruebe; si no, el turno se libera solo. Podés pagar desde acá mientras no venza ese plazo. Podés cancelar
               hasta el inicio del turno: si cancelás con al menos <strong className="text-zinc-300">2 horas</strong> de
               anticipación, la seña se reembolsa por Mercado Pago; con menos tiempo, la seña no se devuelve. Para{' '}

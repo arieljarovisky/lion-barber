@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Printer, Wallet }
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api } from '../api';
 import type { Appointment, Barber, Service } from '../api';
-import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { formatArs } from '../utils/money';
 import {
   buildWeeklyCashClose,
@@ -152,8 +152,9 @@ export default function WeeklyCashClosePage() {
                 Cierre de caja semanal
               </h1>
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
-                Resumen de turnos confirmados (lunes a domingo): señas por Mercado Pago, saldo en local, comisión del barbero
-                ({BARBER_COMMISSION_PERCENT}% del servicio) y facturación AFIP por el importe completo del turno. No incluye turnos con seña pendiente.
+                Resumen de turnos confirmados (lunes a domingo): señas por Mercado Pago, saldo en local, comisión del barbero (
+                {BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de productos facturados en el
+                turno) y facturación AFIP por el importe completo. No incluye turnos con seña pendiente.
               </p>
             </div>
             <div className="no-print flex flex-wrap items-center gap-2">
@@ -271,6 +272,14 @@ export default function WeeklyCashClosePage() {
                   value={`$${formatArs(summary.afipInvoicedTotal)}`}
                   hint={`${summary.afipInvoicedCount} comprobante(s)`}
                 />
+                {summary.tipsTotal > 0 && (
+                  <SummaryCard
+                    label="Propinas"
+                    value={`$${formatArs(summary.tipsTotal)}`}
+                    hint="No se facturan con AFIP"
+                    accent="gold"
+                  />
+                )}
                 <SummaryCard
                   label="Sin facturar AFIP"
                   value={String(summary.pendingAfipCount)}
@@ -334,6 +343,7 @@ export default function WeeklyCashClosePage() {
                           <th className="px-4 py-3 text-right">Señas MP</th>
                           <th className="px-4 py-3 text-right">En local</th>
                           <th className="px-4 py-3 text-right">Comisión</th>
+                          <th className="px-4 py-3 text-right">Propinas</th>
                           <th className="px-4 py-3 text-right">AFIP</th>
                         </tr>
                       </thead>
@@ -352,6 +362,9 @@ export default function WeeklyCashClosePage() {
                             <td className="px-4 py-3 text-right tabular-nums font-medium">
                               ${formatArs(b.commission)}
                             </td>
+                            <td className="px-4 py-3 text-right tabular-nums text-violet-700">
+                              {b.tips > 0 ? `$${formatArs(b.tips)}` : '—'}
+                            </td>
                             <td className="px-4 py-3 text-right tabular-nums">${formatArs(b.afipInvoiced)}</td>
                           </tr>
                         ))}
@@ -368,6 +381,9 @@ export default function WeeklyCashClosePage() {
                             ${formatArs(summary.localPending)}
                           </td>
                           <td className="px-4 py-3 text-right">${formatArs(summary.commissions)}</td>
+                          <td className="px-4 py-3 text-right text-violet-800">
+                            {summary.tipsTotal > 0 ? `$${formatArs(summary.tipsTotal)}` : '—'}
+                          </td>
                           <td className="px-4 py-3 text-right">${formatArs(summary.afipInvoicedTotal)}</td>
                         </tr>
                       </tfoot>
@@ -398,6 +414,7 @@ export default function WeeklyCashClosePage() {
                           <th className="px-3 py-2 text-right">Servicio</th>
                           <th className="px-3 py-2 text-right">Seña</th>
                           <th className="px-3 py-2 text-right">En local</th>
+                          <th className="px-3 py-2 text-right">Propina</th>
                           <th className="px-3 py-2">Pago</th>
                           <th className="px-3 py-2 text-right">Comisión</th>
                           <th className="px-3 py-2 text-center">AFIP</th>
@@ -425,6 +442,9 @@ export default function WeeklyCashClosePage() {
                             <td className="px-3 py-2 text-right tabular-nums text-amber-800">
                               ${formatArs(r.localPending)}
                             </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-violet-700">
+                              {r.tipAmount > 0 ? `$${formatArs(r.tipAmount)}` : '—'}
+                            </td>
                             <td className="max-w-[14rem] px-3 py-2 text-xs font-medium text-zinc-700">
                               {formatServicePaymentSplits(
                                 r.servicePaymentSplits,
@@ -434,11 +454,11 @@ export default function WeeklyCashClosePage() {
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">
                               ${formatArs(r.commissionAmount)}
-                              {r.commissionPercent > 0 && (
-                                <span className="block text-[10px] font-normal text-zinc-400">
-                                  {r.commissionPercent}%
-                                </span>
-                              )}
+                              <span className="block text-[10px] font-normal text-zinc-400">
+                                {r.commissionPercent}% serv.
+                                {r.productCommissionAmount > 0 &&
+                                  ` + ${BARBER_PRODUCT_COMMISSION_PERCENT}% prod.`}
+                              </span>
                             </td>
                             <td className="px-3 py-2 text-center">
                               {r.afipInvoiced ? (
@@ -456,7 +476,8 @@ export default function WeeklyCashClosePage() {
               </section>
 
               <p className="mt-6 text-xs text-zinc-500 max-w-3xl">
-                Las señas se calculan con el {depositPercent}% configurado. «En local» es el saldo estimado (servicio −
+                Las señas se calculan con el {depositPercent}% configurado. La comisión de productos ({BARBER_PRODUCT_COMMISSION_PERCENT}
+                %) aplica solo si se facturaron productos en AFIP con ese turno. «En local» es el saldo estimado (servicio −
                 seña). Registrá los cobros en cada turno desde la agenda; podés combinar métodos (ej. efectivo + tarjeta) con el
                 monto de cada uno.
               </p>

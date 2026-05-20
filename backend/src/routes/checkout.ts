@@ -20,18 +20,12 @@ import {
   isRealClientEmail,
 } from '../services/email.js';
 import { findUserById, isUserDepositExempt } from '../repositories/users.js';
+import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
 
 const router = Router();
 
-/** Plazo para abonar la seña desde que se reserva el horario (minutos). */
-export const PENDING_PAYMENT_MINUTES = 15;
-
-function paymentDueAtMysqlFromNow(): string {
-  return new Date(Date.now() + PENDING_PAYMENT_MINUTES * 60 * 1000)
-    .toISOString()
-    .slice(0, 19)
-    .replace('T', ' ');
-}
+/** Re-export para tests / referencias externas. */
+export const PENDING_PAYMENT_MINUTES = getPendingPaymentMinutes();
 
 function getMpConfig(): MercadoPagoConfig | null {
   const raw = process.env.MERCADOPAGO_ACCESS_TOKEN;
@@ -433,7 +427,8 @@ router.post('/sena', async (req, res) => {
   }
 
   let pending;
-  const paymentDueAt = paymentDueAtMysqlFromNow();
+  const depositMinutes = getPendingPaymentMinutes();
+  const paymentDueAt = paymentDueAtFromNow(depositMinutes);
   try {
     pending = await repo.createAppointment({
       name,
@@ -490,7 +485,7 @@ router.post('/sena', async (req, res) => {
         await sendDepositPendingEmail(user.email, pending, {
           paymentUrl: pref.url,
           paymentDueAt,
-          depositMinutes: PENDING_PAYMENT_MINUTES,
+          depositMinutes,
         });
       }
     } catch (err) {
@@ -592,7 +587,7 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
           await sendDepositPendingEmail(user.email, app, {
             paymentUrl: pref.url,
             paymentDueAt: app.paymentDueAt,
-            depositMinutes: PENDING_PAYMENT_MINUTES,
+            depositMinutes: getPendingPaymentMinutes(),
           });
         }
       } catch (err) {

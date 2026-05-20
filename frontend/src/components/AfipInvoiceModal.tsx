@@ -3,7 +3,7 @@ import { Receipt, X } from 'lucide-react';
 import type { Appointment, Barber, BarberInvoicingUsage, Service, ShopProduct } from '../api';
 import { api, ApiError } from '../api';
 import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
-import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import {
   appointmentMatchesInvoiceScope,
   isBarberAfipReady,
@@ -113,6 +113,16 @@ export default function AfipInvoiceModal({
     const s = serviceAmount ?? 0;
     return Math.round((s + productsSubtotal) * 100) / 100;
   }, [serviceAmount, productsSubtotal]);
+
+  const serviceCommission = useMemo(() => {
+    const s = serviceAmount ?? 0;
+    return s > 0 ? Math.round((s * BARBER_COMMISSION_PERCENT) / 100) : 0;
+  }, [serviceAmount]);
+
+  const productCommission = useMemo(() => {
+    if (productsSubtotal <= 0) return 0;
+    return Math.round((productsSubtotal * BARBER_PRODUCT_COMMISSION_PERCENT) / 100);
+  }, [productsSubtotal]);
 
   const wouldExceedLimit = useMemo(() => {
     if (!barberUsage?.annualLimit || barberUsage.annualLimit <= 0) return false;
@@ -285,13 +295,47 @@ export default function AfipInvoiceModal({
               )}
             </p>
             <p className="mt-2 text-xs text-zinc-500">
-              AFIP emite por el importe total del servicio (+ productos). La comisión del barbero ({BARBER_COMMISSION_PERCENT}
-              %) es solo para liquidación interna y no reduce lo facturado.
+              AFIP factura el importe completo. Liquidación del barbero: {BARBER_COMMISSION_PERCENT}% del servicio
+              {productsSubtotal > 0 ? ` y ${BARBER_PRODUCT_COMMISSION_PERCENT}% de los productos` : ''} (no reduce la factura).
             </p>
+            {(appointment.tipAmount ?? 0) > 0 && (
+              <p className="mt-2 text-xs font-medium text-violet-700">
+                Propina del turno ($ {formatArs(appointment.tipAmount!)}): no se incluye en este comprobante AFIP.
+              </p>
+            )}
           </div>
+
+          {(serviceCommission > 0 || productCommission > 0) && (
+            <div className="rounded-xl border border-[#e5c185]/40 bg-[#e5c185]/10 px-4 py-3 text-sm text-zinc-800">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#8a6d3b]">Comisión barbero (liquidación)</p>
+              <ul className="mt-2 space-y-1 text-xs">
+                {serviceCommission > 0 && (
+                  <li>
+                    Servicio: $ {formatArs(serviceCommission)}{' '}
+                    <span className="text-zinc-500">({BARBER_COMMISSION_PERCENT}%)</span>
+                  </li>
+                )}
+                {productCommission > 0 && (
+                  <li>
+                    Productos: $ {formatArs(productCommission)}{' '}
+                    <span className="text-zinc-500">
+                      ({BARBER_PRODUCT_COMMISSION_PERCENT}% de $ {formatArs(productsSubtotal)})
+                    </span>
+                  </li>
+                )}
+                <li className="font-bold text-zinc-900 pt-1 border-t border-[#e5c185]/30">
+                  Total comisión: $ {formatArs(serviceCommission + productCommission)}
+                </li>
+              </ul>
+            </div>
+          )}
 
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500 mb-2">Productos de venta (opcional)</p>
+            <p className="text-[11px] text-zinc-500 mb-2">
+              Si agregás productos, el barbero cobra {BARBER_PRODUCT_COMMISSION_PERCENT}% de comisión sobre esa venta en el
+              cierre de caja.
+            </p>
             {pricedProducts.length === 0 ? (
               <p className="text-xs text-zinc-500">
                 No hay productos con precio de venta cargado. Definí «Precio venta» en la sección Productos.

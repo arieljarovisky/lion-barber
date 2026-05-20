@@ -112,6 +112,8 @@ export interface Appointment {
   servicePaymentMethod?: ServicePaymentMethod | null;
   /** Cobro del saldo en local combinando métodos (cada línea: método + monto ARS). */
   servicePaymentSplits?: ServicePaymentSplit[] | null;
+  /** Propina en ARS; no se factura con AFIP. */
+  tipAmount?: number;
 }
 
 export interface AfipInvoiceDetail {
@@ -125,6 +127,9 @@ export interface AfipInvoiceDetail {
     subtotal: number;
   }[];
   total: number;
+  productsTotal?: number;
+  productsCommissionPercent?: number;
+  productsCommissionAmount?: number;
   emitterCuit?: string;
   emitterBarberId?: string;
 }
@@ -249,6 +254,10 @@ export interface AdminClientWithHistory {
   avatarUrl?: string | null;
   /** Cliente exento de pagar seña: sus reservas se confirman sin Mercado Pago. */
   depositExempt?: boolean;
+  /** Notas internas / recordatorios (solo panel admin). */
+  adminNotes?: string | null;
+  /** Cuenta vinculada a Google (email no editable desde el panel). */
+  hasGoogleAccount?: boolean;
   createdAt: string;
   appointments: Appointment[];
 }
@@ -603,7 +612,18 @@ export const api = {
     }),
 
   /** Solo admin: actualiza un cliente. Por ahora solo el flag de exención de seña. */
-  updateAdminClient: (clientId: number, data: { depositExempt: boolean }) =>
+  updateAdminClient: (
+    clientId: number,
+    data: {
+      name?: string;
+      email?: string;
+      phones?: string[];
+      phone?: string;
+      points?: number;
+      depositExempt?: boolean;
+      adminNotes?: string | null;
+    }
+  ) =>
     fetchApi<{ client: AdminClientWithHistory }>(
       `/api/users/clients/${encodeURIComponent(String(clientId))}`,
       { method: 'PATCH', body: JSON.stringify(data) }

@@ -9,7 +9,7 @@ import {
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Appointment, Barber, Service, ServicePaymentMethod } from '../api';
-import { BARBER_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { calculateDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
 import { SERVICE_PAYMENT_METHODS, applySplitsToMethodTotals } from './servicePaymentMethod';
 import type { ServicePaymentSplit } from '../api';
@@ -49,12 +49,16 @@ export type WeeklyCashRow = {
   depositPaid: boolean;
   localPending: number;
   commissionPercent: number;
+  serviceCommissionAmount: number;
+  productCommissionAmount: number;
+  productsSoldAmount: number;
   commissionAmount: number;
   afipTotal: number | null;
   afipInvoiced: boolean;
   status: string;
   servicePaymentMethod: ServicePaymentMethod | null;
   servicePaymentSplits: ServicePaymentSplit[] | null;
+  tipAmount: number;
 };
 
 export type PaymentMethodTotals = Record<ServicePaymentMethod, number> & {
@@ -76,6 +80,7 @@ export type WeeklyBarberSummary = {
   localPending: number;
   commission: number;
   afipInvoiced: number;
+  tips: number;
 };
 
 export type WeeklyCashSummary = {
@@ -93,6 +98,7 @@ export type WeeklyCashSummary = {
   localByMethod: PaymentMethodTotals;
   /** Señas MP (siempre mercadopago en depósitos). */
   depositsMpByMethod: PaymentMethodTotals;
+  tipsTotal: number;
 };
 
 function resolveBarber(
@@ -117,6 +123,45 @@ function afipAmountForAppointment(app: Appointment, fallbackService: number): nu
   const detail = app.afipInvoiceDetail;
   if (detail && typeof detail.total === 'number' && detail.total > 0) return detail.total;
   return fallbackService > 0 ? fallbackService : null;
+}
+
+function productsGrossFromAppointment(app: Appointment): number {
+  const detail = app.afipInvoiceDetail;
+  if (detail?.productsTotal != null && detail.productsTotal > 0) {
+    return Math.round(detail.productsTotal * 100) / 100;
+  }
+  const lines = detail?.productLines;
+  if (!lines?.length) return 0;
+  return Math.round(lines.reduce((s, l) => s + (l.subtotal > 0 ? l.subtotal : 0), 0) * 100) / 100;
+}
+
+function productCommissionFromAppointment(app: Appointment, productsGross: number): number {
+  if (productsGross <= 0) return 0;
+  const stored = app.afipInvoiceDetail?.productsCommissionAmount;
+  if (stored != null && stored >= 0) return Math.round(stored);
+  return Math.round((productsGross * BARBER_PRODUCT_COMMISSION_PERCENT) / 100);
+}
+
+function barberCommissionsForAppointment(
+  app: Appointment,
+  serviceAmount: number,
+  commissionPercent: number
+): {
+  serviceCommissionAmount: number;
+  productCommissionAmount: number;
+  productsSoldAmount: number;
+  commissionAmount: number;
+} {
+  const serviceCommissionAmount =
+    serviceAmount > 0 ? Math.round((serviceAmount * commissionPercent) / 100) : 0;
+  const productsSoldAmount = productsGrossFromAppointment(app);
+  const productCommissionAmount = productCommissionFromAppointment(app, productsSoldAmount);
+  return {
+    serviceCommissionAmount,
+    productCommissionAmount,
+    productsSoldAmount,
+    commissionAmount: serviceCommissionAmount + productCommissionAmount,
+  };
 }
 
 export function buildWeeklyCashClose(
@@ -154,11 +199,12 @@ export function buildWeeklyCashClose(
         ? calculateDepositAmountArs(serviceAmount, depositPercent)
         : 0;
     const localPending = Math.max(0, serviceAmount - depositAmount);
-    const commissionAmount =
-      serviceAmount > 0
-        ? Math.round((serviceAmount * commissionPercent) / 100)
-        : 0;
+    const commissions = barberCommissionsForAppointment(app, serviceAmount, commissionPercent);
     const afipTotal = afipAmountForAppointment(app, serviceAmount);
+    const tipAmount =
+      app.tipAmount != null && Number.isFinite(app.tipAmount) && app.tipAmount > 0
+        ? Math.round(app.tipAmount * 100) / 100
+        : 0;
 
     rows.push({
       appointmentId: app.id,
@@ -173,12 +219,16 @@ export function buildWeeklyCashClose(
       depositPaid: Boolean(app.depositPaid),
       localPending,
       commissionPercent,
-      commissionAmount,
+      serviceCommissionAmount: commissions.serviceCommissionAmount,
+      productCommissionAmount: commissions.productCommissionAmount,
+      productsSoldAmount: commissions.productsSoldAmount,
+      commissionAmount: commissions.commissionAmount,
       afipTotal,
       afipInvoiced: Boolean(app.afipCae),
       status: app.status ?? 'scheduled',
       servicePaymentMethod: app.servicePaymentMethod ?? null,
       servicePaymentSplits: app.servicePaymentSplits ?? null,
+      tipAmount,
     });
   }
 
@@ -197,6 +247,7 @@ export function buildWeeklyCashClose(
         localPending: 0,
         commission: 0,
         afipInvoiced: 0,
+        tips: 0,
       };
       byBarberMap.set(r.barberKey, b);
     }
@@ -206,6 +257,7 @@ export function buildWeeklyCashClose(
     b.localPending += r.localPending;
     b.commission += r.commissionAmount;
     if (r.afipTotal != null) b.afipInvoiced += r.afipTotal;
+    b.tips += r.tipAmount;
   }
 
   const byBarber = [...byBarberMap.values()].sort((a, b) =>
@@ -251,8 +303,10 @@ export function buildWeeklyCashClose(
       pendingAfipCount: 0,
       localByMethod: emptyPaymentMethodTotals(),
       depositsMpByMethod: emptyPaymentMethodTotals(),
+      tipsTotal: 0,
     }
   );
+  summary.tipsTotal = rows.reduce((s, r) => s + r.tipAmount, 0);
   summary.shopNetEstimate = summary.serviceGross - summary.commissions;
 
   return { rows, byBarber, summary };

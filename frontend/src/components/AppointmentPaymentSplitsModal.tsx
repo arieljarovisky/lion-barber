@@ -20,6 +20,19 @@ type Props = {
   onError: (message: string) => void;
 };
 
+function tipAmountFromApp(app: Appointment): string {
+  const t = app.tipAmount ?? 0;
+  return t > 0 ? String(t).replace('.', ',') : '';
+}
+
+function parseTipInput(raw: string): number | 'invalid' {
+  const tipRaw = raw.trim().replace(',', '.');
+  if (tipRaw === '') return 0;
+  const n = parseFloat(tipRaw);
+  if (!Number.isFinite(n) || n < 0) return 'invalid';
+  return Math.round(n * 100) / 100;
+}
+
 export default function AppointmentPaymentSplitsModal({
   app,
   services,
@@ -29,11 +42,13 @@ export default function AppointmentPaymentSplitsModal({
   onError,
 }: Props) {
   const [splits, setSplits] = useState<ServicePaymentSplit[]>([]);
+  const [tipAmount, setTipAmount] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!app) return;
     setSplits(initialSplitsFromAppointment(app, services, depositPercent));
+    setTipAmount(tipAmountFromApp(app));
   }, [app, services, depositPercent]);
 
   if (!app) return null;
@@ -41,11 +56,17 @@ export default function AppointmentPaymentSplitsModal({
   const expectedLocal = appointmentLocalPendingArs(app, services, depositPercent);
 
   const handleSave = async () => {
+    const parsedTip = parseTipInput(tipAmount);
+    if (parsedTip === 'invalid') {
+      onError('La propina debe ser un número ≥ 0.');
+      return;
+    }
     setSaving(true);
     try {
       const cleaned = cleanServicePaymentSplits(splits);
       const updated = await api.updateAppointment(app.id, {
         servicePaymentSplits: cleaned,
+        tipAmount: parsedTip,
       });
       onSaved(updated);
       onClose();
@@ -94,6 +115,20 @@ export default function AppointmentPaymentSplitsModal({
         </div>
 
         <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 mb-1">
+              Propina (opcional)
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={tipAmount}
+              onChange={(e) => setTipAmount(e.target.value)}
+              placeholder="0"
+              className="w-full rounded-xl border border-zinc-200 px-3 py-2 text-sm"
+            />
+            <p className="mt-1 text-xs text-zinc-500">No se incluye en la factura AFIP.</p>
+          </div>
           <ServicePaymentSplitsEditor
             splits={splits}
             onChange={setSplits}

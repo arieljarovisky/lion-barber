@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { dbDateTimeToIsoUtc } from '../dbDateTime.js';
 import * as userRepo from '../repositories/users.js';
 import * as appointmentRepo from '../repositories/appointments.js';
+import { toAdminClientPayload } from './adminClientPayload.js';
 
 const router = Router();
 
@@ -51,18 +51,7 @@ router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
     });
     const userPhones = user.phones ?? (await userRepo.getClientPhonesByUserId(user.id));
     res.status(201).json({
-      client: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: userPhones[0] ?? null,
-        phones: userPhones,
-        points: user.points,
-        avatarUrl: user.avatar_url ?? null,
-        depositExempt: userRepo.isUserDepositExempt(user),
-        createdAt: dbDateTimeToIsoUtc(user.created_at),
-        appointments: [],
-      },
+      client: toAdminClientPayload(user, userPhones, []),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error al crear cliente';
@@ -78,18 +67,9 @@ router.get('/clients', requireAuth, requireAdmin, async (_req, res) => {
     const ids = clients.map((c) => c.id);
     const phonesByUser = await userRepo.getClientPhonesByUserIds(ids);
     const byUser = await appointmentRepo.getAppointmentsByUserIds(ids);
-    const body = clients.map((c) => ({
-      id: c.id,
-      email: c.email,
-      name: c.name,
-      phone: (phonesByUser.get(c.id) ?? [])[0] ?? null,
-      phones: phonesByUser.get(c.id) ?? [],
-      points: c.points,
-      avatarUrl: c.avatar_url ?? null,
-      depositExempt: userRepo.isUserDepositExempt(c),
-      createdAt: dbDateTimeToIsoUtc(c.created_at),
-      appointments: byUser.get(c.id) ?? [],
-    }));
+    const body = clients.map((c) =>
+      toAdminClientPayload(c, phonesByUser.get(c.id) ?? [], byUser.get(c.id) ?? [])
+    );
     res.json({ clients: body });
   } catch (err) {
     console.error(err);
@@ -111,18 +91,7 @@ router.get('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     const phones = await userRepo.getClientPhonesByUserId(id);
     const appointments = map.get(id) ?? [];
     res.json({
-      client: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        phone: phones[0] ?? null,
-        phones,
-        points: user.points,
-        avatarUrl: user.avatar_url ?? null,
-        depositExempt: userRepo.isUserDepositExempt(user),
-        createdAt: dbDateTimeToIsoUtc(user.created_at),
-        appointments,
-      },
+      client: toAdminClientPayload(user, phones, appointments),
     });
   } catch (err) {
     console.error(err);
@@ -135,36 +104,92 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
   if (!Number.isFinite(id) || id < 1) {
     return res.status(400).json({ error: 'ID inválido' });
   }
-  const body = req.body as { depositExempt?: unknown };
-  if (typeof body.depositExempt !== 'boolean') {
-    return res.status(400).json({ error: 'depositExempt debe ser true o false' });
+  const body = req.body as {
+    name?: unknown;
+    email?: unknown;
+    phones?: unknown;
+    phone?: unknown;
+    points?: unknown;
+    depositExempt?: unknown;
+    adminNotes?: unknown;
+  };
+
+  const patch: userRepo.UpdateAdminClientInput = {};
+  if (body.name !== undefined) {
+    if (typeof body.name !== 'string') {
+      return res.status(400).json({ error: 'name debe ser texto' });
+    }
+    patch.name = body.name;
   }
+  if (body.email !== undefined) {
+    if (typeof body.email !== 'string') {
+      return res.status(400).json({ error: 'email debe ser texto' });
+    }
+    patch.email = body.email;
+  }
+  if (body.phones !== undefined) {
+    if (!Array.isArray(body.phones)) {
+      return res.status(400).json({ error: 'phones debe ser un array' });
+    }
+    patch.phones = body.phones
+      .filter((p): p is string => typeof p === 'string')
+      .map((p) => p.trim())
+      .filter(Boolean);
+  } else if (body.phone !== undefined) {
+    if (typeof body.phone !== 'string') {
+      return res.status(400).json({ error: 'phone debe ser texto' });
+    }
+    const t = body.phone.trim();
+    patch.phones = t ? [t] : [];
+  }
+  if (body.points !== undefined) {
+    const n = typeof body.points === 'number' ? body.points : parseInt(String(body.points), 10);
+    if (!Number.isFinite(n)) {
+      return res.status(400).json({ error: 'points debe ser un número' });
+    }
+    patch.points = n;
+  }
+  if (body.depositExempt !== undefined) {
+    if (typeof body.depositExempt !== 'boolean') {
+      return res.status(400).json({ error: 'depositExempt debe ser true o false' });
+    }
+    patch.depositExempt = body.depositExempt;
+  }
+  if (body.adminNotes !== undefined) {
+    if (body.adminNotes !== null && typeof body.adminNotes !== 'string') {
+      return res.status(400).json({ error: 'adminNotes debe ser texto o null' });
+    }
+    patch.adminNotes = body.adminNotes === null ? null : body.adminNotes;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return res.status(400).json({ error: 'No hay campos para actualizar' });
+  }
+
   try {
     const existing = await userRepo.findUserById(id);
     if (!existing || existing.role !== 'client') {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
-    const updated = await userRepo.setClientDepositExempt(id, body.depositExempt);
+    if (patch.email !== undefined && existing.google_uid) {
+      return res.status(400).json({
+        error: 'No se puede cambiar el email de un cliente vinculado a Google',
+      });
+    }
+    const updated = await userRepo.updateAdminClientById(id, patch);
     if (!updated) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
     const phones = await userRepo.getClientPhonesByUserId(id);
+    const map = await appointmentRepo.getAppointmentsByUserIds([id]);
     res.json({
-      client: {
-        id: updated.id,
-        email: updated.email,
-        name: updated.name,
-        phone: phones[0] ?? null,
-        phones,
-        points: updated.points,
-        avatarUrl: updated.avatar_url ?? null,
-        depositExempt: userRepo.isUserDepositExempt(updated),
-        createdAt: dbDateTimeToIsoUtc(updated.created_at),
-      },
+      client: toAdminClientPayload(updated, phones, map.get(id) ?? []),
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Error al actualizar el cliente' });
+    const msg = err instanceof Error ? err.message : 'Error al actualizar el cliente';
+    const status = /ya existe|inválido|no puede/i.test(msg) ? 400 : 500;
+    if (status >= 500) console.error(err);
+    res.status(status).json({ error: msg });
   }
 });
 

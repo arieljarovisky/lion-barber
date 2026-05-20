@@ -45,6 +45,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
     ['Señas Mercado Pago (ARS)', data.summary.depositsMp],
     ['Por cobrar en local (ARS)', data.summary.localPending],
     ['Comisiones barberos (ARS)', data.summary.commissions],
+    ['Propinas (ARS)', data.summary.tipsTotal],
     ['Neto local estimado (ARS)', data.summary.shopNetEstimate],
     ['Facturado AFIP (ARS)', data.summary.afipInvoicedTotal],
     ['Comprobantes AFIP', data.summary.afipInvoicedCount],
@@ -64,7 +65,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(metodoRows), 'Por método');
 
   const barberRows: (string | number)[][] = [
-    ['Barbero', 'Turnos', 'Servicios', 'Señas MP', 'En local', 'Comisión', 'AFIP'],
+    ['Barbero', 'Turnos', 'Servicios', 'Señas MP', 'En local', 'Comisión', 'Propinas', 'AFIP'],
     ...data.byBarber.map((b) => [
       b.barberName,
       b.appointments,
@@ -72,6 +73,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
       b.depositsMp,
       b.localPending,
       b.commission,
+      b.tips,
       b.afipInvoiced,
     ]),
     [
@@ -81,6 +83,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
       data.summary.depositsMp,
       data.summary.localPending,
       data.summary.commissions,
+      data.summary.tipsTotal,
       data.summary.afipInvoicedTotal,
     ],
   ];
@@ -96,9 +99,13 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
       'Servicio ARS',
       'Seña ARS',
       'En local ARS',
+      'Propina ARS',
       'Forma de pago',
-      'Comisión ARS',
-      '% Comisión',
+      'Comisión total ARS',
+      'Comisión servicio ARS',
+      'Comisión productos ARS',
+      'Productos vendidos ARS',
+      '% servicio',
       'AFIP',
     ],
     ...data.rows.map((r) => [
@@ -110,8 +117,12 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
       r.serviceAmount,
       r.depositPaid ? r.depositAmount : NA,
       r.localPending,
+      r.tipAmount > 0 ? r.tipAmount : NA,
       paymentLabel(r),
       r.commissionAmount,
+      r.serviceCommissionAmount,
+      r.productCommissionAmount > 0 ? r.productCommissionAmount : NA,
+      r.productsSoldAmount > 0 ? r.productsSoldAmount : NA,
       r.commissionPercent > 0 ? r.commissionPercent : NA,
       r.afipInvoiced ? 'Sí' : 'No',
     ]),
@@ -153,9 +164,8 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
   doc.setFontSize(10);
   doc.setTextColor(80, 80, 80);
   doc.text(data.weekLabel, pageWidth / 2, 33, { align: 'center' });
-  doc.text(`${data.fromYmd} → ${data.toYmd}`, pageWidth / 2, 39, { align: 'center' });
 
-  let y = 48;
+  let y = 42;
   y = addSectionTitle(doc, 'Resumen', y);
 
   autoTable(doc, {
@@ -167,6 +177,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
       ['Señas (Mercado Pago)', `$${data.summary.depositsMp.toLocaleString('es-AR')}`],
       ['Por cobrar en local', `$${data.summary.localPending.toLocaleString('es-AR')}`],
       ['Comisiones barberos', `$${data.summary.commissions.toLocaleString('es-AR')}`],
+      ['Propinas', `$${data.summary.tipsTotal.toLocaleString('es-AR')}`],
       ['Neto local (est.)', `$${data.summary.shopNetEstimate.toLocaleString('es-AR')}`],
       ['Facturado AFIP', `$${data.summary.afipInvoicedTotal.toLocaleString('es-AR')}`],
       ['Comprobantes AFIP', String(data.summary.afipInvoicedCount)],
@@ -205,7 +216,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
 
   autoTable(doc, {
     startY: y,
-    head: [['Barbero', 'Turnos', 'Servicios', 'Señas MP', 'En local', 'Comisión', 'AFIP']],
+    head: [['Barbero', 'Turnos', 'Servicios', 'Señas MP', 'En local', 'Comisión', 'Propinas', 'AFIP']],
     body: [
       ...data.byBarber.map((b) => [
         b.barberName,
@@ -214,6 +225,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
         `$${b.depositsMp.toLocaleString('es-AR')}`,
         `$${b.localPending.toLocaleString('es-AR')}`,
         `$${b.commission.toLocaleString('es-AR')}`,
+        b.tips > 0 ? `$${b.tips.toLocaleString('es-AR')}` : NA,
         `$${b.afipInvoiced.toLocaleString('es-AR')}`,
       ]),
       [
@@ -223,6 +235,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
         `$${data.summary.depositsMp.toLocaleString('es-AR')}`,
         `$${data.summary.localPending.toLocaleString('es-AR')}`,
         `$${data.summary.commissions.toLocaleString('es-AR')}`,
+        data.summary.tipsTotal > 0 ? `$${data.summary.tipsTotal.toLocaleString('es-AR')}` : NA,
         `$${data.summary.afipInvoicedTotal.toLocaleString('es-AR')}`,
       ],
     ],
@@ -236,6 +249,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
       4: { halign: 'right' },
       5: { halign: 'right' },
       6: { halign: 'right' },
+      7: { halign: 'right' },
     },
     margin: { left: 10, right: 10 },
   });

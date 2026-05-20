@@ -2,6 +2,27 @@ import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { Appointment } from '../api';
 
+/** Teléfonos separados por coma, salto de línea o punto y coma. */
+export function parsePhonesInput(raw: string): string[] {
+  const parts = raw
+    .split(/[\n,;]+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of parts) {
+    const key = p.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(p);
+  }
+  return out;
+}
+
+export function formatPhonesForInput(phones: string[]): string {
+  return phones.filter((p) => p.trim().length > 0).join('\n');
+}
+
 /** MySQL TIME → "HH:MM" para tablas admin. */
 export function normalizeAppointmentTime(t: string | undefined): string {
   if (!t) return '';
