@@ -429,7 +429,7 @@ export default function WeeklyCashClosePage() {
                             <td className="px-3 py-2 text-right tabular-nums">${formatArs(r.serviceAmount)}</td>
                             <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
                               {r.depositPaid ? (
-                                ${formatArs(r.depositAmount)}
+                                `$${formatArs(r.depositAmount)}`
                               ) : (
                                 '—'
                               )}
