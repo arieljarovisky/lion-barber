@@ -40,9 +40,14 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
 
   const resumenRows: (string | number)[][] = [
     [
-      `Lion Barber — Cierre de caja ${data.periodMode === 'day' ? 'diario' : 'semanal'}`,
+      `Lion Barber — Cierre de caja ${
+        data.periodMode === 'day' ? 'diario' : data.periodMode === 'month' ? 'mensual' : 'semanal'
+      }`,
     ],
-    [data.periodMode === 'day' ? 'Día' : 'Semana', data.periodLabel],
+    [
+      data.periodMode === 'day' ? 'Día' : data.periodMode === 'month' ? 'Mes' : 'Semana',
+      data.periodLabel,
+    ],
     ['Desde', data.fromYmd],
     ['Hasta', data.toYmd],
     ['Seña configurada (%)', data.depositPercent],
@@ -167,7 +172,11 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
 
   doc.setFontSize(12);
   doc.text(
-    data.periodMode === 'day' ? 'Cierre de caja — día' : 'Cierre de caja — semana',
+    data.periodMode === 'day'
+      ? 'Cierre de caja — día'
+      : data.periodMode === 'month'
+        ? 'Cierre de caja — mes'
+        : 'Cierre de caja — semana',
     pageWidth / 2,
     26,
     { align: 'center' }

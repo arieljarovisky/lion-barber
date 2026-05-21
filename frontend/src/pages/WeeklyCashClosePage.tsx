@@ -11,6 +11,7 @@ import {
   periodBoundsFromAnchor,
   formatPeriodLabel,
   shiftPeriodAnchor,
+  monthInputValueFromAnchor,
   type CashClosePeriodMode,
 } from '../utils/weeklyCashClose';
 import {
@@ -187,7 +188,7 @@ export default function WeeklyCashClosePage() {
                 Cierre de caja
               </h1>
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
-                Resumen de turnos confirmados por día o por semana (lunes a domingo): señas por Mercado Pago, saldo en local,
+                Resumen de turnos confirmados por día, semana (lunes a domingo) o mes calendario: señas por Mercado Pago, saldo en local,
                 comisión del barbero ({BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de
                 productos facturados en el turno), facturación AFIP y gastos fijos / de caja. No incluye turnos con seña
                 pendiente.
@@ -217,34 +218,53 @@ export default function WeeklyCashClosePage() {
                 >
                   Por semana
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setPeriodMode('month')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+                    periodMode === 'month'
+                      ? 'bg-zinc-900 text-white'
+                      : 'text-zinc-500 hover:text-zinc-800'
+                  }`}
+                >
+                  Por mes
+                </button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setPeriodAnchor((d) => shiftPeriodAnchor(d, periodMode, -1))}
                 className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
-                aria-label={periodMode === 'day' ? 'Día anterior' : 'Semana anterior'}
+                aria-label={
+                  periodMode === 'day'
+                    ? 'Día anterior'
+                    : periodMode === 'month'
+                      ? 'Mes anterior'
+                      : 'Semana anterior'
+                }
               >
                 <ChevronLeft size={18} />
               </button>
               <div className="min-w-[12rem] rounded-xl border border-zinc-200 bg-white px-4 py-2 text-center">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                  {periodMode === 'day' ? 'Día' : 'Semana'}
+                  {periodMode === 'day' ? 'Día' : periodMode === 'month' ? 'Mes' : 'Semana'}
                 </p>
                 <p className="text-sm font-bold text-zinc-900 capitalize">{periodLabel}</p>
-                {periodMode === 'week' ? (
-                  <p className="text-[11px] text-zinc-500 tabular-nums">
-                    {fromYmd} → {toYmd}
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-zinc-500 tabular-nums">{fromYmd}</p>
-                )}
+                <p className="text-[11px] text-zinc-500 tabular-nums">
+                  {periodMode === 'day' ? fromYmd : `${fromYmd} → ${toYmd}`}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setPeriodAnchor((d) => shiftPeriodAnchor(d, periodMode, 1))}
                 className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
-                aria-label={periodMode === 'day' ? 'Día siguiente' : 'Semana siguiente'}
+                aria-label={
+                  periodMode === 'day'
+                    ? 'Día siguiente'
+                    : periodMode === 'month'
+                      ? 'Mes siguiente'
+                      : 'Semana siguiente'
+                }
               >
                 <ChevronRight size={18} />
               </button>
@@ -253,7 +273,7 @@ export default function WeeklyCashClosePage() {
                 onClick={() => setPeriodAnchor(new Date())}
                 className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-bold text-zinc-600 hover:bg-zinc-100"
               >
-                {periodMode === 'day' ? 'Hoy' : 'Esta semana'}
+                {periodMode === 'day' ? 'Hoy' : periodMode === 'month' ? 'Este mes' : 'Esta semana'}
               </button>
               {periodMode === 'day' ? (
                 <input
@@ -266,6 +286,19 @@ export default function WeeklyCashClosePage() {
                   }}
                   className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 tabular-nums"
                   aria-label="Elegir fecha"
+                />
+              ) : null}
+              {periodMode === 'month' ? (
+                <input
+                  type="month"
+                  value={monthInputValueFromAnchor(periodAnchor)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!/^\d{4}-\d{2}$/.test(v)) return;
+                    setPeriodAnchor(new Date(`${v}-01T12:00:00`));
+                  }}
+                  className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 tabular-nums"
+                  aria-label="Elegir mes"
                 />
               ) : null}
               <button
@@ -412,7 +445,8 @@ export default function WeeklyCashClosePage() {
                 </div>
                 {byBarber.length === 0 ? (
                   <p className="px-4 py-8 text-center text-sm text-zinc-500">
-                    Sin turnos en {periodMode === 'day' ? 'este día' : 'esta semana'}.
+                    Sin turnos en{' '}
+                    {periodMode === 'day' ? 'este día' : periodMode === 'month' ? 'este mes' : 'esta semana'}.
                   </p>
                 ) : (
                   <div className="cash-close-table-wrap overflow-x-auto">
@@ -481,7 +515,8 @@ export default function WeeklyCashClosePage() {
                 </div>
                 {rows.length === 0 ? (
                   <p className="px-4 py-8 text-center text-sm text-zinc-500">
-                    No hay turnos confirmados en {periodMode === 'day' ? 'este día' : 'esta semana'}.
+                    No hay turnos confirmados en{' '}
+                    {periodMode === 'day' ? 'este día' : periodMode === 'month' ? 'este mes' : 'esta semana'}.
                   </p>
                 ) : (
                   <div className="cash-close-table-wrap overflow-x-auto md:max-h-[min(50vh,520px)] md:overflow-y-auto">
@@ -555,6 +590,7 @@ export default function WeeklyCashClosePage() {
               </section>
 
               <CashCloseExpensesSection
+                periodMode={periodMode}
                 fromYmd={fromYmd}
                 toYmd={toYmd}
                 fixedItems={fixedExpenses}

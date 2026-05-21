@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Plus, Trash2, Receipt, Wallet } from 'lucide-react';
 import { api, ApiError } from '../api';
 import type { CashExpense, FixedMonthlyExpense } from '../api';
+import type { CashClosePeriodMode } from '../utils/weeklyCashClose';
 import type { ProratedFixedExpense } from '../utils/expenseProration';
 import { formatExpenseMonthHint } from '../utils/expenseProration';
 import { formatArs } from '../utils/money';
 
 type Props = {
+  periodMode: CashClosePeriodMode;
   fromYmd: string;
   toYmd: string;
   fixedItems: FixedMonthlyExpense[];
@@ -19,6 +21,7 @@ type Props = {
 };
 
 export default function CashCloseExpensesSection({
+  periodMode,
   fromYmd,
   toYmd,
   fixedItems,
@@ -124,14 +127,17 @@ export default function CashCloseExpensesSection({
             <h2 className="text-lg font-black text-zinc-900">Gastos fijos mensuales</h2>
           </div>
           <p className="text-xs text-zinc-500">
-            Prorrateo del período ({formatExpenseMonthHint(fromYmd, toYmd)}):{' '}
+            {periodMode === 'month'
+              ? 'Total del mes (cada gasto fijo al monto mensual completo):'
+              : `Prorrateo del período (${formatExpenseMonthHint(fromYmd, toYmd)}):`}{' '}
             <span className="font-bold text-zinc-800">${formatArs(proratedFixedTotal)}</span>
           </p>
         </div>
 
         <div className="p-5 border-b border-zinc-100 bg-zinc-50/80">
           <p className="text-xs text-zinc-600 mb-3">
-            Alquiler, servicios, sueldos fijos, etc. El monto mensual se reparte por día dentro del período del cierre.
+            Alquiler, servicios, sueldos fijos, etc. En cierre mensual se usa el monto completo; en día/semana se prorratea por
+            día.
           </p>
           <div className="flex flex-wrap gap-2 items-end">
             <div className="min-w-[10rem] flex-1">
@@ -176,7 +182,9 @@ export default function CashCloseExpensesSection({
                 <tr>
                   <th className="px-4 py-2">Concepto</th>
                   <th className="px-4 py-2 text-right">Mensual</th>
-                  <th className="px-4 py-2 text-right">En este período</th>
+                  <th className="px-4 py-2 text-right">
+                    {periodMode === 'month' ? 'En el mes' : 'En este período'}
+                  </th>
                   <th className="px-4 py-2 text-center">Activo</th>
                   <th className="px-4 py-2 w-20" />
                 </tr>
