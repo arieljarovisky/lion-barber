@@ -265,6 +265,19 @@ export async function initDb(): Promise<void> {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
   try {
+    await pool.execute(
+      'ALTER TABLE barbers CHANGE COLUMN monotributo_annual_limit monotributo_monthly_limit DECIMAL(14,2) NULL'
+    );
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    if (code !== 'ER_BAD_FIELD_ERROR' && code !== 'ER_CANT_DROP_FIELD_OR_KEY') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE barbers ADD COLUMN monotributo_monthly_limit DECIMAL(14,2) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
     await pool.execute('ALTER TABLE barbers ADD COLUMN whatsapp_phone VARCHAR(32) NULL');
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;

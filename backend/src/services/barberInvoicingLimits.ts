@@ -1,7 +1,7 @@
 import { getAllBarbers, getBarberById } from '../repositories/barbers.js';
 import {
-  getInvoicedTotalForBarberYear,
-  getInvoicedTotalsByBarberYear,
+  getInvoicedTotalForBarberMonth,
+  getInvoicedTotalsByBarberMonth,
 } from '../repositories/barberInvoicing.js';
 
 export type BarberInvoicingStatus = 'no_limit' | 'ok' | 'warning' | 'exceeded';
@@ -10,8 +10,9 @@ export interface BarberInvoicingUsage {
   barberId: string;
   barberName: string;
   year: number;
+  month: number;
   monotributoCategory: string | null;
-  annualLimit: number | null;
+  monthlyLimit: number | null;
   invoicedTotal: number;
   remaining: number | null;
   percentUsed: number | null;
@@ -20,12 +21,43 @@ export interface BarberInvoicingUsage {
 
 const WARNING_PERCENT = 90;
 
+const MONTH_NAMES_ES = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+
+export function formatMonthYearArgentina(year: number, month: number): string {
+  const name = MONTH_NAMES_ES[month - 1] ?? String(month);
+  return `${name} ${year}`;
+}
+
 export function currentCalendarYearArgentina(): number {
-  const y = new Intl.DateTimeFormat('en-CA', {
+  return currentCalendarMonthArgentina().year;
+}
+
+export function currentCalendarMonthArgentina(): { year: number; month: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Argentina/Buenos_Aires',
     year: 'numeric',
-  }).format(new Date());
-  return parseInt(y, 10) || new Date().getFullYear();
+    month: '2-digit',
+  }).formatToParts(new Date());
+  const year = parseInt(parts.find((p) => p.type === 'year')?.value ?? '', 10);
+  const month = parseInt(parts.find((p) => p.type === 'month')?.value ?? '', 10);
+  const now = new Date();
+  return {
+    year: Number.isFinite(year) ? year : now.getFullYear(),
+    month: Number.isFinite(month) && month >= 1 && month <= 12 ? month : now.getMonth() + 1,
+  };
 }
 
 function usageStatus(invoiced: number, limit: number | null | undefined): BarberInvoicingStatus {
@@ -36,30 +68,34 @@ function usageStatus(invoiced: number, limit: number | null | undefined): Barber
   return 'ok';
 }
 
-export async function buildBarberInvoicingUsage(year: number): Promise<BarberInvoicingUsage[]> {
+export async function buildBarberInvoicingUsage(
+  year: number,
+  month: number
+): Promise<BarberInvoicingUsage[]> {
   const barbers = await getAllBarbers();
-  const totals = await getInvoicedTotalsByBarberYear(year);
+  const totals = await getInvoicedTotalsByBarberMonth(year, month);
   return barbers.map((b) => {
     const invoicedTotal = totals.get(b.id) ?? 0;
-    const annualLimit =
-      b.monotributoAnnualLimit != null && b.monotributoAnnualLimit > 0
-        ? b.monotributoAnnualLimit
+    const monthlyLimit =
+      b.monotributoMonthlyLimit != null && b.monotributoMonthlyLimit > 0
+        ? b.monotributoMonthlyLimit
         : null;
-    const remaining = annualLimit != null ? Math.max(0, annualLimit - invoicedTotal) : null;
+    const remaining = monthlyLimit != null ? Math.max(0, monthlyLimit - invoicedTotal) : null;
     const percentUsed =
-      annualLimit != null && annualLimit > 0
-        ? Math.round((invoicedTotal / annualLimit) * 1000) / 10
+      monthlyLimit != null && monthlyLimit > 0
+        ? Math.round((invoicedTotal / monthlyLimit) * 1000) / 10
         : null;
     return {
       barberId: b.id,
       barberName: b.name,
       year,
+      month,
       monotributoCategory: b.monotributoCategory ?? null,
-      annualLimit,
+      monthlyLimit,
       invoicedTotal,
       remaining,
       percentUsed,
-      status: usageStatus(invoicedTotal, annualLimit),
+      status: usageStatus(invoicedTotal, monthlyLimit),
     };
   });
 }
@@ -75,17 +111,18 @@ export async function assertBarberCanInvoice(
   }
   const barber = await getBarberById(barberId);
   if (!barber) throw new Error('Barbero del turno no encontrado.');
-  const limit = barber.monotributoAnnualLimit;
+  const limit = barber.monotributoMonthlyLimit;
   if (limit == null || limit <= 0) return;
 
-  const year = currentCalendarYearArgentina();
-  const invoiced = await getInvoicedTotalForBarberYear(barberId, year);
+  const { year, month } = currentCalendarMonthArgentina();
+  const invoiced = await getInvoicedTotalForBarberMonth(barberId, year, month);
   const projected = Math.round((invoiced + additionalAmount) * 100) / 100;
 
   if (projected > limit) {
     const cat = barber.monotributoCategory ? ` (${barber.monotributoCategory})` : '';
+    const period = formatMonthYearArgentina(year, month);
     throw new Error(
-      `Límite de facturación ${year} para ${barber.name}${cat}: ya facturó $${invoiced.toLocaleString('es-AR')} y este comprobante suma $${additionalAmount.toLocaleString('es-AR')}. El tope anual es $${limit.toLocaleString('es-AR')}.`
+      `Límite de facturación de ${period} para ${barber.name}${cat}: ya facturó $${invoiced.toLocaleString('es-AR')} y este comprobante suma $${additionalAmount.toLocaleString('es-AR')}. El tope mensual es $${limit.toLocaleString('es-AR')}.`
     );
   }
 }

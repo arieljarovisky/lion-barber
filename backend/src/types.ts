@@ -112,8 +112,8 @@ export interface Barber {
   commissionPercent?: number;
   /** Etiqueta de categoría monotributo (ej. «Categoría D»). */
   monotributoCategory?: string | null;
-  /** Tope anual de facturación AFIP en ARS (null = sin límite configurado). */
-  monotributoAnnualLimit?: number | null;
+  /** Tope mensual de facturación AFIP en ARS (null = sin límite configurado). */
+  monotributoMonthlyLimit?: number | null;
   /** CUIT del barbero como emisor AFIP (11 dígitos). */
   afipCuit?: string | null;
   afipPtoVta?: number;

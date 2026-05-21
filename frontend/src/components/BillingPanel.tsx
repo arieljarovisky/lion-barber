@@ -30,6 +30,7 @@ type BillingPanelProps = {
   onBulkInvoice: (appointmentIds: string[]) => void;
   barberInvoicing?: BarberInvoicingUsage[];
   barberInvoicingYear?: number;
+  barberInvoicingMonth?: number;
   barberInvoicingLoading?: boolean;
 };
 
@@ -48,6 +49,7 @@ export default function BillingPanel({
   onBulkInvoice,
   barberInvoicing = [],
   barberInvoicingYear = new Date().getFullYear(),
+  barberInvoicingMonth = new Date().getMonth() + 1,
   barberInvoicingLoading = false,
 }: BillingPanelProps) {
   const [search, setSearch] = useState('');
@@ -199,6 +201,7 @@ export default function BillingPanel({
       <BarberMonotributoLimitsPanel
         usage={barberInvoicing}
         year={barberInvoicingYear}
+        month={barberInvoicingMonth}
         loading={barberInvoicingLoading}
       />
 

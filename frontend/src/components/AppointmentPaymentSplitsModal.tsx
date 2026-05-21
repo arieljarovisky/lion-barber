@@ -115,6 +115,14 @@ export default function AppointmentPaymentSplitsModal({
         </div>
 
         <div className="p-5 space-y-4">
+          <ServicePaymentSplitsEditor
+            splits={splits}
+            onChange={setSplits}
+            expectedLocalAmount={expectedLocal}
+          />
+          <p className="text-xs text-zinc-500">
+            Podés combinar métodos (ej. parte en efectivo y parte con tarjeta). Cada método solo aparece una vez.
+          </p>
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 mb-1">
               Propina (opcional)
@@ -129,14 +137,6 @@ export default function AppointmentPaymentSplitsModal({
             />
             <p className="mt-1 text-xs text-zinc-500">No se incluye en la factura AFIP.</p>
           </div>
-          <ServicePaymentSplitsEditor
-            splits={splits}
-            onChange={setSplits}
-            expectedLocalAmount={expectedLocal}
-          />
-          <p className="text-xs text-zinc-500">
-            Podés combinar métodos (ej. parte en efectivo y parte con tarjeta). Cada método solo aparece una vez.
-          </p>
           <div className="flex gap-2 pt-1">
             <button
               type="button"

@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireStaffOrAdmin } from '../middleware/auth.js';
 import * as userRepo from '../repositories/users.js';
 import * as appointmentRepo from '../repositories/appointments.js';
 import { toAdminClientPayload } from './adminClientPayload.js';
 
 const router = Router();
 
-router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
+router.post('/clients', requireAuth, requireStaffOrAdmin, async (req, res) => {
   const { name, email, points, phone, phones } = req.body as {
     name?: string;
     email?: string;
@@ -61,7 +61,7 @@ router.post('/clients', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-router.get('/clients', requireAuth, requireAdmin, async (_req, res) => {
+router.get('/clients', requireAuth, requireStaffOrAdmin, async (_req, res) => {
   try {
     const clients = await userRepo.findAllClients();
     const ids = clients.map((c) => c.id);
@@ -77,7 +77,7 @@ router.get('/clients', requireAuth, requireAdmin, async (_req, res) => {
   }
 });
 
-router.get('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
+router.get('/clients/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id < 1) {
     return res.status(400).json({ error: 'ID inválido' });

@@ -1,10 +1,12 @@
 import { AlertTriangle, TrendingUp } from 'lucide-react';
 import type { BarberInvoicingUsage } from '../api';
+import { formatMonthYearEs } from '../utils/monotributoPeriod';
 import { formatArs } from '../utils/money';
 
 type Props = {
   usage: BarberInvoicingUsage[];
   year: number;
+  month: number;
   loading?: boolean;
   compact?: boolean;
   /** Si se pasa, resalta un barbero (modal de factura / fila). */
@@ -29,6 +31,7 @@ function statusStyles(status: BarberInvoicingUsage['status']) {
 export default function BarberMonotributoLimitsPanel({
   usage,
   year,
+  month,
   loading,
   compact,
   highlightBarberId,
@@ -42,7 +45,8 @@ export default function BarberMonotributoLimitsPanel({
     return null;
   }
 
-  const withLimit = usage.filter((u) => u.annualLimit != null && u.annualLimit > 0);
+  const periodLabel = formatMonthYearEs(year, month);
+  const withLimit = usage.filter((u) => u.monthlyLimit != null && u.monthlyLimit > 0);
   const atRisk = withLimit.filter((u) => u.status === 'warning' || u.status === 'exceeded');
 
   return (
@@ -51,10 +55,10 @@ export default function BarberMonotributoLimitsPanel({
         <div>
           <h3 className={`font-black text-zinc-900 flex items-center gap-2 ${compact ? 'text-sm' : 'text-base'}`}>
             <TrendingUp className="text-[#b39055]" size={compact ? 18 : 20} />
-            Monotributo — facturación {year}
+            Monotributo — {periodLabel}
           </h3>
           <p className="text-xs text-zinc-500 mt-1 max-w-xl">
-            Total facturado por AFIP en el año (por barbero del turno). Configurá el tope anual en Configuración →
+            Total facturado por AFIP en el mes (por barbero del turno). Configurá el tope mensual en Configuración →
             Barberos y monotributo.
           </p>
         </div>
@@ -71,7 +75,7 @@ export default function BarberMonotributoLimitsPanel({
           const isHighlight = highlightBarberId === u.barberId;
           const extra = isHighlight ? previewAdditionalAmount : 0;
           const projected = u.invoicedTotal + extra;
-          const limit = u.annualLimit;
+          const limit = u.monthlyLimit;
           const pct =
             limit != null && limit > 0
               ? Math.min(100, Math.round((projected / limit) * 1000) / 10)
@@ -124,7 +128,7 @@ export default function BarberMonotributoLimitsPanel({
                     />
                   </div>
                   <p className="mt-1.5 text-[11px] text-zinc-500 tabular-nums">
-                    Tope anual ${formatArs(limit)}
+                    Tope mensual ${formatArs(limit)}
                     {u.remaining != null && projected < limit && (
                       <> · Disponible ${formatArs(Math.max(0, limit - projected))}</>
                     )}

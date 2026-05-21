@@ -1166,7 +1166,7 @@ export default function ClientView() {
           </div>
 
           <div className="flex justify-center md:justify-end gap-4">
-            <a href="https://wa.link/xxyvs9" target="_blank" rel="noreferrer" className="w-10 h-10 sm:w-11 sm:h-11 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-[#e5c185] hover:text-zinc-950 transition-colors flex-shrink-0">
+            <a href={BOOKING_FALLBACK_WHATSAPP_URL} target="_blank" rel="noreferrer" className="w-10 h-10 sm:w-11 sm:h-11 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-[#e5c185] hover:text-zinc-950 transition-colors flex-shrink-0" aria-label="WhatsApp">
               <Phone size={18} />
             </a>
           </div>

@@ -172,8 +172,9 @@ export interface BarberInvoicingUsage {
   barberId: string;
   barberName: string;
   year: number;
+  month: number;
   monotributoCategory: string | null;
-  annualLimit: number | null;
+  monthlyLimit: number | null;
   invoicedTotal: number;
   remaining: number | null;
   percentUsed: number | null;
@@ -188,7 +189,7 @@ export interface Barber {
   desc: string;
   commissionPercent?: number;
   monotributoCategory?: string | null;
-  monotributoAnnualLimit?: number | null;
+  monotributoMonthlyLimit?: number | null;
   afipCuit?: string | null;
   afipPtoVta?: number;
   afipCbteTipo?: number;
@@ -414,9 +415,14 @@ export const api = {
       readyCount: number;
     }>('/api/afip/status'),
 
-  getBarberInvoicingUsage: (year?: number) => {
-    const q = year != null ? `?year=${year}` : '';
-    return fetchApi<{ year: number; barbers: BarberInvoicingUsage[] }>(`/api/afip/barber-invoicing${q}`);
+  getBarberInvoicingUsage: (year?: number, month?: number) => {
+    const params = new URLSearchParams();
+    if (year != null) params.set('year', String(year));
+    if (month != null) params.set('month', String(month));
+    const q = params.toString() ? `?${params}` : '';
+    return fetchApi<{ year: number; month: number; barbers: BarberInvoicingUsage[] }>(
+      `/api/afip/barber-invoicing${q}`
+    );
   },
 
   /** Solo admin: emite comprobante electr?nico AFIP para un turno (opcional: productos de venta). */
@@ -454,7 +460,7 @@ export const api = {
       name?: string;
       commissionPercent?: number;
       monotributoCategory?: string | null;
-      monotributoAnnualLimit?: number | null;
+      monotributoMonthlyLimit?: number | null;
       afipCuit?: string | null;
       afipPtoVta?: number | null;
       afipCbteTipo?: number | null;
@@ -596,7 +602,7 @@ export const api = {
   deleteStaffInvite: (id: number) =>
     fetchApi<void>(`/api/staff-invites/${id}`, { method: 'DELETE' }),
 
-  /** Solo admin: clientes registrados con historial de turnos vinculado a su cuenta. */
+  /** Admin y barberos (staff): clientes con historial de turnos. */
   getAdminClientsWithHistory: () =>
     fetchApi<{ clients: AdminClientWithHistory[] }>('/api/users/clients'),
 

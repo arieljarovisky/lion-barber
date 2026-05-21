@@ -7,6 +7,7 @@ import DashboardPanelShell, { type DashboardPanelId } from '../components/Dashbo
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
 import { api, ApiError } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import type { AdminClientWithHistory } from '../api';
 import {
   adminAppointmentStatusBadge,
@@ -26,6 +27,7 @@ function clientPhones(client: AdminClientWithHistory): string[] {
 export default function AdminClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [client, setClient] = useState<AdminClientWithHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
@@ -185,7 +187,7 @@ export default function AdminClientDetailPage() {
             <ChevronLeft size={18} />
             Volver al listado
           </Link>
-          {!loading && client && (
+          {isAdmin && !loading && client && (
             <button
               type="button"
               onClick={() => void handleDeleteClient()}
@@ -261,6 +263,7 @@ export default function AdminClientDetailPage() {
               )}
             </div>
 
+            {isAdmin ? (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -378,6 +381,11 @@ export default function AdminClientDetailPage() {
                 {saving ? 'Guardando…' : 'Guardar cambios'}
               </button>
             </form>
+            ) : (
+              <p className="mb-8 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                Podés consultar la ficha y el historial. Solo un administrador puede editar datos del cliente.
+              </p>
+            )}
 
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-black text-zinc-900">Historial de turnos</h2>

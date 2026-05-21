@@ -19,6 +19,7 @@ interface DbBarber {
   whatsapp_phone?: string | null;
   commission_percent?: string | number | null;
   monotributo_category?: string | null;
+  monotributo_monthly_limit?: string | number | null;
   monotributo_annual_limit?: string | number | null;
   afip_cuit?: string | null;
   afip_pto_vta?: number | string | null;
@@ -28,7 +29,7 @@ interface DbBarber {
   afip_access_token?: string | null;
 }
 
-function parseAnnualLimit(raw: string | number | null | undefined): number | null {
+function parseMonthlyLimit(raw: string | number | null | undefined): number | null {
   if (raw == null || raw === '') return null;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -47,7 +48,9 @@ function rowToBarber(r: DbBarber): Barber {
     whatsappPhone: r.whatsapp_phone ?? null,
     commissionPercent: pct,
     monotributoCategory: r.monotributo_category?.trim() || null,
-    monotributoAnnualLimit: parseAnnualLimit(r.monotributo_annual_limit),
+    monotributoMonthlyLimit: parseMonthlyLimit(
+      r.monotributo_monthly_limit ?? r.monotributo_annual_limit
+    ),
   };
   return enrichBarberAfipPublic(base, r);
 }
@@ -85,7 +88,7 @@ export async function updateBarber(
     commissionPercent?: number;
     whatsappPhone?: string | null;
     monotributoCategory?: string | null;
-    monotributoAnnualLimit?: number | null;
+    monotributoMonthlyLimit?: number | null;
     afipCuit?: string | null;
     afipPtoVta?: number | null;
     afipCbteTipo?: number | null;
@@ -127,15 +130,15 @@ export async function updateBarber(
     values.push(c);
   }
 
-  if (Object.prototype.hasOwnProperty.call(data, 'monotributoAnnualLimit')) {
-    const lim = data.monotributoAnnualLimit;
+  if (Object.prototype.hasOwnProperty.call(data, 'monotributoMonthlyLimit')) {
+    const lim = data.monotributoMonthlyLimit;
     if (lim == null) {
-      fields.push('monotributo_annual_limit = ?');
+      fields.push('monotributo_monthly_limit = ?');
       values.push(null);
     } else {
       const n = Number(lim);
-      if (!Number.isFinite(n) || n < 0) throw new Error('Límite anual de monotributo inválido.');
-      fields.push('monotributo_annual_limit = ?');
+      if (!Number.isFinite(n) || n < 0) throw new Error('Límite mensual de monotributo inválido.');
+      fields.push('monotributo_monthly_limit = ?');
       values.push(n > 0 ? Math.round(n * 100) / 100 : null);
     }
   }

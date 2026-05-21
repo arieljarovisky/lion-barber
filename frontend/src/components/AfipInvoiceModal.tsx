@@ -46,6 +46,7 @@ export default function AfipInvoiceModal({
   const [error, setError] = useState('');
   const [barberUsage, setBarberUsage] = useState<BarberInvoicingUsage | null>(null);
   const [usageYear, setUsageYear] = useState(new Date().getFullYear());
+  const [usageMonth, setUsageMonth] = useState(new Date().getMonth() + 1);
   const [usageLoading, setUsageLoading] = useState(true);
 
   const billingBarber = useMemo(
@@ -86,6 +87,7 @@ export default function AfipInvoiceModal({
       .then((r) => {
         if (cancelled) return;
         setUsageYear(r.year);
+        setUsageMonth(r.month);
         const u = barberId ? r.barbers.find((b) => b.barberId === barberId) ?? null : null;
         setBarberUsage(u);
       })
@@ -138,8 +140,8 @@ export default function AfipInvoiceModal({
   }, [productsSubtotal]);
 
   const wouldExceedLimit = useMemo(() => {
-    if (!barberUsage?.annualLimit || barberUsage.annualLimit <= 0) return false;
-    return barberUsage.invoicedTotal + total > barberUsage.annualLimit;
+    if (!barberUsage?.monthlyLimit || barberUsage.monthlyLimit <= 0) return false;
+    return barberUsage.invoicedTotal + total > barberUsage.monthlyLimit;
   }, [barberUsage, total]);
 
   const addLine = () => {
@@ -284,6 +286,7 @@ export default function AfipInvoiceModal({
             <BarberMonotributoLimitsPanel
               usage={barberUsage ? [barberUsage] : []}
               year={usageYear}
+              month={usageMonth}
               loading={usageLoading}
               compact
               highlightBarberId={barberId}
@@ -293,7 +296,7 @@ export default function AfipInvoiceModal({
 
           {wouldExceedLimit && (
             <div className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
-              Este comprobante supera el tope anual de monotributo del barbero. Ajustá el importe o actualizá el límite en
+              Este comprobante supera el tope mensual de monotributo del barbero. Ajustá el importe o actualizá el límite en
               Configuración.
             </div>
           )}

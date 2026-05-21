@@ -8,7 +8,7 @@ import * as appointmentRepo from '../repositories/appointments.js';
 import { getAfipStatusPayload, invoiceAppointmentAfip } from '../services/afipInvoice.js';
 import {
   buildBarberInvoicingUsage,
-  currentCalendarYearArgentina,
+  currentCalendarMonthArgentina,
 } from '../services/barberInvoicingLimits.js';
 
 const router = Router();
@@ -24,13 +24,20 @@ router.get('/status', requireAuth, requireSuperAdmin, async (_req, res) => {
 
 router.get('/barber-invoicing', requireAuth, requireSuperAdmin, async (req, res) => {
   try {
+    const current = currentCalendarMonthArgentina();
     const rawYear = req.query.year;
+    const rawMonth = req.query.month;
     const year =
       typeof rawYear === 'string' && /^\d{4}$/.test(rawYear)
         ? parseInt(rawYear, 10)
-        : currentCalendarYearArgentina();
-    const usage = await buildBarberInvoicingUsage(year);
-    res.json({ year, barbers: usage });
+        : current.year;
+    const monthParsed =
+      typeof rawMonth === 'string' && /^(0?[1-9]|1[0-2])$/.test(rawMonth)
+        ? parseInt(rawMonth, 10)
+        : current.month;
+    const month = monthParsed >= 1 && monthParsed <= 12 ? monthParsed : current.month;
+    const usage = await buildBarberInvoicingUsage(year, month);
+    res.json({ year, month, barbers: usage });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al calcular facturación por barbero' });

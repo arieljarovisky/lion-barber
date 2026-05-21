@@ -56,6 +56,7 @@ import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '..
 import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barberAfip';
 import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
+import { formatMonthYearEs } from '../utils/monotributoPeriod';
 import type {
   Appointment,
   Barber,
@@ -376,8 +377,6 @@ export default function Dashboard() {
   const [agendaRestrictionsByBarber, setAgendaRestrictionsByBarber] = useState<
     Record<string, { offWeekdays: Set<number>; blocks: BarberTimeBlockRow[] }>
   >({});
-  const [availableFormSlots, setAvailableFormSlots] = useState<string[]>([]);
-  const [availableFormSlotsLoading, setAvailableFormSlotsLoading] = useState(false);
   const [view, setView] = useState<
     | 'agenda'
     | 'servicios'
@@ -448,6 +447,7 @@ export default function Dashboard() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [barberInvoicing, setBarberInvoicing] = useState<BarberInvoicingUsage[]>([]);
   const [barberInvoicingYear, setBarberInvoicingYear] = useState(() => new Date().getFullYear());
+  const [barberInvoicingMonth, setBarberInvoicingMonth] = useState(() => new Date().getMonth() + 1);
   const [barberInvoicingLoading, setBarberInvoicingLoading] = useState(false);
   const knownPaidAppointmentIdsRef = useRef<Set<string>>(new Set());
   const didInitPaidAppointmentsRef = useRef(false);
@@ -517,7 +517,7 @@ export default function Dashboard() {
   );
 
   useEffect(() => {
-    if (!modalOpen || !isAdmin || editingAppointment) return;
+    if (!modalOpen || !canAccessDashboard || editingAppointment) return;
     let cancelled = false;
     setAdminClientsLoading(true);
     api
@@ -534,10 +534,10 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [modalOpen, isAdmin, editingAppointment]);
+  }, [modalOpen, canAccessDashboard, editingAppointment]);
 
   const clientNameSuggestions = useMemo(() => {
-    if (!isAdmin || editingAppointment || !modalOpen) return [];
+    if (!canAccessDashboard || editingAppointment || !modalOpen) return [];
     const q = form.name.trim().toLowerCase();
     const phoneDigits = normalizePhoneDigits(form.phone);
     if (q.length < 1 && phoneDigits.length < 6) return [];
@@ -551,7 +551,7 @@ export default function Dashboard() {
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
       .slice(0, 8);
-  }, [isAdmin, editingAppointment, modalOpen, form.name, form.phone, adminClients]);
+  }, [canAccessDashboard, editingAppointment, modalOpen, form.name, form.phone, adminClients]);
 
   useEffect(() => {
     if (!nameSuggestionsOpen) return;
@@ -637,6 +637,7 @@ export default function Dashboard() {
       .then((r) => {
         setBarberInvoicing(r.barbers);
         setBarberInvoicingYear(r.year);
+        setBarberInvoicingMonth(r.month);
       })
       .catch(() => {
         setBarberInvoicing([]);
@@ -710,6 +711,22 @@ export default function Dashboard() {
     () => buildTimeSlotsInRange(selectedDayHours.openTime, selectedDayHours.closeTime),
     [selectedDayHours.openTime, selectedDayHours.closeTime]
   );
+  const formDayHours = useMemo(() => {
+    if (!form.date) {
+      return selectedDayHours;
+    }
+    return shopWeekdayHours[getIsoWeekdayFromYmd(form.date)] ?? { openTime: '10:00', closeTime: shopCloseTime };
+  }, [form.date, shopWeekdayHours, shopCloseTime, selectedDayHours]);
+  const formTimeSlots = useMemo(
+    () => buildTimeSlotsInRange(formDayHours.openTime, formDayHours.closeTime),
+    [formDayHours.openTime, formDayHours.closeTime]
+  );
+  const modalTimeSlots = useMemo(() => {
+    if (form.time && !formTimeSlots.includes(form.time)) {
+      return [...formTimeSlots, form.time].sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
+    }
+    return formTimeSlots;
+  }, [formTimeSlots, form.time]);
   const blockEndTimeOptions = useMemo(() => {
     const close = selectedDayHours.closeTime;
     return agendaTimeSlots.includes(close) ? agendaTimeSlots : [...agendaTimeSlots, close];
@@ -1091,40 +1108,12 @@ export default function Dashboard() {
   }, [agendaTimeSlots, blockEndTimeOptions]);
 
   useEffect(() => {
-    if (!modalOpen || editingAppointment) {
-      setAvailableFormSlots([]);
-      setAvailableFormSlotsLoading(false);
-      return;
-    }
-    const barberId = staffBarberId ?? form.barberId;
-    if (!form.date || !barberId) {
-      setAvailableFormSlots([]);
-      return;
-    }
-    const serviceDuration = services.find((s) => s.id === form.service)?.duration ?? 30;
-    let cancelled = false;
-    setAvailableFormSlotsLoading(true);
-    api
-      .getAvailability(form.date, barberId, serviceDuration)
-      .then((res) => {
-        if (cancelled) return;
-        setAvailableFormSlots(res.slots);
-        setForm((prev) => ({
-          ...prev,
-          time: res.slots.includes(prev.time) ? prev.time : (res.slots[0] ?? ''),
-        }));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAvailableFormSlots([]);
-      })
-      .finally(() => {
-        if (!cancelled) setAvailableFormSlotsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [modalOpen, editingAppointment, staffBarberId, form.barberId, form.date, form.service, services]);
+    if (!modalOpen || editingAppointment || formTimeSlots.length === 0) return;
+    setForm((prev) => ({
+      ...prev,
+      time: formTimeSlots.includes(prev.time) ? prev.time : (formTimeSlots[0] ?? prev.time),
+    }));
+  }, [modalOpen, editingAppointment, form.date, formTimeSlots]);
 
   const weekColumnCellsByDay = weekAppointmentsByDay.map(({ dateStr: dayDate, appointments: dayApps }) =>
     buildWeekColumnCells(dayApps, agendaTimeSlots, getBlockedSlotsForBarberDate(selectedBarberId, dayDate))
@@ -1282,7 +1271,7 @@ export default function Dashboard() {
           return;
         }
 
-        if (isAdmin && !editingAppointment) {
+        if (canAccessDashboard && !editingAppointment) {
           if (linkedClientId != null) {
             const c = adminClients.find((x) => x.id === linkedClientId);
             if (c && c.name.trim().toLowerCase() === nameForApp.toLowerCase()) {
@@ -2917,6 +2906,7 @@ export default function Dashboard() {
             onBulkInvoice={handleBulkAfipInvoice}
             barberInvoicing={barberInvoicing}
             barberInvoicingYear={barberInvoicingYear}
+            barberInvoicingMonth={barberInvoicingMonth}
             barberInvoicingLoading={barberInvoicingLoading}
           />
         )}
@@ -3258,7 +3248,7 @@ export default function Dashboard() {
               </h3>
               <p className="text-sm text-zinc-500 mt-1">
                 {isSuperAdmin
-                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al facturar) y tope anual AFIP. La factura AFIP es por el importe completo.`
+                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al facturar) y tope mensual AFIP. La factura AFIP es por el importe completo.`
                   : `Nombre público y comisión de referencia (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos).`}
               </p>
               {shopLoading ? (
@@ -3347,26 +3337,26 @@ export default function Dashboard() {
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
-                            Tope anual facturación (ARS)
+                            Tope mensual facturación (ARS)
                           </label>
                           <input
                             type="number"
                             min={0}
                             step={1000}
-                            defaultValue={b.monotributoAnnualLimit ?? ''}
-                            key={`${b.id}-lim-${b.monotributoAnnualLimit ?? ''}`}
+                            defaultValue={b.monotributoMonthlyLimit ?? ''}
+                            key={`${b.id}-lim-${b.monotributoMonthlyLimit ?? ''}`}
                             placeholder="Sin límite"
                             onBlur={(e) => {
                               const raw = e.target.value.trim();
                               const next = raw === '' ? null : Number(raw);
-                              const prev = b.monotributoAnnualLimit ?? null;
+                              const prev = b.monotributoMonthlyLimit ?? null;
                               if (next === prev || (next != null && !Number.isFinite(next))) return;
                               void api
-                                .updateBarber(b.id, { monotributoAnnualLimit: next })
+                                .updateBarber(b.id, { monotributoMonthlyLimit: next })
                                 .then(() => {
                                   loadData();
                                   if (view === 'facturacion' || view === 'configuracion') void loadBarberInvoicing();
-                                  showToast(`Tope anual de ${b.name} guardado`);
+                                  showToast(`Tope mensual de ${b.name} guardado`);
                                 })
                                 .catch((err) =>
                                   showToast(err instanceof Error ? err.message : 'No se pudo guardar', 'err')
@@ -3375,14 +3365,14 @@ export default function Dashboard() {
                             className="w-36 border border-zinc-200 rounded-lg px-3 py-2 text-sm tabular-nums"
                           />
                         </div>
-                        {usage && usage.annualLimit != null && usage.annualLimit > 0 && (
+                        {usage && usage.monthlyLimit != null && usage.monthlyLimit > 0 && (
                           <p className="text-xs text-zinc-500 pb-2">
-                            Facturado {barberInvoicingYear}:{' '}
+                            Facturado {formatMonthYearEs(barberInvoicingYear, barberInvoicingMonth)}:{' '}
                             <span className="font-bold text-zinc-800">
                               ${usage.invoicedTotal.toLocaleString('es-AR')}
                             </span>
                             {' '}
-                            de ${usage.annualLimit.toLocaleString('es-AR')} ({usage.percentUsed}%)
+                            de ${usage.monthlyLimit.toLocaleString('es-AR')} ({usage.percentUsed}%)
                           </p>
                         )}
                         <div className="w-full space-y-2 border-t border-zinc-100 pt-3 mt-2">
@@ -3593,12 +3583,12 @@ export default function Dashboard() {
                         if (c.name.trim().toLowerCase() === v.trim().toLowerCase()) return prev;
                         return null;
                       });
-                      if (isAdmin && !editingAppointment) {
+                      if (canAccessDashboard && !editingAppointment) {
                         setNameSuggestionsOpen(true);
                       }
                     }}
                     onFocus={() => {
-                      if (isAdmin && !editingAppointment) {
+                      if (canAccessDashboard && !editingAppointment) {
                         setNameSuggestionsOpen(true);
                       }
                     }}
@@ -3611,7 +3601,7 @@ export default function Dashboard() {
                       }
                     }}
                     onBlur={() => {
-                      if (!isAdmin || editingAppointment) return;
+                      if (!canAccessDashboard || editingAppointment) return;
                       const t = form.name.trim().toLowerCase();
                       if (!t) return;
                       const matches = adminClients.filter(
@@ -3631,10 +3621,10 @@ export default function Dashboard() {
                     placeholder="Nombre completo"
                     autoComplete="name"
                   />
-                  {isAdmin && !editingAppointment && adminClientsLoading && (
+                  {canAccessDashboard && !editingAppointment && adminClientsLoading && (
                     <p className="mt-1 text-xs text-zinc-400">Cargando clientes…</p>
                   )}
-                  {isAdmin &&
+                  {canAccessDashboard &&
                     !editingAppointment &&
                     nameSuggestionsOpen &&
                     linkedClientId == null &&
@@ -3687,7 +3677,7 @@ export default function Dashboard() {
                     </ul>
                   )}
                 </div>
-                {isAdmin && !editingAppointment && linkedClientId != null && (
+                {canAccessDashboard && !editingAppointment && linkedClientId != null && (
                   <p className="mt-1 text-xs text-zinc-500">
                     Vinculado a ficha:{' '}
                     <span className="font-medium text-zinc-700">
@@ -3712,7 +3702,7 @@ export default function Dashboard() {
                   placeholder="Ej. 11 2345 6789"
                 />
               </div>
-              {isAdmin && !editingAppointment && (
+              {canAccessDashboard && !editingAppointment && (
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                     Email del cliente <span className="font-normal normal-case text-zinc-400">(opcional)</span>
@@ -3777,33 +3767,17 @@ export default function Dashboard() {
                     onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
                     className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                   >
-                  {!editingAppointment && availableFormSlotsLoading ? (
-                    <option value="" disabled>
-                      Cargando horarios…
+                  {modalTimeSlots.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
                     </option>
-                  ) : null}
-                  {!editingAppointment && !availableFormSlotsLoading
-                    ? availableFormSlots.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))
-                    : null}
-                  {editingAppointment
-                    ? agendaTimeSlots.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))
-                    : null}
-                  {!editingAppointment && !availableFormSlotsLoading && availableFormSlots.length === 0 ? (
-                    <option value="" disabled>
-                      Sin horarios disponibles
-                    </option>
-                  ) : null}
+                  ))}
                   </select>
-                {!editingAppointment && !availableFormSlotsLoading && availableFormSlots.length === 0 ? (
-                  <p className="mt-1 text-xs text-amber-700">No hay huecos disponibles para esa fecha/barbero/servicio.</p>
+                {!editingAppointment ? (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Podés elegir cualquier horario del día (pasado o futuro). Si ya hay otro turno en ese horario, el
+                    sistema avisará al guardar.
+                  </p>
                 ) : null}
                 </div>
               </div>
@@ -3811,22 +3785,6 @@ export default function Dashboard() {
                 editingAppointment.status !== 'cancelled' &&
                 editingAppointment.status !== 'pending_payment' && (
                   <>
-                    <div>
-                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                        Propina (opcional)
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={form.tipAmount}
-                        onChange={(e) => setForm((f) => ({ ...f, tipAmount: e.target.value }))}
-                        placeholder="0"
-                        className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
-                      />
-                      <p className="mt-1 text-xs text-zinc-500">
-                        No se factura con AFIP. Se muestra en el cierre de caja.
-                      </p>
-                    </div>
                     <div>
                     <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                       Cobros del servicio en local
@@ -3847,6 +3805,22 @@ export default function Dashboard() {
                       acá.
                     </p>
                   </div>
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                        Propina (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={form.tipAmount}
+                        onChange={(e) => setForm((f) => ({ ...f, tipAmount: e.target.value }))}
+                        placeholder="0"
+                        className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+                      />
+                      <p className="mt-1 text-xs text-zinc-500">
+                        No se factura con AFIP. Se muestra en el cierre de caja.
+                      </p>
+                    </div>
                   </>
                 )}
               </div>
@@ -3860,7 +3834,7 @@ export default function Dashboard() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving || (!editingAppointment && (availableFormSlotsLoading || availableFormSlots.length === 0))}
+                  disabled={saving || (!editingAppointment && !form.time)}
                   className="flex-1 py-3 rounded-xl bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 font-bold disabled:opacity-50"
                 >
                   {saving ? 'Guardando...' : editingAppointment ? 'Guardar cambios' : 'Crear cita'}

@@ -22,7 +22,7 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
     name?: string;
     whatsappPhone?: string | null;
     monotributoCategory?: string | null;
-    monotributoAnnualLimit?: number | null;
+    monotributoMonthlyLimit?: number | null;
     afipCuit?: string | null;
     afipPtoVta?: number | null;
     afipCbteTipo?: number | null;
@@ -35,7 +35,7 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
     name,
     whatsappPhone,
     monotributoCategory,
-    monotributoAnnualLimit,
+    monotributoMonthlyLimit,
     afipCuit,
     afipPtoVta,
     afipCbteTipo,
@@ -47,7 +47,7 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
   const hasCommission = commissionPercent != null;
   const hasWhatsapp = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'whatsappPhone');
   const hasMonotributoCategory = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'monotributoCategory');
-  const hasMonotributoLimit = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'monotributoAnnualLimit');
+  const hasMonotributoLimit = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'monotributoMonthlyLimit');
   const hasAfipCuit = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'afipCuit');
   const hasAfipPtoVta = afipPtoVta != null;
   const hasAfipCbteTipo = afipCbteTipo != null;
@@ -103,8 +103,8 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
         : {}),
       ...(hasMonotributoLimit
         ? {
-            monotributoAnnualLimit:
-              monotributoAnnualLimit == null ? null : Number(monotributoAnnualLimit),
+            monotributoMonthlyLimit:
+              monotributoMonthlyLimit == null ? null : Number(monotributoMonthlyLimit),
           }
         : {}),
       ...(hasAfipCuit ? { afipCuit: afipCuit == null ? null : String(afipCuit) } : {}),
