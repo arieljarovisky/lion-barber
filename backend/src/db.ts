@@ -18,6 +18,51 @@ export async function query<T = unknown>(sql: string, params?: unknown[]): Promi
   return rows as T;
 }
 
+async function tableHasColumn(table: string, column: string): Promise<boolean> {
+  const rows = await query<{ n: number }[]>(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+    [table, column]
+  );
+  return Number(rows[0]?.n) > 0;
+}
+
+/** monotributo_annual_limit → monotributo_monthly_limit (idempotente). */
+async function migrateMonotributoLimitColumns(): Promise<void> {
+  const hasAnnual = await tableHasColumn('barbers', 'monotributo_annual_limit');
+  const hasMonthly = await tableHasColumn('barbers', 'monotributo_monthly_limit');
+
+  if (hasAnnual && !hasMonthly) {
+    await pool.execute(
+      'ALTER TABLE barbers CHANGE COLUMN monotributo_annual_limit monotributo_monthly_limit DECIMAL(14,2) NULL'
+    );
+    return;
+  }
+
+  if (!hasMonthly) {
+    try {
+      await pool.execute('ALTER TABLE barbers ADD COLUMN monotributo_monthly_limit DECIMAL(14,2) NULL');
+    } catch (e: unknown) {
+      if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+    return;
+  }
+
+  if (hasAnnual && hasMonthly) {
+    await pool.execute(
+      `UPDATE barbers
+       SET monotributo_monthly_limit = COALESCE(monotributo_monthly_limit, monotributo_annual_limit)
+       WHERE monotributo_annual_limit IS NOT NULL`
+    );
+    try {
+      await pool.execute('ALTER TABLE barbers DROP COLUMN monotributo_annual_limit');
+    } catch (e: unknown) {
+      const code = (e as { code?: string }).code;
+      if (code !== 'ER_BAD_FIELD_ERROR' && code !== 'ER_CANT_DROP_FIELD_OR_KEY') throw e;
+    }
+  }
+}
+
 export async function initDb(): Promise<void> {
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS users (
@@ -259,24 +304,7 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
-  try {
-    await pool.execute('ALTER TABLE barbers ADD COLUMN monotributo_annual_limit DECIMAL(14,2) NULL');
-  } catch (e: unknown) {
-    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
-  }
-  try {
-    await pool.execute(
-      'ALTER TABLE barbers CHANGE COLUMN monotributo_annual_limit monotributo_monthly_limit DECIMAL(14,2) NULL'
-    );
-  } catch (e: unknown) {
-    const code = (e as { code?: string }).code;
-    if (code !== 'ER_BAD_FIELD_ERROR' && code !== 'ER_CANT_DROP_FIELD_OR_KEY') throw e;
-  }
-  try {
-    await pool.execute('ALTER TABLE barbers ADD COLUMN monotributo_monthly_limit DECIMAL(14,2) NULL');
-  } catch (e: unknown) {
-    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
-  }
+  await migrateMonotributoLimitColumns();
   try {
     await pool.execute('ALTER TABLE barbers ADD COLUMN whatsapp_phone VARCHAR(32) NULL');
   } catch (e: unknown) {
