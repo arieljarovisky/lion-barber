@@ -444,6 +444,28 @@ export async function initDb(): Promise<void> {
     )
   `);
 
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS fixed_monthly_expenses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      description VARCHAR(255) NOT NULL,
+      amount DECIMAL(14,2) NOT NULL,
+      active TINYINT(1) NOT NULL DEFAULT 1,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS cash_expenses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      expense_date DATE NOT NULL,
+      description VARCHAR(255) NOT NULL,
+      amount DECIMAL(14,2) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_cash_expense_date (expense_date)
+    )
+  `);
+
   const serviceCountRows = await query<{ count: number }[]>('SELECT COUNT(*) as count FROM services');
   if (serviceCountRows[0].count === 0) {
     const services = [

@@ -241,6 +241,22 @@ export interface StaffInviteRow {
   createdAt: string;
 }
 
+export interface FixedMonthlyExpense {
+  id: number;
+  description: string;
+  amount: number;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface CashExpense {
+  id: number;
+  expenseDate: string;
+  description: string;
+  amount: number;
+  createdAt: string;
+}
+
 /** Respuesta de GET /api/users/clients (solo admin). */
 export interface AdminClientWithHistory {
   id: number;
@@ -640,6 +656,50 @@ export const api = {
     fetchApi<void>(`/api/users/clients/${encodeURIComponent(String(clientId))}`, {
       method: 'DELETE',
     }),
+
+  getFixedMonthlyExpenses: () =>
+    fetchApi<{ items: FixedMonthlyExpense[] }>('/api/expenses/fixed'),
+
+  createFixedMonthlyExpense: (data: { description: string; amount: number; active?: boolean }) =>
+    fetchApi<{ item: FixedMonthlyExpense }>('/api/expenses/fixed', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateFixedMonthlyExpense: (
+    id: number,
+    data: Partial<{ description: string; amount: number; active: boolean }>
+  ) =>
+    fetchApi<{ item: FixedMonthlyExpense }>(`/api/expenses/fixed/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteFixedMonthlyExpense: (id: number) =>
+    fetchApi<void>(`/api/expenses/fixed/${id}`, { method: 'DELETE' }),
+
+  getCashExpenses: (fromYmd: string, toYmd: string) =>
+    fetchApi<{ items: CashExpense[] }>(
+      `/api/expenses/cash?from=${encodeURIComponent(fromYmd)}&to=${encodeURIComponent(toYmd)}`
+    ),
+
+  createCashExpense: (data: { expenseDate: string; description: string; amount: number }) =>
+    fetchApi<{ item: CashExpense }>('/api/expenses/cash', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateCashExpense: (
+    id: number,
+    data: Partial<{ expenseDate: string; description: string; amount: number }>
+  ) =>
+    fetchApi<{ item: CashExpense }>(`/api/expenses/cash/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteCashExpense: (id: number) =>
+    fetchApi<void>(`/api/expenses/cash/${id}`, { method: 'DELETE' }),
 
   auth: {
     postGoogle: (idToken: string, linkPhone?: string) =>

@@ -1,7 +1,12 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import type { WeeklyBarberSummary, WeeklyCashRow, WeeklyCashSummary } from './weeklyCashClose';
+import type {
+  CashClosePeriodMode,
+  WeeklyBarberSummary,
+  WeeklyCashRow,
+  WeeklyCashSummary,
+} from './weeklyCashClose';
 import {
   SERVICE_PAYMENT_METHODS,
   SERVICE_PAYMENT_METHOD_LABELS,
@@ -9,7 +14,8 @@ import {
 } from './servicePaymentMethod';
 
 export type WeeklyCashCloseExportData = {
-  weekLabel: string;
+  periodMode: CashClosePeriodMode;
+  periodLabel: string;
   fromYmd: string;
   toYmd: string;
   depositPercent: number;
@@ -33,8 +39,10 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
   const wb = XLSX.utils.book_new();
 
   const resumenRows: (string | number)[][] = [
-    ['Lion Barber — Cierre de caja semanal'],
-    ['Semana', data.weekLabel],
+    [
+      `Lion Barber — Cierre de caja ${data.periodMode === 'day' ? 'diario' : 'semanal'}`,
+    ],
+    [data.periodMode === 'day' ? 'Día' : 'Semana', data.periodLabel],
     ['Desde', data.fromYmd],
     ['Hasta', data.toYmd],
     ['Seña configurada (%)', data.depositPercent],
@@ -50,7 +58,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
     ['Facturado AFIP (ARS)', data.summary.afipInvoicedTotal],
     ['Comprobantes AFIP', data.summary.afipInvoicedCount],
     ['Sin facturar AFIP', data.summary.pendingAfipCount],
-    ['Cancelados en la semana', data.summary.cancelledInWeek],
+    ['Cancelados en el período', data.summary.cancelledInWeek],
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenRows), 'Resumen');
 
@@ -158,12 +166,17 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
   doc.text('Lion Barber', pageWidth / 2, 18, { align: 'center' });
 
   doc.setFontSize(12);
-  doc.text('Cierre de caja semanal', pageWidth / 2, 26, { align: 'center' });
+  doc.text(
+    data.periodMode === 'day' ? 'Cierre de caja — día' : 'Cierre de caja — semana',
+    pageWidth / 2,
+    26,
+    { align: 'center' }
+  );
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.setTextColor(80, 80, 80);
-  doc.text(data.weekLabel, pageWidth / 2, 33, { align: 'center' });
+  doc.text(data.periodLabel, pageWidth / 2, 33, { align: 'center' });
 
   let y = 42;
   y = addSectionTitle(doc, 'Resumen', y);

@@ -8,9 +8,10 @@ import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '..
 import { formatArs } from '../utils/money';
 import {
   buildWeeklyCashClose,
-  formatWeekLabel,
-  shiftWeekAnchor,
-  weekBoundsFromAnchor,
+  periodBoundsFromAnchor,
+  formatPeriodLabel,
+  shiftPeriodAnchor,
+  type CashClosePeriodMode,
 } from '../utils/weeklyCashClose';
 import {
   SERVICE_PAYMENT_METHODS,
@@ -22,10 +23,14 @@ import {
   exportWeeklyCashClosePdf,
   type WeeklyCashCloseExportData,
 } from '../utils/weeklyCashCloseExport';
+import CashCloseExpensesSection from '../components/CashCloseExpensesSection';
+import { prorateFixedMonthlyExpenses, sumCashExpenses } from '../utils/expenseProration';
+import type { CashExpense, FixedMonthlyExpense } from '../api';
 
 export default function WeeklyCashClosePage() {
   const navigate = useNavigate();
-  const [weekAnchor, setWeekAnchor] = useState(() => new Date());
+  const [periodMode, setPeriodMode] = useState<CashClosePeriodMode>('week');
+  const [periodAnchor, setPeriodAnchor] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -33,9 +38,14 @@ export default function WeeklyCashClosePage() {
   const [services, setServices] = useState<Service[]>([]);
   const [depositPercent, setDepositPercent] = useState(30);
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
+  const [fixedExpenses, setFixedExpenses] = useState<FixedMonthlyExpense[]>([]);
+  const [cashExpenses, setCashExpenses] = useState<CashExpense[]>([]);
 
-  const { start, end, fromYmd, toYmd } = useMemo(() => weekBoundsFromAnchor(weekAnchor), [weekAnchor]);
-  const weekLabel = useMemo(() => formatWeekLabel(start, end), [start, end]);
+  const { start, end, fromYmd, toYmd } = useMemo(
+    () => periodBoundsFromAnchor(periodAnchor, periodMode),
+    [periodAnchor, periodMode]
+  );
+  const periodLabel = useMemo(() => formatPeriodLabel(start, end, periodMode), [start, end, periodMode]);
 
   const handlePanelNavigate = useCallback(
     (panel: DashboardPanelId) => {
@@ -56,17 +66,36 @@ export default function WeeklyCashClosePage() {
     [navigate]
   );
 
+  const loadExpenses = useCallback(() => {
+    return Promise.all([
+      api.getFixedMonthlyExpenses(),
+      api.getCashExpenses(fromYmd, toYmd),
+    ]).then(([fixedRes, cashRes]) => {
+      setFixedExpenses(fixedRes.items);
+      setCashExpenses(cashRes.items);
+    });
+  }, [fromYmd, toYmd]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError('');
-    Promise.all([api.getAppointments(), api.getBarbers(), api.getServices(), api.getShopSettings()])
-      .then(([apps, barberList, serviceList, shop]) => {
+    Promise.all([
+      api.getAppointments(),
+      api.getBarbers(),
+      api.getServices(),
+      api.getShopSettings(),
+      api.getFixedMonthlyExpenses(),
+      api.getCashExpenses(fromYmd, toYmd),
+    ])
+      .then(([apps, barberList, serviceList, shop, fixedRes, cashRes]) => {
         if (cancelled) return;
         setAppointments(apps);
         setBarbers(barberList);
         setServices(serviceList);
         setDepositPercent(shop.depositPercent);
+        setFixedExpenses(fixedRes.items);
+        setCashExpenses(cashRes.items);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -78,16 +107,23 @@ export default function WeeklyCashClosePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fromYmd, toYmd]);
 
   const { rows, byBarber, summary } = useMemo(
     () => buildWeeklyCashClose(appointments, services, barbers, depositPercent, start, end),
     [appointments, services, barbers, depositPercent, start, end]
   );
 
+  const { lines: proratedFixed, total: proratedFixedTotal } = useMemo(
+    () => prorateFixedMonthlyExpenses(fixedExpenses, fromYmd, toYmd),
+    [fixedExpenses, fromYmd, toYmd]
+  );
+  const cashExpensesTotal = useMemo(() => sumCashExpenses(cashExpenses), [cashExpenses]);
+
   const exportData = useMemo<WeeklyCashCloseExportData>(
     () => ({
-      weekLabel,
+      periodMode,
+      periodLabel,
       fromYmd,
       toYmd,
       depositPercent,
@@ -95,7 +131,7 @@ export default function WeeklyCashClosePage() {
       byBarber,
       rows,
     }),
-    [weekLabel, fromYmd, toYmd, depositPercent, summary, byBarber, rows]
+    [periodMode, periodLabel, fromYmd, toYmd, depositPercent, summary, byBarber, rows]
   );
 
   const handlePrint = () => {
@@ -148,45 +184,90 @@ export default function WeeklyCashClosePage() {
             <div>
               <h1 className="text-2xl font-black tracking-tight sm:text-3xl flex items-center gap-2">
                 <Wallet className="text-[#b39055]" size={28} />
-                Cierre de caja semanal
+                Cierre de caja
               </h1>
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
-                Resumen de turnos confirmados (lunes a domingo): señas por Mercado Pago, saldo en local, comisión del barbero (
-                {BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de productos facturados en el
-                turno) y facturación AFIP por el importe completo. No incluye turnos con seña pendiente.
+                Resumen de turnos confirmados por día o por semana (lunes a domingo): señas por Mercado Pago, saldo en local,
+                comisión del barbero ({BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de
+                productos facturados en el turno), facturación AFIP y gastos fijos / de caja. No incluye turnos con seña
+                pendiente.
               </p>
             </div>
-            <div className="no-print flex flex-wrap items-center gap-2">
+            <div className="no-print flex flex-col items-stretch gap-3 sm:items-end">
+              <div className="inline-flex rounded-xl border border-zinc-200 bg-white p-1 self-start sm:self-end">
+                <button
+                  type="button"
+                  onClick={() => setPeriodMode('day')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+                    periodMode === 'day'
+                      ? 'bg-zinc-900 text-white'
+                      : 'text-zinc-500 hover:text-zinc-800'
+                  }`}
+                >
+                  Por día
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPeriodMode('week')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition ${
+                    periodMode === 'week'
+                      ? 'bg-zinc-900 text-white'
+                      : 'text-zinc-500 hover:text-zinc-800'
+                  }`}
+                >
+                  Por semana
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => setWeekAnchor((d) => shiftWeekAnchor(d, -1))}
+                onClick={() => setPeriodAnchor((d) => shiftPeriodAnchor(d, periodMode, -1))}
                 className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
-                aria-label="Semana anterior"
+                aria-label={periodMode === 'day' ? 'Día anterior' : 'Semana anterior'}
               >
                 <ChevronLeft size={18} />
               </button>
               <div className="min-w-[12rem] rounded-xl border border-zinc-200 bg-white px-4 py-2 text-center">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Semana</p>
-                <p className="text-sm font-bold text-zinc-900">{weekLabel}</p>
-                <p className="text-[11px] text-zinc-500 tabular-nums">
-                  {fromYmd} → {toYmd}
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                  {periodMode === 'day' ? 'Día' : 'Semana'}
                 </p>
+                <p className="text-sm font-bold text-zinc-900 capitalize">{periodLabel}</p>
+                {periodMode === 'week' ? (
+                  <p className="text-[11px] text-zinc-500 tabular-nums">
+                    {fromYmd} → {toYmd}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-zinc-500 tabular-nums">{fromYmd}</p>
+                )}
               </div>
               <button
                 type="button"
-                onClick={() => setWeekAnchor((d) => shiftWeekAnchor(d, 1))}
+                onClick={() => setPeriodAnchor((d) => shiftPeriodAnchor(d, periodMode, 1))}
                 className="inline-flex items-center gap-1 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-bold text-zinc-700 hover:bg-zinc-50"
-                aria-label="Semana siguiente"
+                aria-label={periodMode === 'day' ? 'Día siguiente' : 'Semana siguiente'}
               >
                 <ChevronRight size={18} />
               </button>
               <button
                 type="button"
-                onClick={() => setWeekAnchor(new Date())}
+                onClick={() => setPeriodAnchor(new Date())}
                 className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-bold text-zinc-600 hover:bg-zinc-100"
               >
-                Esta semana
+                {periodMode === 'day' ? 'Hoy' : 'Esta semana'}
               </button>
+              {periodMode === 'day' ? (
+                <input
+                  type="date"
+                  value={fromYmd}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) return;
+                    setPeriodAnchor(new Date(`${v}T12:00:00`));
+                  }}
+                  className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-800 tabular-nums"
+                  aria-label="Elegir fecha"
+                />
+              ) : null}
               <button
                 type="button"
                 disabled={loading || exporting !== null}
@@ -214,6 +295,7 @@ export default function WeeklyCashClosePage() {
                 <Printer size={16} />
                 Imprimir
               </button>
+              </div>
             </div>
           </div>
 
@@ -225,7 +307,7 @@ export default function WeeklyCashClosePage() {
 
           <div className="print-only mb-4 text-center">
             <p className="font-black text-lg">Lion Barber — Cierre de caja</p>
-            <p className="text-sm text-zinc-600">{weekLabel}</p>
+            <p className="text-sm text-zinc-600 capitalize">{periodLabel}</p>
           </div>
 
           {loading ? (
@@ -283,7 +365,7 @@ export default function WeeklyCashClosePage() {
                   value={String(summary.pendingAfipCount)}
                   hint={
                     summary.cancelledInWeek > 0
-                      ? `${summary.cancelledInWeek} cancelado(s) en la semana`
+                      ? `${summary.cancelledInWeek} cancelado(s) en el período`
                       : 'Turnos con importe'
                   }
                 />
@@ -329,7 +411,9 @@ export default function WeeklyCashClosePage() {
                   <h2 className="font-black text-zinc-900">Por barbero</h2>
                 </div>
                 {byBarber.length === 0 ? (
-                  <p className="px-4 py-8 text-center text-sm text-zinc-500">Sin turnos en esta semana.</p>
+                  <p className="px-4 py-8 text-center text-sm text-zinc-500">
+                    Sin turnos en {periodMode === 'day' ? 'este día' : 'esta semana'}.
+                  </p>
                 ) : (
                   <div className="cash-close-table-wrap overflow-x-auto">
                     <table className="w-full min-w-[720px] text-left text-sm">
@@ -397,7 +481,7 @@ export default function WeeklyCashClosePage() {
                 </div>
                 {rows.length === 0 ? (
                   <p className="px-4 py-8 text-center text-sm text-zinc-500">
-                    No hay turnos confirmados en esta semana.
+                    No hay turnos confirmados en {periodMode === 'day' ? 'este día' : 'esta semana'}.
                   </p>
                 ) : (
                   <div className="cash-close-table-wrap overflow-x-auto md:max-h-[min(50vh,520px)] md:overflow-y-auto">
@@ -469,6 +553,18 @@ export default function WeeklyCashClosePage() {
                   </div>
                 )}
               </section>
+
+              <CashCloseExpensesSection
+                fromYmd={fromYmd}
+                toYmd={toYmd}
+                fixedItems={fixedExpenses}
+                proratedFixed={proratedFixed}
+                proratedFixedTotal={proratedFixedTotal}
+                cashItems={cashExpenses}
+                cashTotal={cashExpensesTotal}
+                shopNetEstimate={summary.shopNetEstimate}
+                onReload={() => void loadExpenses()}
+              />
 
               <p className="mt-6 text-xs text-zinc-500 max-w-3xl">
                 Las señas se calculan con el {depositPercent}% configurado. La comisión de productos ({BARBER_PRODUCT_COMMISSION_PERCENT}
