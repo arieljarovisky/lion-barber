@@ -57,6 +57,11 @@ import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barbe
 import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
 import { formatMonthYearEs } from '../utils/monotributoPeriod';
+import {
+  applyWhatsappMessageTemplate,
+  WHATSAPP_TEMPLATE_HELP,
+  WHATSAPP_TEMPLATE_PLACEHOLDER,
+} from '../utils/whatsappAppointmentMessage';
 import type {
   Appointment,
   Barber,
@@ -248,50 +253,6 @@ function buildWhatsappPhone(rawPhone: string): string | null {
     return `549${digits}`;
   }
   return `549${digits}`;
-}
-
-function formatAppointmentDateForMessage(ymd: string): string {
-  const [y, m, d] = ymd.split('-');
-  if (!y || !m || !d) return ymd;
-  return `${d}/${m}/${y}`;
-}
-
-/** Texto de ayuda en configuración (coincide con el mensaje por defecto si dejás el campo vacío). */
-const WHATSAPP_TEMPLATE_HELP = `Podés usar: {nombre}, {nombre_completo}, {fecha}, {hora}, {servicio}, {barbero}. Si dejás vacío, se usa el mensaje clásico de Lion Barber.`;
-
-function applyWhatsappMessageTemplate(template: string | null | undefined, app: Appointment): string {
-  const t = (template ?? '').trim();
-  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
-  const fullName = (app.name ?? '').trim() || greetingName;
-  const fecha = formatAppointmentDateForMessage(app.date);
-  const hora = app.time;
-  const servicio = app.service;
-  const barbero = (app.barber ?? '').trim();
-  if (!t) {
-    const lines = [
-      `Hola ${greetingName}! Te confirmo tu turno en Lion Barber:`,
-      '',
-      `Fecha: ${fecha}`,
-      `Hora: ${hora}`,
-      `Servicio: ${servicio}`,
-    ];
-    if (barbero) lines.push(`Barbero: ${barbero}`);
-    lines.push('', '¿Podés confirmármelo?');
-    return lines.join('\n');
-  }
-  return t
-    .split('{nombre_completo}')
-    .join(fullName)
-    .split('{nombre}')
-    .join(greetingName)
-    .split('{fecha}')
-    .join(fecha)
-    .split('{hora}')
-    .join(hora)
-    .split('{servicio}')
-    .join(servicio)
-    .split('{barbero}')
-    .join(barbero);
 }
 
 function buildAppointmentWhatsappUrl(app: Appointment, messageTemplate: string | null): string | null {
@@ -3114,18 +3075,18 @@ export default function Dashboard() {
               <div>
                 <h3 className="font-black text-lg text-zinc-900">Mensaje de WhatsApp</h3>
                 <p className="text-sm text-zinc-500 mt-1">
-                  Texto que se prellena al tocar «WhatsApp» en la agenda para turnos sin seña pagada. Dejalo vacío para usar el
-                  mensaje por defecto.
+                  Texto al abrir WhatsApp desde la agenda (turnos sin seña). Dejalo vacío para el mensaje automático con negritas,
+                  tolerancia y pie de página. Usá *asteriscos* para negrita y _guiones bajos_ para cursiva.
                 </p>
                 <p className="text-xs text-zinc-500 mt-2">{WHATSAPP_TEMPLATE_HELP}</p>
                 <textarea
                   value={shopWhatsappMessageTemplate}
                   onChange={(e) => setShopWhatsappMessageTemplate(e.target.value)}
-                  rows={8}
+                  rows={10}
                   maxLength={8000}
                   spellCheck={false}
                   className="mt-3 w-full border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 font-mono leading-relaxed"
-                  placeholder={`Hola {nombre}! Te confirmo tu turno…\n\nFecha: {fecha}\nHora: {hora}\nServicio: {servicio}\nBarbero: {barbero}`}
+                  placeholder={WHATSAPP_TEMPLATE_PLACEHOLDER}
                 />
                 <p className="text-[11px] text-zinc-400 mt-1">
                   {shopWhatsappMessageTemplate.length} / 8000 caracteres
