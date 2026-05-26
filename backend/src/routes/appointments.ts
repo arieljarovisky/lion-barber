@@ -19,10 +19,13 @@ import {
 } from '../services/mobileNotifications.js';
 import { isRealClientEmail, sendAppointmentScheduledEmail } from '../services/email.js';
 import { findUserById } from '../repositories/users.js';
-import type { Appointment } from '../types.js';
+import type { Appointment, AppointmentProductLine } from '../types.js';
 import { parseServicePaymentMethod, parseServicePaymentSplits } from '../servicePaymentMethod.js';
 import { parseTipAmountBody } from '../tipAmount.js';
 import type { ServicePaymentSplit } from '../types.js';
+import { MAX_APPOINTMENT_PRODUCT_LINES } from '../appointmentProducts.js';
+import { getShopProductById } from '../repositories/shopProducts.js';
+import { parseArsAmount } from '../arsAmount.js';
 
 function parseSplitsBodyField(raw: unknown): ServicePaymentSplit[] | null | undefined {
   if (raw === undefined) return undefined;
@@ -33,6 +36,59 @@ function parseSplitsBodyField(raw: unknown): ServicePaymentSplit[] | null | unde
     return null;
   }
   return parsed;
+}
+
+/**
+ * Convierte el body `{ products: [{ productId, quantity }] }` a `AppointmentProductLine[]`,
+ * resolviendo el nombre y precio desde el catálogo `shop_products`.
+ * Devuelve `null` si el body trae lista vacía (o no enviada con un `null` explícito).
+ * Tira si:
+ *  - viene con tipos inválidos,
+ *  - se excede `MAX_APPOINTMENT_PRODUCT_LINES`,
+ *  - un producto no existe o no tiene precio en pesos cargado.
+ */
+async function resolveProductsBodyField(
+  raw: unknown
+): Promise<AppointmentProductLine[] | null | undefined> {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (!Array.isArray(raw)) throw new Error('Productos no válidos');
+  if (raw.length === 0) return null;
+  if (raw.length > MAX_APPOINTMENT_PRODUCT_LINES) {
+    throw new Error(`Demasiados productos (máx ${MAX_APPOINTMENT_PRODUCT_LINES}).`);
+  }
+  const merged = new Map<string, number>();
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      throw new Error('Productos no válidos');
+    }
+    const obj = item as Record<string, unknown>;
+    const productId = typeof obj.productId === 'string' ? obj.productId.trim() : '';
+    const qty = Math.floor(Number(obj.quantity));
+    if (!productId) throw new Error('Falta productId en alguna línea.');
+    if (!Number.isFinite(qty) || qty <= 0) {
+      throw new Error('La cantidad debe ser un entero ≥ 1 en cada producto.');
+    }
+    merged.set(productId, (merged.get(productId) ?? 0) + qty);
+  }
+  const lines: AppointmentProductLine[] = [];
+  for (const [productId, quantity] of merged.entries()) {
+    const product = await getShopProductById(productId);
+    if (!product) throw new Error(`Producto «${productId}» no existe.`);
+    const unit = parseArsAmount(product.unitPrice);
+    if (unit == null || unit <= 0) {
+      throw new Error(`El producto «${product.name}» no tiene precio cargado.`);
+    }
+    const unitPrice = Math.round(unit);
+    lines.push({
+      productId: product.id,
+      name: product.name,
+      quantity,
+      unitPrice,
+      subtotal: unitPrice * quantity,
+    });
+  }
+  return lines;
 }
 
 const router = Router();
@@ -320,6 +376,13 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
           return res.status(400).json({ error: 'Método de pago no válido' });
         }
       }
+      if ('products' in body) {
+        try {
+          payload.products = (await resolveProductsBodyField(body.products)) ?? null;
+        } catch (e) {
+          return res.status(400).json({ error: e instanceof Error ? e.message : 'Productos no válidos' });
+        }
+      }
       const allowedStaff = ['name', 'phone', 'service', 'serviceId', 'date', 'time', 'durationMinutes'];
       for (const key of allowedStaff) {
         if (key in body) (payload as Record<string, unknown>)[key] = body[key];
@@ -328,6 +391,7 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
       payload = { ...body } as Partial<Appointment>;
       delete (payload as Record<string, unknown>).servicePaymentSplits;
       delete (payload as Record<string, unknown>).servicePaymentMethod;
+      delete (payload as Record<string, unknown>).products;
       if ('tipAmount' in body) {
         try {
           payload.tipAmount = parseTipAmountBody(body.tipAmount);
@@ -357,6 +421,13 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
             return res.status(400).json({ error: 'Método de pago no válido' });
           }
           payload.servicePaymentMethod = parsed;
+        }
+      }
+      if ('products' in body) {
+        try {
+          payload.products = (await resolveProductsBodyField(body.products)) ?? null;
+        } catch (e) {
+          return res.status(400).json({ error: e instanceof Error ? e.message : 'Productos no válidos' });
         }
       }
     }

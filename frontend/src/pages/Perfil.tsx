@@ -17,6 +17,7 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import { api } from '../api';
 import type { Appointment } from '../api';
 import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
+import { formatAppointmentProductsSummary } from '../utils/appointmentProducts';
 import { Wallet } from '@mercadopago/sdk-react';
 import { format, isBefore, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -572,31 +573,44 @@ export default function Perfil() {
             <div className="space-y-3">
               <div className="max-h-[min(52vh,400px)] overflow-y-auto overscroll-contain rounded-lg border border-zinc-800/70 bg-zinc-950/30">
                 <ul className="divide-y divide-zinc-800/80">
-                  {visibleActive.map((a) => (
-                    <li key={a.id} className="flex items-center gap-2 sm:gap-3 px-2.5 py-2 sm:px-3 sm:py-2.5">
-                      <div className="w-[4.75rem] sm:w-[5.5rem] shrink-0 text-[10px] sm:text-xs tabular-nums leading-tight">
-                        <div className="text-zinc-500">
-                          {format(parseAppointmentDateOnly(a.date), 'dd/MM/yy', { locale: es })}
+                  {visibleActive.map((a) => {
+                    const productsSummary = formatAppointmentProductsSummary(a.products);
+                    return (
+                      <li key={a.id} className="flex items-center gap-2 sm:gap-3 px-2.5 py-2 sm:px-3 sm:py-2.5">
+                        <div className="w-[4.75rem] sm:w-[5.5rem] shrink-0 text-[10px] sm:text-xs tabular-nums leading-tight">
+                          <div className="text-zinc-500">
+                            {format(parseAppointmentDateOnly(a.date), 'dd/MM/yy', { locale: es })}
+                          </div>
+                          <div className="font-semibold text-zinc-200">{a.time}</div>
                         </div>
-                        <div className="font-semibold text-zinc-200">{a.time}</div>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-white truncate">{a.service}</p>
-                        {a.barber && (
-                          <p className="text-[10px] text-zinc-500 truncate sm:hidden">{a.barber}</p>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-end gap-0.5 shrink-0">
-                        {a.depositPaid ? (
-                          <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-400/95">
-                            Seña
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">—</span>
-                        )}
-                      </div>
-                    </li>
-                  ))}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-white truncate">{a.service}</p>
+                          {productsSummary && (
+                            <p
+                              className="text-[10px] text-[#e5c185]/90 truncate"
+                              title={(a.products ?? [])
+                                .map((l) => `${l.quantity}× ${l.name}`)
+                                .join(' · ')}
+                            >
+                              + {productsSummary}
+                            </p>
+                          )}
+                          {a.barber && (
+                            <p className="text-[10px] text-zinc-500 truncate sm:hidden">{a.barber}</p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-0.5 shrink-0">
+                          {a.depositPaid ? (
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-400/95">
+                              Seña
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">—</span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
               {hasMoreActive && (

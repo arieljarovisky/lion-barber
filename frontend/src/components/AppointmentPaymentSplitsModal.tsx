@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { api, ApiError } from '../api';
-import type { Appointment, Service, ServicePaymentSplit } from '../api';
+import type { Appointment, AppointmentProductLine, Service, ServicePaymentSplit, ShopProduct } from '../api';
 import ServicePaymentSplitsEditor from './ServicePaymentSplitsEditor';
 import {
   appointmentLocalPendingArs,
@@ -9,7 +9,13 @@ import {
   formatServicePaymentSplits,
   initialSplitsFromAppointment,
 } from '../utils/servicePaymentMethod';
-import { formatArs } from '../utils/money';
+import {
+  MAX_APPOINTMENT_PRODUCT_LINES,
+  buildProductLine,
+  pricedShopProducts,
+  sumAppointmentProducts,
+} from '../utils/appointmentProducts';
+import { formatArs, parseArsAmount } from '../utils/money';
 
 type Props = {
   app: Appointment | null;
@@ -44,16 +50,98 @@ export default function AppointmentPaymentSplitsModal({
   const [splits, setSplits] = useState<ServicePaymentSplit[]>([]);
   const [tipAmount, setTipAmount] = useState('');
   const [saving, setSaving] = useState(false);
+  const [shopProducts, setShopProducts] = useState<ShopProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productLines, setProductLines] = useState<AppointmentProductLine[]>([]);
+  const [pickProductId, setPickProductId] = useState('');
+  const [pickQty, setPickQty] = useState('1');
+  const [productsError, setProductsError] = useState('');
 
   useEffect(() => {
     if (!app) return;
     setSplits(initialSplitsFromAppointment(app, services, depositPercent));
     setTipAmount(tipAmountFromApp(app));
+    setProductLines((app.products ?? []).map((p) => ({ ...p })));
+    setPickProductId('');
+    setPickQty('1');
+    setProductsError('');
   }, [app, services, depositPercent]);
+
+  useEffect(() => {
+    if (!app) return;
+    let cancelled = false;
+    setProductsLoading(true);
+    api
+      .getShopProducts()
+      .then((p) => {
+        if (!cancelled) setShopProducts(p);
+      })
+      .catch(() => {
+        if (!cancelled) setShopProducts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setProductsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [app]);
 
   if (!app) return null;
 
-  const expectedLocal = appointmentLocalPendingArs(app, services, depositPercent);
+  const expectedService = appointmentLocalPendingArs(app, services, depositPercent);
+  const productsSubtotal = sumAppointmentProducts(productLines);
+  const expectedLocal = expectedService + productsSubtotal;
+  const pickable = pricedShopProducts(shopProducts);
+
+  const addProductLine = () => {
+    setProductsError('');
+    const product = pickable.find((p) => p.id === pickProductId);
+    if (!product) {
+      setProductsError('Elegí un producto del catálogo.');
+      return;
+    }
+    const qty = Math.floor(Number(pickQty));
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setProductsError('La cantidad debe ser un entero ≥ 1.');
+      return;
+    }
+    setProductLines((prev) => {
+      const idx = prev.findIndex((l) => l.productId === product.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        const merged = next[idx].quantity + qty;
+        const line = buildProductLine(product, merged);
+        if (line) next[idx] = line;
+        return next;
+      }
+      if (prev.length >= MAX_APPOINTMENT_PRODUCT_LINES) {
+        setProductsError(`Solo podés cargar hasta ${MAX_APPOINTMENT_PRODUCT_LINES} productos.`);
+        return prev;
+      }
+      const line = buildProductLine(product, qty);
+      return line ? [...prev, line] : prev;
+    });
+    setPickQty('1');
+    setPickProductId('');
+  };
+
+  const updateProductQty = (productId: string, qtyRaw: number) => {
+    const q = Math.floor(qtyRaw);
+    setProductLines((prev) => {
+      if (!Number.isFinite(q) || q <= 0) {
+        return prev.filter((l) => l.productId !== productId);
+      }
+      return prev.map((l) => {
+        if (l.productId !== productId) return l;
+        return { ...l, quantity: q, subtotal: l.unitPrice * q };
+      });
+    });
+  };
+
+  const removeProductLine = (productId: string) => {
+    setProductLines((prev) => prev.filter((l) => l.productId !== productId));
+  };
 
   const handleSave = async () => {
     const parsedTip = parseTipInput(tipAmount);
@@ -67,6 +155,7 @@ export default function AppointmentPaymentSplitsModal({
       const updated = await api.updateAppointment(app.id, {
         servicePaymentSplits: cleaned,
         tipAmount: parsedTip,
+        products: productLines.length > 0 ? productLines : null,
       });
       onSaved(updated);
       onClose();
@@ -88,10 +177,16 @@ export default function AppointmentPaymentSplitsModal({
       >
         <div className="p-5 border-b border-zinc-100 flex justify-between items-start gap-3">
           <div>
-            <h3 className="text-lg font-black text-zinc-900">Cobros del servicio</h3>
+            <h3 className="text-lg font-black text-zinc-900">Cobros y productos</h3>
             <p className="text-sm text-zinc-600 mt-0.5">{app.name}</p>
             <p className="text-xs text-zinc-500 mt-1">
               Saldo en local: <span className="font-bold text-zinc-800">${formatArs(expectedLocal)}</span>
+              {productsSubtotal > 0 && (
+                <span className="text-zinc-400">
+                  {' '}
+                  · servicio ${formatArs(expectedService)} + productos ${formatArs(productsSubtotal)}
+                </span>
+              )}
               {app.depositPaid && ' (ya descontada la seña por Mercado Pago)'}
             </p>
             {app.servicePaymentSplits?.length || app.servicePaymentMethod ? (
@@ -114,15 +209,117 @@ export default function AppointmentPaymentSplitsModal({
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
-          <ServicePaymentSplitsEditor
-            splits={splits}
-            onChange={setSplits}
-            expectedLocalAmount={expectedLocal}
-          />
-          <p className="text-xs text-zinc-500">
-            Podés combinar métodos (ej. parte en efectivo y parte con tarjeta). Cada método solo aparece una vez.
-          </p>
+        <div className="p-5 space-y-5">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Cobros</p>
+            </div>
+            <ServicePaymentSplitsEditor
+              splits={splits}
+              onChange={setSplits}
+              expectedLocalAmount={expectedLocal}
+            />
+            <p className="text-xs text-zinc-500 mt-1">
+              Podés combinar métodos (ej. parte en efectivo y parte con tarjeta). Cada método solo aparece una vez.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-3">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <ShoppingBag size={14} className="text-[#b39055]" />
+                <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-600">
+                  Productos vendidos
+                </p>
+              </div>
+              {productsSubtotal > 0 && (
+                <span className="text-[11px] font-bold text-zinc-700 tabular-nums">
+                  Subtotal: ${formatArs(productsSubtotal)}
+                </span>
+              )}
+            </div>
+            {productsError && (
+              <div className="mb-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
+                {productsError}
+              </div>
+            )}
+            {productsLoading ? (
+              <p className="text-[11px] text-zinc-400">Cargando catálogo…</p>
+            ) : pickable.length === 0 ? (
+              <p className="text-[11px] text-zinc-500">
+                No hay productos con precio cargado. Definí «Precio venta» en la sección Productos.
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-0 flex-1 basis-32">
+                  <label className="block text-[10px] font-bold uppercase text-zinc-500">Producto</label>
+                  <select
+                    value={pickProductId}
+                    onChange={(e) => setPickProductId(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs font-medium"
+                  >
+                    <option value="">Elegir…</option>
+                    {pickable.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ($ {formatArs(parseArsAmount(String(p.unitPrice)) ?? 0)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="w-16 sm:w-20">
+                  <label className="block text-[10px] font-bold uppercase text-zinc-500">Cant.</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={pickQty}
+                    onChange={(e) => setPickQty(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs tabular-nums"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={addProductLine}
+                  className="inline-flex items-center gap-1 rounded-lg bg-zinc-900 px-2.5 py-1.5 text-[11px] font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
+                  disabled={!pickProductId}
+                >
+                  <Plus size={12} />
+                  Agregar
+                </button>
+              </div>
+            )}
+            {productLines.length > 0 && (
+              <ul className="mt-3 divide-y divide-zinc-200 rounded-lg border border-zinc-200 bg-white">
+                {productLines.map((l) => (
+                  <li key={l.productId} className="flex flex-wrap items-center gap-2 px-2.5 py-1.5 text-xs">
+                    <span className="min-w-0 flex-1 truncate font-medium text-zinc-800">{l.name}</span>
+                    <div className="flex items-center gap-1 text-[10px] text-zinc-500">
+                      <span className="tabular-nums">${formatArs(l.unitPrice)}</span>
+                      <span className="text-zinc-300">×</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={l.quantity}
+                        onChange={(e) => updateProductQty(l.productId, Number(e.target.value))}
+                        className="w-12 rounded border border-zinc-200 px-1.5 py-0.5 text-right text-[11px] tabular-nums"
+                      />
+                    </div>
+                    <span className="w-20 text-right font-mono text-[11px] text-zinc-700 tabular-nums">
+                      ${formatArs(l.subtotal)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeProductLine(l.productId)}
+                      className="p-1 text-zinc-400 hover:text-red-600"
+                      title="Quitar"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 mb-1">
               Propina (opcional)

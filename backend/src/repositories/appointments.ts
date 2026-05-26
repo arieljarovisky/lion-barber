@@ -2,6 +2,7 @@ import { mysqlDatetimeUtcNaiveFromDate, mysqlUtcNaiveToIsoInstant } from '../mys
 import pool, { query } from '../db.js';
 import type { AfipInvoiceDetail, Appointment, AppointmentStatus, ServicePaymentMethod } from '../types.js';
 import { parseServicePaymentMethod, parseServicePaymentSplits } from '../servicePaymentMethod.js';
+import { parseAppointmentProductLines } from '../appointmentProducts.js';
 import * as userRepo from './users.js';
 import { getBarberById, getAllBarbers } from './barbers.js';
 import { getServiceById } from './services.js';
@@ -68,6 +69,7 @@ interface DbAppointment {
   service_payment_splits?: string | unknown | null;
   client_chose_any_barber?: number;
   tip_amount?: number | string | null;
+  products?: string | unknown | null;
 }
 
 function parseAfipDetail(raw: string | null | undefined): AfipInvoiceDetail | undefined {
@@ -108,6 +110,7 @@ function rowToAppointment(row: DbAppointment): Appointment {
     afipInvoiceDetail: parseAfipDetail(row.afip_invoice_detail),
     servicePaymentMethod: parseServicePaymentMethod(row.service_payment_method),
     servicePaymentSplits: parseServicePaymentSplits(row.service_payment_splits),
+    products: parseAppointmentProductLines(row.products),
     tipAmount:
       row.tip_amount != null && Number.isFinite(Number(row.tip_amount))
         ? Math.round(Number(row.tip_amount) * 100) / 100
@@ -508,8 +511,14 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
     throw new Error('Propina inválida');
   }
 
+  const products =
+    data.products !== undefined
+      ? parseAppointmentProductLines(data.products)
+      : current.products ?? null;
+  const productsJson = products && products.length > 0 ? JSON.stringify(products) : null;
+
   await query(
-    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?, tip_amount = ?
+    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?, tip_amount = ?, products = ?
      WHERE id = ?`,
     [
       updated.name,
@@ -527,6 +536,7 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       servicePaymentMethod,
       splitsJson,
       tipAmount,
+      productsJson,
       id,
     ]
   );

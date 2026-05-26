@@ -81,6 +81,7 @@ import {
   formatServicePaymentSplits,
   initialSplitsFromAppointment,
 } from '../utils/servicePaymentMethod';
+import { formatAppointmentProductsSummary } from '../utils/appointmentProducts';
 function normalizePhoneDigits(phone: string): string {
   return phone.replace(/\D/g, '');
 }
@@ -1994,6 +1995,20 @@ export default function Dashboard() {
                                     {normalizeAppointmentTime(app.time)} – {endClock} · {dm} min
                                   </p>
                                   <p className="text-zinc-600 text-xs truncate mt-0.5">{app.service}</p>
+                                  {(() => {
+                                    const summary = formatAppointmentProductsSummary(app.products);
+                                    if (!summary) return null;
+                                    return (
+                                      <p
+                                        className="text-amber-800 text-[10px] truncate mt-0.5"
+                                        title={(app.products ?? [])
+                                          .map((l) => `${l.quantity}× ${l.name}`)
+                                          .join(' · ')}
+                                      >
+                                        + {summary}
+                                      </p>
+                                    );
+                                  })()}
                                   <div className="flex gap-1 mt-auto pt-2">
                                     {appointmentNeedsManualContact(app) && (() => {
                                       const waUrl = buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate);
@@ -2155,6 +2170,20 @@ export default function Dashboard() {
                                   <div className="min-w-0">
                                     <p className="font-bold text-zinc-900 text-base leading-tight">{app.name}</p>
                                     <p className="text-sm text-zinc-600 mt-1">{app.service}</p>
+                                    {(() => {
+                                      const summary = formatAppointmentProductsSummary(app.products);
+                                      if (!summary) return null;
+                                      return (
+                                        <p
+                                          className="text-[11px] font-semibold text-amber-800 mt-0.5"
+                                          title={(app.products ?? [])
+                                            .map((l) => `${l.quantity}× ${l.name} · $${formatArs(l.subtotal)}`)
+                                            .join('\n')}
+                                        >
+                                          + {summary}
+                                        </p>
+                                      );
+                                    })()}
                                     <p className="text-[11px] text-zinc-500 mt-1">
                                       {slot} – {endClock} · {dm} min
                                     </p>
@@ -2437,6 +2466,20 @@ export default function Dashboard() {
                         <Scissors size={12} className="text-zinc-400 shrink-0 sm:hidden" />
                         <span className="truncate">{app.service}</span>
                       </p>
+                      {(() => {
+                        const summary = formatAppointmentProductsSummary(app.products);
+                        if (!summary) return null;
+                        return (
+                          <p
+                            className="text-[11px] font-semibold text-amber-800 truncate"
+                            title={(app.products ?? [])
+                              .map((l) => `${l.quantity}× ${l.name} · $${formatArs(l.subtotal)}`)
+                              .join('\n')}
+                          >
+                            + {summary}
+                          </p>
+                        );
+                      })()}
                       <p className="text-[11px] text-zinc-500 tabular-nums hidden sm:block">{dm} min</p>
                     </div>
 

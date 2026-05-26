@@ -7,6 +7,22 @@ export interface ServicePaymentSplit {
   amount: number;
 }
 
+/**
+ * Producto cargado en un turno (venta accesoria al servicio).
+ * Guarda snapshot del nombre y precio unitario al momento de la carga,
+ * para que el historial no cambie si después se edita o borra el producto del catálogo.
+ */
+export interface AppointmentProductLine {
+  productId: string;
+  /** Snapshot del nombre del producto al cargarse. */
+  name: string;
+  quantity: number;
+  /** Precio unitario en ARS al momento de cargarlo. */
+  unitPrice: number;
+  /** Subtotal en ARS (quantity * unitPrice). */
+  subtotal: number;
+}
+
 export interface Appointment {
   id: string;
   userId?: number;
@@ -40,6 +56,8 @@ export interface Appointment {
   servicePaymentMethod?: ServicePaymentMethod | null;
   /** Cobro del saldo en local repartido entre métodos (suma de montos). */
   servicePaymentSplits?: ServicePaymentSplit[] | null;
+  /** Productos vendidos junto con el turno (cera, pomada, etc.). Aparecen en historial. */
+  products?: AppointmentProductLine[] | null;
   /** Propina en ARS; no se incluye en factura AFIP. */
   tipAmount?: number;
 }
