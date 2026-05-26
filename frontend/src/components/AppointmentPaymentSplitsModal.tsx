@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { api, ApiError } from '../api';
 import type { Appointment, AppointmentProductLine, Service, ServicePaymentSplit, ShopProduct } from '../api';
@@ -56,16 +56,38 @@ export default function AppointmentPaymentSplitsModal({
   const [pickProductId, setPickProductId] = useState('');
   const [pickQty, setPickQty] = useState('1');
   const [productsError, setProductsError] = useState('');
+  /** Subtotal vigente de productos: lo usamos para repartir el delta (agregar/quitar) entre los cobros. */
+  const productsSubtotalRef = useRef(0);
 
   useEffect(() => {
     if (!app) return;
     setSplits(initialSplitsFromAppointment(app, services, depositPercent));
     setTipAmount(tipAmountFromApp(app));
-    setProductLines((app.products ?? []).map((p) => ({ ...p })));
+    const initialProducts = (app.products ?? []).map((p) => ({ ...p }));
+    setProductLines(initialProducts);
+    productsSubtotalRef.current = sumAppointmentProducts(initialProducts);
     setPickProductId('');
     setPickQty('1');
     setProductsError('');
   }, [app, services, depositPercent]);
+
+  /**
+   * Al cambiar productos, ajustamos el primer cobro para que el total cobrado refleje
+   * la venta del producto. Si no hay cobros cargados todavía, no creamos uno (que el usuario
+   * elija el método); cuando lo agregue arrancará desde el saldo nuevo.
+   */
+  useEffect(() => {
+    const newSubtotal = sumAppointmentProducts(productLines);
+    const delta = newSubtotal - productsSubtotalRef.current;
+    if (delta === 0) return;
+    productsSubtotalRef.current = newSubtotal;
+    setSplits((prev) => {
+      if (prev.length === 0) return prev;
+      return prev.map((s, i) =>
+        i === 0 ? { ...s, amount: Math.max(0, Math.round(s.amount + delta)) } : s
+      );
+    });
+  }, [productLines]);
 
   useEffect(() => {
     if (!app) return;
