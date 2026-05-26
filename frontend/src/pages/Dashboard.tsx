@@ -357,6 +357,7 @@ export default function Dashboard() {
     desc: '',
     emoji: '',
     pointsReward: '0',
+    internal: false,
   });
   const [savingService, setSavingService] = useState(false);
   const [sortingServices, setSortingServices] = useState(false);
@@ -1354,7 +1355,15 @@ export default function Dashboard() {
 
   const openCreateServiceModal = () => {
     setEditingService(null);
-    setServiceForm({ name: '', price: '', duration: 30, desc: '', emoji: '✂️', pointsReward: '0' });
+    setServiceForm({
+      name: '',
+      price: '',
+      duration: 30,
+      desc: '',
+      emoji: '✂️',
+      pointsReward: '0',
+      internal: false,
+    });
     setServiceError('');
     setServiceModalOpen(true);
   };
@@ -1368,6 +1377,7 @@ export default function Dashboard() {
       desc: s.desc ?? '',
       emoji: s.emoji ?? '',
       pointsReward: String(s.pointsReward ?? 0),
+      internal: Boolean(s.internal),
     });
     setServiceError('');
     setServiceModalOpen(true);
@@ -1394,6 +1404,7 @@ export default function Dashboard() {
           desc: serviceForm.desc,
           emoji: serviceForm.emoji || undefined,
           pointsReward,
+          internal: serviceForm.internal,
         });
       } else {
         await api.createService({
@@ -1403,6 +1414,7 @@ export default function Dashboard() {
           desc: serviceForm.desc,
           emoji: serviceForm.emoji || undefined,
           pointsReward,
+          internal: serviceForm.internal,
         });
       }
       closeServiceModal();
@@ -2602,7 +2614,19 @@ export default function Dashboard() {
                         if (icon.kind === 'emoji') return <span className="text-2xl">{icon.value}</span>;
                         return <span className="text-zinc-400">—</span>;
                       })()}</td>
-                      <td className="py-4 px-4 font-medium text-zinc-900">{s.name}</td>
+                      <td className="py-4 px-4 font-medium text-zinc-900">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span>{s.name}</span>
+                          {s.internal && (
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200"
+                              title="Servicio interno: no se muestra al público"
+                            >
+                              Interno
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-4 px-4 text-zinc-700">{s.price}</td>
                       <td className="py-4 px-4 text-zinc-700">{s.duration} min</td>
                       <td className="py-4 px-4 text-zinc-500 text-sm hidden md:table-cell max-w-[200px] truncate" title={s.desc}>{s.desc || '—'}</td>
@@ -3927,6 +3951,22 @@ export default function Dashboard() {
                   className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900 min-h-[80px]"
                   placeholder="Descripción opcional del servicio"
                 />
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={serviceForm.internal}
+                    onChange={(e) => setServiceForm((f) => ({ ...f, internal: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-amber-700 focus:ring-amber-500"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold text-zinc-800">Servicio interno</span>
+                    <span className="block text-[11px] text-zinc-500">
+                      No se muestra al público en la web. Solo aparece en el panel para que lo agendes vos.
+                    </span>
+                  </span>
+                </label>
               </div>
               <div className="flex gap-3 pt-4">
                 <button

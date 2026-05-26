@@ -146,6 +146,8 @@ export interface Service {
   sortOrder?: number;
   /** Puntos que suma el cliente al concretar el servicio (programa de fidelidad). */
   pointsReward?: number;
+  /** Servicio interno: solo visible para admin/staff, no se muestra al público. */
+  internal?: boolean;
 }
 
 /** Productos de venta en local: puntos al comprar. */

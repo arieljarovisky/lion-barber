@@ -78,6 +78,8 @@ export interface Service {
   sortOrder?: number;
   /** Puntos de fidelidad que suma el cliente al concretar este servicio (configurable en el panel). */
   pointsReward?: number;
+  /** Servicio interno: solo aparece en el panel (no se muestra al público). */
+  internal?: boolean;
 }
 
 /** Qué puede obtener el cliente al canjear puntos (configurable en el panel). */
