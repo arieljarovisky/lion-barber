@@ -27,6 +27,37 @@ async function tableHasColumn(table: string, column: string): Promise<boolean> {
   return Number(rows[0]?.n) > 0;
 }
 
+/**
+ * Datos viejos guardaban `transfer` como método de pago del servicio.
+ * Lo migramos a `account` (Cuenta Corriente) en la columna escalar y dentro
+ * del JSON de splits. Idempotente: si no hay nada que actualizar no hace daño.
+ */
+async function migrateServicePaymentMethodTransferToAccount(): Promise<void> {
+  if (!(await tableHasColumn('appointments', 'service_payment_method'))) return;
+  try {
+    await pool.execute(
+      "UPDATE appointments SET service_payment_method = 'account' WHERE service_payment_method = 'transfer'"
+    );
+  } catch {
+    /* columna puede no estar lista en el primer arranque */
+  }
+  if (!(await tableHasColumn('appointments', 'service_payment_splits'))) return;
+  try {
+    await pool.execute(
+      `UPDATE appointments
+         SET service_payment_splits = REPLACE(
+           CAST(service_payment_splits AS CHAR),
+           '"method":"transfer"',
+           '"method":"account"'
+         )
+       WHERE service_payment_splits IS NOT NULL
+         AND JSON_SEARCH(service_payment_splits, 'one', 'transfer') IS NOT NULL`
+    );
+  } catch {
+    /* base sin filas o motor sin JSON_SEARCH */
+  }
+}
+
 /** monotributo_annual_limit → monotributo_monthly_limit (idempotente). */
 async function migrateMonotributoLimitColumns(): Promise<void> {
   const hasAnnual = await tableHasColumn('barbers', 'monotributo_annual_limit');
@@ -391,6 +422,7 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  await migrateServicePaymentMethodTransferToAccount();
   try {
     await pool.execute(
       'ALTER TABLE appointments ADD COLUMN client_chose_any_barber TINYINT(1) NOT NULL DEFAULT 0'

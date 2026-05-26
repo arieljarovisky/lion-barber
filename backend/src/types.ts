@@ -1,6 +1,6 @@
 export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
-export type ServicePaymentMethod = 'cash' | 'card' | 'transfer' | 'mercadopago';
+export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card';
 
 export interface ServicePaymentSplit {
   method: ServicePaymentMethod;

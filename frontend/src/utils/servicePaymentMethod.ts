@@ -4,17 +4,17 @@ import { calculateDepositAmountArs, resolveAppointmentServiceAmountArs } from '.
 export type { ServicePaymentMethod, ServicePaymentSplit };
 
 export const SERVICE_PAYMENT_METHODS: ServicePaymentMethod[] = [
+  'account',
+  'mercadopago',
   'cash',
   'card',
-  'transfer',
-  'mercadopago',
 ];
 
 export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string> = {
+  account: 'Cuenta Corriente',
+  mercadopago: 'Mercado Pago',
   cash: 'Efectivo',
   card: 'Tarjeta',
-  transfer: 'Transferencia',
-  mercadopago: 'Mercado Pago',
 };
 
 export function formatServicePaymentMethod(

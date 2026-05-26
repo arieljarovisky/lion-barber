@@ -1,5 +1,5 @@
 /** Cómo se cobró el servicio (saldo en local o total si no hubo seña). */
-export type ServicePaymentMethod = 'cash' | 'card' | 'transfer' | 'mercadopago';
+export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card';
 
 export interface ServicePaymentSplit {
   method: ServicePaymentMethod;
@@ -8,17 +8,23 @@ export interface ServicePaymentSplit {
 }
 
 export const SERVICE_PAYMENT_METHODS: ServicePaymentMethod[] = [
+  'account',
+  'mercadopago',
   'cash',
   'card',
-  'transfer',
-  'mercadopago',
 ];
 
 export const MAX_SERVICE_PAYMENT_SPLITS = 8;
 
+/** Datos antiguos guardaban "transfer"; los normalizamos a "account" (Cuenta Corriente). */
+const LEGACY_METHOD_ALIASES: Record<string, ServicePaymentMethod> = {
+  transfer: 'account',
+};
+
 export function parseServicePaymentMethod(raw: unknown): ServicePaymentMethod | null {
   if (raw == null || raw === '') return null;
   const s = String(raw).trim().toLowerCase();
+  if (LEGACY_METHOD_ALIASES[s]) return LEGACY_METHOD_ALIASES[s];
   return SERVICE_PAYMENT_METHODS.includes(s as ServicePaymentMethod) ? (s as ServicePaymentMethod) : null;
 }
 
@@ -49,8 +55,8 @@ export function parseServicePaymentSplits(raw: unknown): ServicePaymentSplit[] |
 }
 
 export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string> = {
+  account: 'Cuenta Corriente',
+  mercadopago: 'Mercado Pago',
   cash: 'Efectivo',
   card: 'Tarjeta',
-  transfer: 'Transferencia',
-  mercadopago: 'Mercado Pago',
 };
