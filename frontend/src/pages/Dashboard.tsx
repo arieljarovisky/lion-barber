@@ -1010,11 +1010,15 @@ export default function Dashboard() {
     return undefined;
   }
 
+  /** Si el turno tiene barberId asignado, manda ese (la columna del nombre puede estar desincronizada). */
+  const matchesBarber = (a: Appointment, b: Barber): boolean => {
+    if (a.barberId) return a.barberId === b.id;
+    return a.barber === b.name;
+  };
+
   const appointmentsByBarber = barbers.map((barber) => ({
     barber,
-    appointments: dayAppointments.filter(
-      (a) => a.barberId === barber.id || a.barber === barber.name
-    ),
+    appointments: dayAppointments.filter((a) => matchesBarber(a, barber)),
   }));
 
   const selectedBarber = barbers.find((b) => b.id === selectedBarberId);
@@ -1516,7 +1520,7 @@ export default function Dashboard() {
     if (!isSuperAdmin) return [];
     return barbers
       .map((b) => {
-        const apps = dayAppointments.filter((a) => a.barberId === b.id || a.barber === b.name);
+        const apps = dayAppointments.filter((a) => matchesBarber(a, b));
         const gross = apps.reduce((acc, curr) => acc + (resolveAppointmentServiceAmountArs(curr, services) ?? 0), 0);
         const estimatedIncome = Math.round(gross * BARBER_ESTIMATED_SHARE);
         return {

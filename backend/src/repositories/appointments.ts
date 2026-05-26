@@ -467,7 +467,12 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
   }
 
   let barberName = updated.barber;
-  if (data.barberId && !barberName) {
+  if (data.barberId != null && data.barberId !== current.barberId) {
+    const barber = await getBarberById(data.barberId);
+    if (barber?.name) {
+      barberName = barber.name;
+    }
+  } else if (data.barberId && !barberName) {
     const barber = await getBarberById(data.barberId);
     barberName = barber?.name ?? updated.barber;
   }
