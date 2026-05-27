@@ -10,32 +10,45 @@ import { formatArs } from '../utils/money';
 type Props = {
   splits: ServicePaymentSplit[];
   onChange: (splits: ServicePaymentSplit[]) => void;
-  /** Saldo esperado en local (servicio − seña). */
+  /** Saldo esperado en local (servicio − seña + productos). */
   expectedLocalAmount?: number;
+  /** Métodos no elegibles (ej. mercadopago si la seña ya se cobró online). */
+  excludedMethods?: ServicePaymentMethod[];
   disabled?: boolean;
   compact?: boolean;
 };
 
 function nextUnusedMethod(
-  splits: ServicePaymentSplit[]
+  splits: ServicePaymentSplit[],
+  excludedMethods: ServicePaymentMethod[]
 ): ServicePaymentMethod | null {
-  return SERVICE_PAYMENT_METHODS.find((m) => !splits.some((s) => s.method === m)) ?? null;
+  const excluded = new Set(excludedMethods);
+  return (
+    SERVICE_PAYMENT_METHODS.find(
+      (m) => !excluded.has(m) && !splits.some((s) => s.method === m)
+    ) ?? null
+  );
 }
 
 export default function ServicePaymentSplitsEditor({
   splits,
   onChange,
   expectedLocalAmount,
+  excludedMethods = [],
   disabled,
   compact,
 }: Props) {
   const total = sumServicePaymentSplits(splits);
   const expected = expectedLocalAmount ?? 0;
   const diff = expected > 0 ? total - expected : 0;
-  const canAdd = !disabled && splits.length < SERVICE_PAYMENT_METHODS.length && nextUnusedMethod(splits);
+  const availableMethods = SERVICE_PAYMENT_METHODS.filter((m) => !excludedMethods.includes(m));
+  const canAdd =
+    !disabled &&
+    splits.length < availableMethods.length &&
+    nextUnusedMethod(splits, excludedMethods);
 
   const addRow = () => {
-    const method = nextUnusedMethod(splits);
+    const method = nextUnusedMethod(splits, excludedMethods);
     if (!method) return;
     onChange([...splits, { method, amount: 0 }]);
   };
@@ -74,7 +87,7 @@ export default function ServicePaymentSplitsEditor({
                   : 'min-w-[8rem] flex-1 rounded-xl border border-zinc-200 px-3 py-2 text-sm'
               }
             >
-              {SERVICE_PAYMENT_METHODS.map((m) => (
+              {availableMethods.map((m) => (
                 <option
                   key={m}
                   value={m}

@@ -47,33 +47,143 @@ export function formatServicePaymentSplits(
   return 'Sin registrar';
 }
 
-/** Reparte montos al cierre semanal (saldo en local). */
+/** Seña abonada online (Mercado Pago al reservar). */
+export function appointmentDepositAmountArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number
+): number {
+  if (!app.depositPaid) return 0;
+  const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
+  if (serviceAmount <= 0) return 0;
+  return calculateDepositAmountArs(serviceAmount, depositPercent);
+}
+
+/** Reparte montos al cierre semanal (saldo en local, sin la seña). */
 export function appointmentLocalPendingArs(
   app: Appointment,
   services: Service[],
   depositPercent: number
 ): number {
   const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
-  const deposit =
-    app.depositPaid && serviceAmount > 0
-      ? calculateDepositAmountArs(serviceAmount, depositPercent)
-      : 0;
+  const deposit = appointmentDepositAmountArs(app, services, depositPercent);
   return Math.max(0, serviceAmount - deposit);
+}
+
+/** Suma que deben tener los cobros editables (saldo en local + productos). */
+export function appointmentSplitsTargetArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number,
+  productsSubtotal = 0
+): number {
+  return appointmentLocalPendingArs(app, services, depositPercent) + productsSubtotal;
+}
+
+/**
+ * Los cobros guardados son solo lo cobrado en el local. Si hubo seña por MP, no va en splits
+ * (el cierre de caja ya la suma por depositPaid). Corrige datos viejos que cargaban el total.
+ */
+export function normalizeAppointmentPaymentSplits(
+  splits: ServicePaymentSplit[],
+  app: Appointment,
+  services: Service[],
+  depositPercent: number,
+  productsSubtotal = 0
+): ServicePaymentSplit[] {
+  const target = appointmentSplitsTargetArs(app, services, depositPercent, productsSubtotal);
+  if (target <= 0) return [];
+
+  let cleaned = splits
+    .filter((s) => s.amount > 0)
+    .map((s) => ({ ...s }));
+
+  if (app.depositPaid) {
+    cleaned = cleaned.filter((s) => s.method !== 'mercadopago');
+  }
+
+  const sum = sumServicePaymentSplits(cleaned);
+  if (sum <= target) return cleaned;
+
+  if (cleaned.length === 1) {
+    return [{ ...cleaned[0], amount: target }];
+  }
+
+  let excess = sum - target;
+  const out = cleaned.map((s) => ({ ...s }));
+  for (let i = out.length - 1; i >= 0 && excess > 0; i--) {
+    const deduct = Math.min(out[i].amount, excess);
+    out[i] = { ...out[i], amount: out[i].amount - deduct };
+    excess -= deduct;
+  }
+  return out.filter((s) => s.amount > 0);
 }
 
 export function initialSplitsFromAppointment(
   app: Appointment,
   services: Service[],
-  depositPercent: number
+  depositPercent: number,
+  productsSubtotal = 0
 ): ServicePaymentSplit[] {
   if (app.servicePaymentSplits?.length) {
-    return app.servicePaymentSplits.map((s) => ({ ...s }));
+    return normalizeAppointmentPaymentSplits(
+      app.servicePaymentSplits.map((s) => ({ ...s })),
+      app,
+      services,
+      depositPercent,
+      productsSubtotal
+    );
   }
-  const local = appointmentLocalPendingArs(app, services, depositPercent);
-  if (app.servicePaymentMethod && local > 0) {
-    return [{ method: app.servicePaymentMethod, amount: local }];
+  const target = appointmentSplitsTargetArs(app, services, depositPercent, productsSubtotal);
+  if (
+    app.servicePaymentMethod &&
+    app.servicePaymentMethod !== 'mercadopago' &&
+    target > 0
+  ) {
+    return [{ method: app.servicePaymentMethod, amount: target }];
   }
   return [];
+}
+
+/** Texto para agenda / modal: seña MP + cobros en local. */
+export function formatAppointmentPaymentDisplay(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number,
+  productsSubtotal = 0
+): string {
+  const parts: string[] = [];
+  const deposit = appointmentDepositAmountArs(app, services, depositPercent);
+  if (deposit > 0) {
+    parts.push(
+      `${SERVICE_PAYMENT_METHOD_LABELS.mercadopago} $${deposit.toLocaleString('es-AR')} (seña)`
+    );
+  }
+
+  const localTarget = appointmentSplitsTargetArs(app, services, depositPercent, productsSubtotal);
+  const splits = app.servicePaymentSplits;
+
+  if (splits?.length) {
+    for (const s of splits) {
+      if (app.depositPaid && s.method === 'mercadopago') continue;
+      if (s.amount > 0) {
+        parts.push(
+          `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}`
+        );
+      }
+    }
+  } else if (
+    app.servicePaymentMethod &&
+    app.servicePaymentMethod !== 'mercadopago' &&
+    localTarget > 0
+  ) {
+    parts.push(
+      `${SERVICE_PAYMENT_METHOD_LABELS[app.servicePaymentMethod]} $${localTarget.toLocaleString('es-AR')}`
+    );
+  }
+
+  if (parts.length === 0) return 'Sin registrar';
+  return parts.join(' + ');
 }
 
 export function cleanServicePaymentSplits(splits: ServicePaymentSplit[]): ServicePaymentSplit[] | null {

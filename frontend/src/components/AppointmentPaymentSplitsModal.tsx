@@ -4,10 +4,12 @@ import { api, ApiError } from '../api';
 import type { Appointment, AppointmentProductLine, Service, ServicePaymentSplit, ShopProduct } from '../api';
 import ServicePaymentSplitsEditor from './ServicePaymentSplitsEditor';
 import {
-  appointmentLocalPendingArs,
+  appointmentDepositAmountArs,
+  appointmentSplitsTargetArs,
   cleanServicePaymentSplits,
-  formatServicePaymentSplits,
+  formatAppointmentPaymentDisplay,
   initialSplitsFromAppointment,
+  normalizeAppointmentPaymentSplits,
 } from '../utils/servicePaymentMethod';
 import {
   MAX_APPOINTMENT_PRODUCT_LINES,
@@ -15,7 +17,7 @@ import {
   pricedShopProducts,
   sumAppointmentProducts,
 } from '../utils/appointmentProducts';
-import { formatArs, parseArsAmount } from '../utils/money';
+import { formatArs, parseArsAmount, resolveAppointmentServiceAmountArs } from '../utils/money';
 
 type Props = {
   app: Appointment | null;
@@ -61,11 +63,12 @@ export default function AppointmentPaymentSplitsModal({
 
   useEffect(() => {
     if (!app) return;
-    setSplits(initialSplitsFromAppointment(app, services, depositPercent));
     setTipAmount(tipAmountFromApp(app));
     const initialProducts = (app.products ?? []).map((p) => ({ ...p }));
+    const productsTotal = sumAppointmentProducts(initialProducts);
     setProductLines(initialProducts);
-    productsSubtotalRef.current = sumAppointmentProducts(initialProducts);
+    productsSubtotalRef.current = productsTotal;
+    setSplits(initialSplitsFromAppointment(app, services, depositPercent, productsTotal));
     setPickProductId('');
     setPickQty('1');
     setProductsError('');
@@ -77,17 +80,33 @@ export default function AppointmentPaymentSplitsModal({
    * elija el método); cuando lo agregue arrancará desde el saldo nuevo.
    */
   useEffect(() => {
+    if (!app) return;
     const newSubtotal = sumAppointmentProducts(productLines);
     const delta = newSubtotal - productsSubtotalRef.current;
     if (delta === 0) return;
     productsSubtotalRef.current = newSubtotal;
     setSplits((prev) => {
-      if (prev.length === 0) return prev;
-      return prev.map((s, i) =>
+      const target = appointmentSplitsTargetArs(app, services, depositPercent, newSubtotal);
+      if (prev.length === 0) {
+        if (target <= 0) return prev;
+        const method =
+          app.servicePaymentMethod && app.servicePaymentMethod !== 'mercadopago'
+            ? app.servicePaymentMethod
+            : 'cash';
+        return [{ method, amount: target }];
+      }
+      const next = prev.map((s, i) =>
         i === 0 ? { ...s, amount: Math.max(0, Math.round(s.amount + delta)) } : s
       );
+      return normalizeAppointmentPaymentSplits(
+        next,
+        app,
+        services,
+        depositPercent,
+        newSubtotal
+      );
     });
-  }, [productLines]);
+  }, [productLines, app, services, depositPercent]);
 
   useEffect(() => {
     if (!app) return;
@@ -111,9 +130,11 @@ export default function AppointmentPaymentSplitsModal({
 
   if (!app) return null;
 
-  const expectedService = appointmentLocalPendingArs(app, services, depositPercent);
+  const depositAmount = appointmentDepositAmountArs(app, services, depositPercent);
   const productsSubtotal = sumAppointmentProducts(productLines);
-  const expectedLocal = expectedService + productsSubtotal;
+  const expectedLocal = appointmentSplitsTargetArs(app, services, depositPercent, productsSubtotal);
+  const serviceAmount =
+    (resolveAppointmentServiceAmountArs(app, services) ?? 0) + productsSubtotal;
   const pickable = pricedShopProducts(shopProducts);
 
   const addProductLine = () => {
@@ -173,7 +194,14 @@ export default function AppointmentPaymentSplitsModal({
     }
     setSaving(true);
     try {
-      const cleaned = cleanServicePaymentSplits(splits);
+      const normalized = normalizeAppointmentPaymentSplits(
+        splits,
+        app,
+        services,
+        depositPercent,
+        productsSubtotal
+      );
+      const cleaned = cleanServicePaymentSplits(normalized);
       const updated = await api.updateAppointment(app.id, {
         servicePaymentSplits: cleaned,
         tipAmount: parsedTip,
@@ -202,25 +230,20 @@ export default function AppointmentPaymentSplitsModal({
             <h3 className="text-lg font-black text-zinc-900">Cobros y productos</h3>
             <p className="text-sm text-zinc-600 mt-0.5">{app.name}</p>
             <p className="text-xs text-zinc-500 mt-1">
-              Saldo en local: <span className="font-bold text-zinc-800">${formatArs(expectedLocal)}</span>
-              {productsSubtotal > 0 && (
+              Total del turno: <span className="font-bold text-zinc-800">${formatArs(serviceAmount)}</span>
+              {depositAmount > 0 && (
                 <span className="text-zinc-400">
                   {' '}
-                  · servicio ${formatArs(expectedService)} + productos ${formatArs(productsSubtotal)}
+                  · seña MP ${formatArs(depositAmount)} + saldo en local ${formatArs(expectedLocal)}
                 </span>
               )}
-              {app.depositPaid && ' (ya descontada la seña por Mercado Pago)'}
             </p>
-            {app.servicePaymentSplits?.length || app.servicePaymentMethod ? (
+            {(app.servicePaymentSplits?.length || app.servicePaymentMethod || depositAmount > 0) && (
               <p className="text-[11px] text-zinc-400 mt-1">
                 Actual:{' '}
-                {formatServicePaymentSplits(
-                  app.servicePaymentSplits,
-                  app.servicePaymentMethod,
-                  expectedLocal
-                )}
+                {formatAppointmentPaymentDisplay(app, services, depositPercent, productsSubtotal)}
               </p>
-            ) : null}
+            )}
           </div>
           <button
             type="button"
@@ -234,15 +257,34 @@ export default function AppointmentPaymentSplitsModal({
         <div className="p-5 space-y-5">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">Cobros</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                Cobro en local
+              </p>
             </div>
+            {depositAmount > 0 && (
+              <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-sky-800">
+                  Seña abonada (reserva web)
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-sky-950 tabular-nums">
+                  Mercado Pago · ${formatArs(depositAmount)}
+                </p>
+                <p className="mt-1 text-[11px] text-sky-800/90">
+                  Ya está registrada. Abajo cargá solo lo que se cobra en el local (
+                  ${formatArs(expectedLocal)}).
+                </p>
+              </div>
+            )}
             <ServicePaymentSplitsEditor
               splits={splits}
               onChange={setSplits}
               expectedLocalAmount={expectedLocal}
+              excludedMethods={depositAmount > 0 ? ['mercadopago'] : []}
             />
             <p className="text-xs text-zinc-500 mt-1">
-              Podés combinar métodos (ej. parte en efectivo y parte con tarjeta). Cada método solo aparece una vez.
+              {depositAmount > 0
+                ? 'La seña por Mercado Pago no se vuelve a cargar acá. Registrá el saldo restante (efectivo, tarjeta, etc.).'
+                : 'Podés combinar métodos (ej. parte en efectivo y parte con tarjeta). Cada método solo aparece una vez.'}
             </p>
           </div>
 

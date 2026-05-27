@@ -77,11 +77,12 @@ import type {
 } from '../api';
 import {
   appointmentLocalPendingArs,
+  appointmentSplitsTargetArs,
   cleanServicePaymentSplits,
-  formatServicePaymentSplits,
+  formatAppointmentPaymentDisplay,
   initialSplitsFromAppointment,
 } from '../utils/servicePaymentMethod';
-import { formatAppointmentProductsSummary } from '../utils/appointmentProducts';
+import { formatAppointmentProductsSummary, sumAppointmentProducts } from '../utils/appointmentProducts';
 function normalizePhoneDigits(phone: string): string {
   return phone.replace(/\D/g, '');
 }
@@ -1137,7 +1138,12 @@ export default function Dashboard() {
       barberId,
       date: app.date,
       time: app.time,
-      servicePaymentSplits: initialSplitsFromAppointment(app, services, shopDepositPercent),
+      servicePaymentSplits: initialSplitsFromAppointment(
+        app,
+        services,
+        shopDepositPercent,
+        sumAppointmentProducts(app.products)
+      ),
       tipAmount:
         app.tipAmount != null && app.tipAmount > 0
           ? String(app.tipAmount).replace('.', ',')
@@ -1153,11 +1159,11 @@ export default function Dashboard() {
 
   const renderPaymentSplitsTrigger = (app: Appointment, compact?: boolean) => {
     if (app.status !== 'scheduled') return null;
-    const local = appointmentLocalPendingArs(app, services, shopDepositPercent);
-    const label = formatServicePaymentSplits(
-      app.servicePaymentSplits,
-      app.servicePaymentMethod,
-      local
+    const label = formatAppointmentPaymentDisplay(
+      app,
+      services,
+      shopDepositPercent,
+      sumAppointmentProducts(app.products)
     );
     return (
       <button
@@ -3825,11 +3831,13 @@ export default function Dashboard() {
                       onChange={(servicePaymentSplits) =>
                         setForm((f) => ({ ...f, servicePaymentSplits }))
                       }
-                      expectedLocalAmount={appointmentLocalPendingArs(
+                      expectedLocalAmount={appointmentSplitsTargetArs(
                         editingAppointment,
                         services,
-                        shopDepositPercent
+                        shopDepositPercent,
+                        sumAppointmentProducts(editingAppointment.products)
                       )}
+                      excludedMethods={editingAppointment.depositPaid ? ['mercadopago'] : []}
                     />
                     <p className="mt-1 text-xs text-zinc-500">
                       Combiná métodos y montos hasta cubrir el saldo en local. La seña por Mercado Pago no se incluye
