@@ -488,7 +488,7 @@ export async function sendDepositConfirmedEmail(
   });
 }
 
-/** Recordatorio ~1 h antes del turno (solo turnos scheduled con cuenta). */
+/** Recordatorio ~2 h 30 min antes del turno (solo turnos scheduled con cuenta). */
 export async function sendAppointmentReminder1hEmail(email: string, app: Appointment): Promise<void> {
   if (!isRealClientEmail(email)) return;
   if (!isEmailProviderConfigured()) {
@@ -501,10 +501,12 @@ export async function sendAppointmentReminder1hEmail(email: string, app: Appoint
   const reproUrl = getClientPerfilRescheduleUrl(app.id);
 
   const text = [
-    `${greetingName}, en aproximadamente 1 hora tenés turno en ${shopName}.`,
+    `${greetingName}, en aproximadamente 2 horas y media tenés turno en ${shopName}.`,
     '',
     'Detalles del turno:',
     detailsText,
+    '',
+    'Si necesitás cancelar o reprogramar, hacelo desde el sitio con al menos 2 horas de anticipación al horario del turno.',
     '',
     `Reprogramar o ver tus turnos: ${reproUrl}`,
     '',
@@ -512,21 +514,21 @@ export async function sendAppointmentReminder1hEmail(email: string, app: Appoint
   ].join('\n');
 
   const html = renderBrandedEmail({
-    title: 'Recordatorio: tu turno es en 1 hora',
+    title: 'Recordatorio: tu turno es en 2 horas y media',
     greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
     intro:
-      'Te recordamos que en aproximadamente <strong>1 hora</strong> comienza tu turno. Si ya no podés asistir, reprogramá con tiempo desde el sitio.',
+      'Te recordamos que en aproximadamente <strong>2 horas y media</strong> comienza tu turno. Si ya no podés asistir, cancelá o reprogramá desde el sitio <strong>antes de que falten 2 horas</strong> para el horario pactado.',
     detailsHtml,
     noticeColor: 'zinc',
     noticeHtml:
-      'Recordá la tolerancia de <strong>10 minutos</strong> desde la hora pactada. Cancelaciones y reprogramaciones dependen de la anticipación configurada en la web.',
+      'Recordá la tolerancia de <strong>10 minutos</strong> desde la hora pactada. Con menos de <strong>2 horas</strong> de anticipación no podés cancelar ni reprogramar desde la web; la seña no se reembolsa en ese caso.',
     cta: { label: 'Reprogramar turno', url: reproUrl },
     outro: `Equipo ${shopName}`,
   });
 
   await sendMail({
     to: email,
-    subject: `Recordatorio: tu turno en ${shopName} es en 1 hora`,
+    subject: `Recordatorio: tu turno en ${shopName} es en 2 horas y media`,
     text,
     html,
   });
