@@ -223,6 +223,13 @@ export async function initDb(): Promise<void> {
   }
   try {
     await pool.execute(
+      'ALTER TABLE appointments ADD COLUMN deposit_amount_ars DECIMAL(12,2) NULL'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
       "ALTER TABLE appointments ADD COLUMN status ENUM('scheduled','pending_payment','cancelled') NOT NULL DEFAULT 'scheduled'"
     );
   } catch (e: unknown) {
@@ -370,14 +377,14 @@ export async function initDb(): Promise<void> {
       id INT PRIMARY KEY DEFAULT 1,
       cutoff_hours INT NOT NULL DEFAULT 12,
       open_weekdays VARCHAR(64) NOT NULL DEFAULT '1,2,3,4,5,6,7',
-      deposit_percent DECIMAL(5,2) NOT NULL DEFAULT 30,
+      deposit_percent DECIMAL(5,2) NOT NULL DEFAULT 50,
       close_time VARCHAR(5) NOT NULL DEFAULT '20:00',
       weekday_hours TEXT NULL
     )
   `);
   try {
     await pool.execute(
-      'ALTER TABLE shop_settings ADD COLUMN deposit_percent DECIMAL(5,2) NOT NULL DEFAULT 30'
+      'ALTER TABLE shop_settings ADD COLUMN deposit_percent DECIMAL(5,2) NOT NULL DEFAULT 50'
     );
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
@@ -406,11 +413,13 @@ export async function initDb(): Promise<void> {
   }
   try {
     await pool.execute(
-      "INSERT IGNORE INTO shop_settings (id, cutoff_hours, open_weekdays, deposit_percent, close_time) VALUES (1, 12, '1,2,3,4,5,6,7', 30, '20:00')"
+      "INSERT IGNORE INTO shop_settings (id, cutoff_hours, open_weekdays, deposit_percent, close_time) VALUES (1, 12, '1,2,3,4,5,6,7', 50, '20:00')"
     );
   } catch {
     /* ya existe */
   }
+  /** Seña fija al 50% del servicio (corrige el default erróneo del 30% en instalaciones viejas). */
+  await pool.execute('UPDATE shop_settings SET deposit_percent = 50 WHERE id = 1');
 
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS barber_francos (

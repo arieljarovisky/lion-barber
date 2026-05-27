@@ -8,7 +8,9 @@ import { api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
+import { calculateDepositAmountArs, parseArsAmount } from '../utils/money';
 import {
   format,
   parse,
@@ -221,7 +223,14 @@ export default function ClientView() {
   const barberOverlayClasses =
     'absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80';
 
-  const selectedServiceDuration = services.find((s) => s.id === selectedService)?.duration ?? 30;
+  const selectedServiceRow = services.find((s) => s.id === selectedService);
+  const selectedServiceDuration = selectedServiceRow?.duration ?? 30;
+  const depositPreviewArs = useMemo(() => {
+    if (!selectedServiceRow?.price || profile?.depositExempt) return null;
+    const price = parseArsAmount(selectedServiceRow.price);
+    if (price == null) return null;
+    return calculateDepositAmountArs(price, DEPOSIT_PERCENT);
+  }, [selectedServiceRow, profile?.depositExempt]);
   const visibleBarbers = useMemo(() => {
     if (!selectedDate || !selectedService) return barbers;
     const set = new Set(availableBarberIds);
@@ -1094,6 +1103,15 @@ export default function ClientView() {
                   </div>
 
                   <div className="flex flex-col gap-3 mt-4">
+                    {depositPreviewArs != null && (
+                      <p className="text-center text-sm text-zinc-400">
+                        Seña online:{' '}
+                        <strong className="text-[#e5c185] tabular-nums">
+                          ${depositPreviewArs.toLocaleString('es-AR')}
+                        </strong>{' '}
+                        ({DEPOSIT_PERCENT}% del servicio · el resto se abona en el local)
+                      </p>
+                    )}
                     <button
                       type="button"
                       onClick={handlePaySena}

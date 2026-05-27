@@ -20,7 +20,9 @@ import {
   isRealClientEmail,
 } from '../services/email.js';
 import { findUserById, isUserDepositExempt } from '../repositories/users.js';
+import { DEPOSIT_PERCENT } from '../constants/deposit.js';
 import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
+import { parseMercadoPagoTransactionAmountArs } from '../mercadopagoAmount.js';
 
 const router = Router();
 
@@ -97,13 +99,12 @@ async function createMercadoPagoSenaPreference(
     returnToProfile?: boolean;
   }
 ): Promise<{ preferenceId: string; url?: string }> {
-  const shop = await getShopSettings();
   const serviceEntity = input.serviceId ? await getServiceById(input.serviceId) : null;
   const servicePriceArs = parseArsAmount(serviceEntity?.price ?? input.service);
   if (!servicePriceArs) {
     throw new Error('No se pudo calcular la seña: precio del servicio inválido.');
   }
-  const amountArs = calculateDepositAmountArs(servicePriceArs, shop.depositPercent);
+  const amountArs = calculateDepositAmountArs(servicePriceArs, DEPOSIT_PERCENT);
   const externalReference = buildBookingRef({
     appointmentId: input.appointmentId,
     name: input.name,
@@ -659,14 +660,21 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
   const t = (process.env.MERCADOPAGO_ACCESS_TOKEN ?? '').trim();
   console.log(`[MP] webhook usando token last6: ${t.slice(-6)}`);
 
-  const existing = await repo.getAppointmentByMercadopagoPaymentId(paymentId);
-  if (existing) return;
-
   const paymentClient = new Payment(config);
   const payment = await getPaymentForWebhook(paymentClient, paymentId);
   if (!payment) return;
 
   if (payment.status !== 'approved') return;
+
+  const depositAmountArs = parseMercadoPagoTransactionAmountArs(payment);
+
+  const existingByMp = await repo.getAppointmentByMercadopagoPaymentId(paymentId);
+  if (existingByMp) {
+    if (depositAmountArs != null && (!existingByMp.depositAmountArs || existingByMp.depositAmountArs <= 0)) {
+      await repo.setAppointmentDepositAmountArs(existingByMp.id, depositAmountArs);
+    }
+    return;
+  }
 
   const ref = parseBookingRef(
     payment.external_reference,
@@ -681,7 +689,11 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
 
   const existingByRefId = ref.a ? await repo.getAppointmentById(ref.a) : null;
   if (existingByRefId) {
-    const updated = await repo.markAppointmentPaidAndScheduled(existingByRefId.id, paymentId);
+    const updated = await repo.markAppointmentPaidAndScheduled(
+      existingByRefId.id,
+      paymentId,
+      depositAmountArs
+    );
     if (updated) {
       void notifyBarberByWhatsappOnDepositPaid(updated);
       void notifyShopPhoneAppointmentCreated(updated);
@@ -701,6 +713,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       time: ref.t,
       durationMinutes: ref.m,
       depositPaid: true,
+      depositAmountArs: depositAmountArs ?? undefined,
       mercadopagoPaymentId: paymentId,
       ...(userId != null && !Number.isNaN(userId) ? { userId } : {}),
     });

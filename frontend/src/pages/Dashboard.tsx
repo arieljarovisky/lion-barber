@@ -54,8 +54,13 @@ import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError, downloadDatabaseBackup } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barberAfip';
-import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
+import {
+  formatArs,
+  resolveAppointmentDepositAmountArs,
+  resolveAppointmentServiceAmountArs,
+} from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
 import type {
   Appointment,
@@ -424,7 +429,6 @@ export default function Dashboard() {
   const [savingInvite, setSavingInvite] = useState(false);
   const [shopCutoff, setShopCutoff] = useState(12);
   const [shopDays, setShopDays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
-  const [shopDepositPercent, setShopDepositPercent] = useState(30);
   const [shopCloseTime, setShopCloseTime] = useState('20:00');
   const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
   const [shopClosedDates, setShopClosedDates] = useState<string[]>([]);
@@ -852,7 +856,6 @@ export default function Dashboard() {
         if (!cancelled) {
           setShopCutoff(s.cutoffHours);
           setShopDays(s.openWeekdays.length ? s.openWeekdays : [1, 2, 3, 4, 5, 6, 7]);
-          setShopDepositPercent(s.depositPercent);
           setShopCloseTime(s.closeTime || '20:00');
           setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
           setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
@@ -1183,7 +1186,7 @@ export default function Dashboard() {
       barberId,
       date: app.date,
       time: app.time,
-      servicePaymentSplits: initialSplitsFromAppointment(app, services, shopDepositPercent),
+      servicePaymentSplits: initialSplitsFromAppointment(app, services, DEPOSIT_PERCENT),
       tipAmount:
         app.tipAmount != null && app.tipAmount > 0
           ? String(app.tipAmount).replace('.', ',')
@@ -1199,12 +1202,20 @@ export default function Dashboard() {
 
   const renderPaymentSplitsTrigger = (app: Appointment, compact?: boolean) => {
     if (app.status !== 'scheduled') return null;
-    const local = appointmentLocalPendingArs(app, services, shopDepositPercent);
-    const label = formatServicePaymentSplits(
+    const deposit = resolveAppointmentDepositAmountArs(app, services, DEPOSIT_PERCENT);
+    const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
+    const local = Math.max(0, serviceAmount - deposit);
+    const splitsLabel = formatServicePaymentSplits(
       app.servicePaymentSplits,
       app.servicePaymentMethod,
-      local
+      local > 0 ? local : undefined
     );
+    const label =
+      app.depositPaid && deposit > 0
+        ? splitsLabel && splitsLabel !== 'Sin registrar'
+          ? `Mercado Pago $${deposit.toLocaleString('es-AR')} (seña) · ${splitsLabel}`
+          : `Mercado Pago $${deposit.toLocaleString('es-AR')} (seña)`
+        : splitsLabel;
     const showMpLogo =
       app.depositPaid ||
       app.servicePaymentMethod === 'mercadopago' ||
@@ -1657,7 +1668,7 @@ export default function Dashboard() {
       const updated = await api.updateShopSettings({
         cutoffHours: shopCutoff,
         openWeekdays: shopDays,
-        depositPercent: shopDepositPercent,
+        depositPercent: DEPOSIT_PERCENT,
         closeTime: shopCloseTime,
         weekdayHours: shopWeekdayHours,
         closedDates: shopClosedDates,
@@ -3112,23 +3123,12 @@ export default function Dashboard() {
               <div>
                 <h3 className="font-black text-lg text-zinc-900">Seña online</h3>
                 <p className="text-sm text-zinc-500 mt-1">
-                  Se calcula automáticamente como porcentaje del precio del servicio al iniciar Mercado Pago.
+                  Siempre el <strong className="text-zinc-700">50% del precio del servicio</strong> al pagar con Mercado Pago
+                  (la mitad online, el resto en el local).
                 </p>
-                <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mt-4 mb-1">
-                  Porcentaje de seña
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={shopDepositPercent}
-                    onChange={(e) => setShopDepositPercent(Number(e.target.value))}
-                    className="w-32 border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
-                  />
-                  <span className="text-zinc-600 text-sm font-medium">%</span>
-                </div>
+                <p className="mt-3 inline-flex items-center rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-bold text-zinc-800">
+                  Seña: {DEPOSIT_PERCENT}% del servicio
+                </p>
               </div>
               <div>
                 <h3 className="font-black text-lg text-zinc-900">Mensaje de WhatsApp</h3>
@@ -3557,7 +3557,7 @@ export default function Dashboard() {
       <AppointmentPaymentSplitsModal
         app={paymentSplitsModalApp}
         services={services}
-        depositPercent={shopDepositPercent}
+        depositPercent={DEPOSIT_PERCENT}
         onClose={() => setPaymentSplitsModalApp(null)}
         onSaved={(updated) => {
           patchAppointmentInState(updated);
@@ -3844,7 +3844,7 @@ export default function Dashboard() {
                       expectedLocalAmount={appointmentLocalPendingArs(
                         editingAppointment,
                         services,
-                        shopDepositPercent
+                        DEPOSIT_PERCENT
                       )}
                     />
                     <p className="mt-1 text-xs text-zinc-500">

@@ -1,3 +1,4 @@
+import { DEPOSIT_PERCENT } from '../constants/deposit.js';
 import pool, { query } from '../db.js';
 
 export interface ShopSettingsRow {
@@ -130,7 +131,7 @@ export async function getShopSettings(): Promise<{
     return {
       cutoffHours: 12,
       openWeekdays: [1, 2, 3, 4, 5, 6, 7],
-      depositPercent: 30,
+      depositPercent: DEPOSIT_PERCENT,
       closeTime: '20:00',
       weekdayHours: defaultWeekdayHours(),
       closedDates: [],
@@ -144,10 +145,7 @@ export async function getShopSettings(): Promise<{
   return {
     cutoffHours: row.cutoff_hours,
     openWeekdays: parseOpenWeekdays(row.open_weekdays),
-    depositPercent:
-      Number.isFinite(Number(row.deposit_percent)) && Number(row.deposit_percent) >= 0
-        ? Math.min(100, Math.max(0, Number(row.deposit_percent)))
-        : 30,
+    depositPercent: DEPOSIT_PERCENT,
     closeTime,
     weekdayHours: parseWeekdayHours(row.weekday_hours, closeTime),
     closedDates: parseClosedDates(row.closed_dates),
@@ -182,10 +180,7 @@ export async function updateShopSettings(data: {
     const uniq = [...new Set(data.openWeekdays.filter((n) => n >= 1 && n <= 7))].sort((a, b) => a - b);
     openWeekdays = uniq.length > 0 ? uniq : [1, 2, 3, 4, 5, 6, 7];
   }
-  const depositPercent =
-    data.depositPercent != null && Number.isFinite(data.depositPercent) && data.depositPercent >= 0
-      ? Math.min(100, Math.max(0, Number(data.depositPercent)))
-      : current.depositPercent;
+  const depositPercent = DEPOSIT_PERCENT;
   const closeTime = data.closeTime != null ? normalizeCloseTime(String(data.closeTime)) : current.closeTime;
   const weekdayHours = { ...current.weekdayHours };
   if (data.weekdayHours && typeof data.weekdayHours === 'object') {

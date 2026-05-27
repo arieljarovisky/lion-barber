@@ -17,6 +17,7 @@ import shopProducts from './routes/shopProducts.js';
 import pointsRedemptionOptions from './routes/pointsRedemptionOptions.js';
 import { runAppointmentReminderEmails } from './jobs/runAppointmentReminderEmails.js';
 import { runExpirePendingPayments } from './jobs/runExpirePendingPayments.js';
+import { backfillMissingDepositAmountsFromMercadoPago } from './services/mercadopagoDepositBackfill.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 4000;
@@ -56,6 +57,9 @@ async function start() {
     await initDb();
     console.log('Base de datos MySQL lista.');
     logMercadoPagoEnvHint();
+    void backfillMissingDepositAmountsFromMercadoPago().catch((e) =>
+      console.warn('[MP backfill] no se pudo completar:', e)
+    );
   } catch (err) {
     console.error('Error al iniciar la base de datos:', err);
     process.exit(1);

@@ -10,7 +10,7 @@ import {
 import { es } from 'date-fns/locale';
 import type { Appointment, Barber, Service, ServicePaymentMethod } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
-import { calculateDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
+import { resolveAppointmentDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
 import { SERVICE_PAYMENT_METHODS, applySplitsToMethodTotals } from './servicePaymentMethod';
 import type { ServicePaymentSplit } from '../api';
 
@@ -196,7 +196,7 @@ export function buildWeeklyCashClose(
     const { key, name, commissionPercent } = resolveBarber(app, barbers);
     const depositAmount =
       app.depositPaid && serviceAmount > 0
-        ? calculateDepositAmountArs(serviceAmount, depositPercent)
+        ? resolveAppointmentDepositAmountArs(app, services, depositPercent)
         : 0;
     const localPending = Math.max(0, serviceAmount - depositAmount);
     const commissions = barberCommissionsForAppointment(app, serviceAmount, commissionPercent);

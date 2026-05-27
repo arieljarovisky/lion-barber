@@ -54,6 +54,7 @@ interface DbAppointment {
   duration_minutes: number;
   service_id: string | null;
   deposit_paid: number;
+  deposit_amount_ars?: number | string | null;
   mercadopago_payment_id?: string | null;
   payment_due_at?: string | null;
   status?: string | null;
@@ -97,6 +98,10 @@ function rowToAppointment(row: DbAppointment): Appointment {
     time: rowTimeToHHmm(row.time),
     durationMinutes: row.duration_minutes ?? 30,
     depositPaid: Boolean(row.deposit_paid),
+    depositAmountArs:
+      row.deposit_amount_ars != null && Number.isFinite(Number(row.deposit_amount_ars))
+        ? Math.round(Number(row.deposit_amount_ars) * 100) / 100
+        : undefined,
     mercadopagoPaymentId: row.mercadopago_payment_id ?? undefined,
     paymentDueAt: mysqlUtcNaiveToIsoInstant(row.payment_due_at) ?? undefined,
     status: st,
@@ -398,13 +403,17 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
 
   const serviceId = data.serviceId ?? null;
   const depositPaid = data.depositPaid ? 1 : 0;
+  const depositAmountArs =
+    data.depositAmountArs != null && Number.isFinite(Number(data.depositAmountArs)) && Number(data.depositAmountArs) > 0
+      ? Math.round(Number(data.depositAmountArs) * 100) / 100
+      : null;
   const mpId = data.mercadopagoPaymentId ?? null;
   const status = data.status ?? 'scheduled';
   const paymentDueAt = data.paymentDueAt ?? null;
 
   const [res] = await pool.execute(
-    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, client_chose_any_barber, date, time, duration_minutes, deposit_paid, mercadopago_payment_id, status, payment_due_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, client_chose_any_barber, date, time, duration_minutes, deposit_paid, deposit_amount_ars, mercadopago_payment_id, status, payment_due_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.userId ?? null,
       data.name,
@@ -418,6 +427,7 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
       data.time,
       durationMinutes,
       depositPaid,
+      depositAmountArs,
       mpId,
       status,
       paymentDueAt,
@@ -539,13 +549,27 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
   return saved;
 }
 
+export async function setAppointmentDepositAmountArs(
+  appointmentId: string,
+  depositAmountArs: number
+): Promise<void> {
+  const amount = Math.round(depositAmountArs * 100) / 100;
+  if (!Number.isFinite(amount) || amount <= 0) return;
+  await query('UPDATE appointments SET deposit_amount_ars = ? WHERE id = ?', [amount, appointmentId]);
+}
+
 export async function markAppointmentPaidAndScheduled(
   appointmentId: string,
-  paymentId: string
+  paymentId: string,
+  depositAmountArs?: number | null
 ): Promise<Appointment | null> {
+  const amount =
+    depositAmountArs != null && Number.isFinite(depositAmountArs) && depositAmountArs > 0
+      ? Math.round(depositAmountArs * 100) / 100
+      : null;
   await query(
-    "UPDATE appointments SET status = 'scheduled', deposit_paid = 1, mercadopago_payment_id = ?, payment_due_at = NULL WHERE id = ? AND status != 'cancelled'",
-    [paymentId, appointmentId]
+    "UPDATE appointments SET status = 'scheduled', deposit_paid = 1, mercadopago_payment_id = ?, deposit_amount_ars = ?, payment_due_at = NULL WHERE id = ? AND status != 'cancelled'",
+    [paymentId, amount, appointmentId]
   );
   return getAppointmentById(appointmentId);
 }

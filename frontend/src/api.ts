@@ -94,6 +94,8 @@ export interface Appointment {
   time: string;
   durationMinutes?: number;
   depositPaid?: boolean;
+  /** Importe real cobrado como seña (ARS), según Mercado Pago. */
+  depositAmountArs?: number;
   paymentDueAt?: string;
   status?: AppointmentStatus;
   /** Solo en GET /api/appointments/mine */

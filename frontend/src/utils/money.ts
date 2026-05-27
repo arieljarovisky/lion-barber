@@ -39,6 +39,21 @@ export function calculateDepositAmountArs(servicePriceArs: number, depositPercen
   return Math.max(1, rounded);
 }
 
+/** Seña: monto real guardado de MP; si falta, estimado al % indicado. */
+export function resolveAppointmentDepositAmountArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number
+): number {
+  if (!app.depositPaid) return 0;
+  if (app.depositAmountArs != null && app.depositAmountArs > 0) {
+    return app.depositAmountArs;
+  }
+  const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
+  if (serviceAmount <= 0) return 0;
+  return calculateDepositAmountArs(serviceAmount, depositPercent);
+}
+
 /** Importe del servicio del turno según catálogo (misma lógica que AFIP en backend). */
 export function resolveAppointmentServiceAmountArs(app: Appointment, services: Service[]): number | null {
   if (app.serviceId) {

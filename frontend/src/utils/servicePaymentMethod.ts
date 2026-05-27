@@ -1,5 +1,8 @@
 import type { Appointment, Service, ServicePaymentMethod, ServicePaymentSplit } from '../api';
-import { calculateDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
+import {
+  resolveAppointmentDepositAmountArs,
+  resolveAppointmentServiceAmountArs,
+} from './money';
 
 export type { ServicePaymentMethod, ServicePaymentSplit };
 
@@ -54,10 +57,7 @@ export function appointmentLocalPendingArs(
   depositPercent: number
 ): number {
   const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
-  const deposit =
-    app.depositPaid && serviceAmount > 0
-      ? calculateDepositAmountArs(serviceAmount, depositPercent)
-      : 0;
+  const deposit = resolveAppointmentDepositAmountArs(app, services, depositPercent);
   return Math.max(0, serviceAmount - deposit);
 }
 

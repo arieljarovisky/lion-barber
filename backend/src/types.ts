@@ -24,6 +24,8 @@ export interface Appointment {
   durationMinutes?: number;
   /** Seña abonada (p. ej. vía Mercado Pago). */
   depositPaid?: boolean;
+  /** Importe real cobrado como seña (ARS), según Mercado Pago. */
+  depositAmountArs?: number;
   /** Id. de pago de Mercado Pago (evita duplicar turnos en webhooks). */
   mercadopagoPaymentId?: string;
   paymentDueAt?: string;

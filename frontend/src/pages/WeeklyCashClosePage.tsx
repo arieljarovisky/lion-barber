@@ -5,6 +5,7 @@ import DashboardPanelShell, { type DashboardPanelId } from '../components/Dashbo
 import { api } from '../api';
 import type { Appointment, Barber, Service } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { formatArs } from '../utils/money';
 import {
   buildWeeklyCashClose,
@@ -32,7 +33,6 @@ export default function WeeklyCashClosePage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
-  const [depositPercent, setDepositPercent] = useState(30);
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
 
   const { start, end, fromYmd, toYmd } = useMemo(() => weekBoundsFromAnchor(weekAnchor), [weekAnchor]);
@@ -61,13 +61,12 @@ export default function WeeklyCashClosePage() {
     let cancelled = false;
     setLoading(true);
     setError('');
-    Promise.all([api.getAppointments(), api.getBarbers(), api.getServices(), api.getShopSettings()])
-      .then(([apps, barberList, serviceList, shop]) => {
+    Promise.all([api.getAppointments(), api.getBarbers(), api.getServices()])
+      .then(([apps, barberList, serviceList]) => {
         if (cancelled) return;
         setAppointments(apps);
         setBarbers(barberList);
         setServices(serviceList);
-        setDepositPercent(shop.depositPercent);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -82,8 +81,8 @@ export default function WeeklyCashClosePage() {
   }, []);
 
   const { rows, byBarber, summary } = useMemo(
-    () => buildWeeklyCashClose(appointments, services, barbers, depositPercent, start, end),
-    [appointments, services, barbers, depositPercent, start, end]
+    () => buildWeeklyCashClose(appointments, services, barbers, DEPOSIT_PERCENT, start, end),
+    [appointments, services, barbers, start, end]
   );
 
   const exportData = useMemo<WeeklyCashCloseExportData>(
@@ -91,12 +90,12 @@ export default function WeeklyCashClosePage() {
       weekLabel,
       fromYmd,
       toYmd,
-      depositPercent,
+      depositPercent: DEPOSIT_PERCENT,
       summary,
       byBarber,
       rows,
     }),
-    [weekLabel, fromYmd, toYmd, depositPercent, summary, byBarber, rows]
+    [weekLabel, fromYmd, toYmd, summary, byBarber, rows]
   );
 
   const handlePrint = () => {
@@ -243,7 +242,7 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Señas (Mercado Pago)"
                   value={`$${formatArs(summary.depositsMp)}`}
-                  hint={`${depositPercent}% del servicio`}
+                  hint={`${DEPOSIT_PERCENT}% del servicio`}
                   accent="emerald"
                   mercadoPago
                 />
@@ -476,7 +475,7 @@ export default function WeeklyCashClosePage() {
               </section>
 
               <p className="mt-6 text-xs text-zinc-500 max-w-3xl">
-                Las señas se calculan con el {depositPercent}% configurado. La comisión de productos ({BARBER_PRODUCT_COMMISSION_PERCENT}
+                Las señas son el {DEPOSIT_PERCENT}% del servicio. La comisión de productos ({BARBER_PRODUCT_COMMISSION_PERCENT}
                 %) aplica solo si se facturaron productos en AFIP con ese turno. «En local» es el saldo estimado (servicio −
                 seña). Registrá los cobros en cada turno desde la agenda; podés combinar métodos (ej. efectivo + tarjeta) con el
                 monto de cada uno.

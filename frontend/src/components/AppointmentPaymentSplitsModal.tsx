@@ -9,7 +9,7 @@ import {
   formatServicePaymentSplits,
   initialSplitsFromAppointment,
 } from '../utils/servicePaymentMethod';
-import { formatArs } from '../utils/money';
+import { formatArs, resolveAppointmentDepositAmountArs } from '../utils/money';
 
 type Props = {
   app: Appointment | null;
@@ -54,6 +54,7 @@ export default function AppointmentPaymentSplitsModal({
   if (!app) return null;
 
   const expectedLocal = appointmentLocalPendingArs(app, services, depositPercent);
+  const depositPaidAmount = resolveAppointmentDepositAmountArs(app, services, depositPercent);
 
   const handleSave = async () => {
     const parsedTip = parseTipInput(tipAmount);
@@ -91,8 +92,15 @@ export default function AppointmentPaymentSplitsModal({
             <h3 className="text-lg font-black text-zinc-900">Cobros del servicio</h3>
             <p className="text-sm text-zinc-600 mt-0.5">{app.name}</p>
             <p className="text-xs text-zinc-500 mt-1">
+              {app.depositPaid && depositPaidAmount > 0 && (
+                <>
+                  Seña Mercado Pago:{' '}
+                  <span className="font-bold text-emerald-800">${formatArs(depositPaidAmount)}</span>
+                  {' · '}
+                </>
+              )}
               Saldo en local: <span className="font-bold text-zinc-800">${formatArs(expectedLocal)}</span>
-              {app.depositPaid && ' (ya descontada la seña por Mercado Pago)'}
+              {app.depositPaid && ' (seña ya descontada)'}
             </p>
             {app.servicePaymentSplits?.length || app.servicePaymentMethod ? (
               <p className="text-[11px] text-zinc-400 mt-1">
