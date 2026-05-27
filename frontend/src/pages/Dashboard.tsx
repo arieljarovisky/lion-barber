@@ -1163,6 +1163,9 @@ export default function Dashboard() {
       DEPOSIT_PERCENT,
       sumAppointmentProducts(app.products)
     );
+    const parts =
+      label === 'Sin registrar' ? [label] : label.split(' + ').map((p) => p.trim()).filter(Boolean);
+    const isUnset = label === 'Sin registrar';
     return (
       <button
         type="button"
@@ -1172,14 +1175,35 @@ export default function Dashboard() {
         }}
         className={
           compact
-            ? 'mt-1.5 w-full max-w-full rounded-lg border border-zinc-200 bg-white px-2 py-1 text-left text-[10px] font-semibold text-zinc-800 hover:border-[#e5c185] hover:bg-amber-50/80 truncate'
-            : 'w-full max-w-[11rem] rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-left text-[11px] font-semibold text-zinc-800 hover:border-[#e5c185] hover:bg-amber-50/80'
+            ? 'mt-1.5 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-left hover:border-[#e5c185] hover:bg-amber-50/80'
+            : 'w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-left hover:border-[#e5c185] hover:bg-amber-50/80'
         }
-        title="Registrar cobros (varios métodos)"
+        title={label}
       >
-        <span className="inline-flex items-center gap-1 truncate">
-          <Banknote size={compact ? 12 : 14} className="shrink-0 text-[#b39055]" />
-          <span className="truncate">{label}</span>
+        <span className="flex items-start gap-1.5 min-w-0">
+          <Banknote
+            size={compact ? 12 : 14}
+            className="shrink-0 text-[#b39055] mt-0.5"
+            aria-hidden
+          />
+          <span
+            className={`flex flex-wrap gap-1 min-w-0 flex-1 ${
+              compact ? 'text-[10px]' : 'text-[11px]'
+            } font-semibold leading-snug`}
+          >
+            {parts.map((part, i) => (
+              <span
+                key={`${part}-${i}`}
+                className={
+                  isUnset
+                    ? 'text-zinc-500 italic font-medium'
+                    : 'inline-block rounded-md bg-zinc-50 border border-zinc-100 px-1.5 py-0.5 text-zinc-800'
+                }
+              >
+                {part}
+              </span>
+            ))}
+          </span>
         </span>
       </button>
     );
@@ -2368,7 +2392,7 @@ export default function Dashboard() {
 
         {/* Listado de turnos */}
         <div
-          className={`bg-white border rounded-2xl shadow-sm overflow-hidden ${
+          className={`bg-white border rounded-2xl shadow-sm overflow-hidden min-w-0 ${
             isSingleBarberDayView ? 'border-zinc-200/80 border-dashed' : 'border-zinc-200'
           }`}
         >
@@ -2414,7 +2438,7 @@ export default function Dashboard() {
               </button>
             </div>
           ) : (
-            <ul className="divide-y divide-zinc-100">
+            <ul className="divide-y divide-zinc-100 min-w-0">
               {dayAppointments.map((app) => {
                 const dm = app.durationMinutes ?? 30;
                 const endClock = addMinutesToClock(app.time, dm);
@@ -2428,10 +2452,12 @@ export default function Dashboard() {
                 return (
                   <li
                     key={app.id}
-                    className="relative flex flex-col gap-3 px-3 py-3 sm:px-4 sm:py-3 hover:bg-zinc-50/60 transition-colors sm:flex-row sm:items-center sm:gap-4 group"
+                    className="relative px-3 py-3 sm:px-4 sm:py-3.5 hover:bg-zinc-50/60 transition-colors group"
                   >
-                    {/* Hora */}
-                    <div className="flex sm:flex-col items-center justify-center gap-2 sm:gap-0.5 bg-zinc-950 text-white rounded-lg px-3 py-2 sm:min-w-[4.25rem] flex-shrink-0">
+                    <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[4.5rem_minmax(8rem,1fr)_minmax(6.5rem,0.85fr)_minmax(5.5rem,0.7fr)_minmax(12rem,1.5fr)_auto] lg:items-center lg:gap-x-3 lg:gap-y-2">
+                    {/* Fila superior en pantallas chicas: hora + cliente + acciones */}
+                    <div className="flex items-center gap-3 min-w-0 lg:contents">
+                    <div className="flex sm:flex-col items-center justify-center gap-2 sm:gap-0.5 bg-zinc-950 text-white rounded-lg px-3 py-2 sm:min-w-[4.25rem] flex-shrink-0 xl:row-span-1">
                       <span className="font-bold text-base sm:text-[15px] tabular-nums leading-none">{app.time}</span>
                       <span className="hidden sm:block text-[10px] text-zinc-400 tabular-nums mt-1 leading-none">
                         hasta {endClock}
@@ -2439,8 +2465,7 @@ export default function Dashboard() {
                       <span className="sm:hidden text-xs text-zinc-400 tabular-nums">· {dm} min</span>
                     </div>
 
-                    {/* Cliente + teléfono */}
-                    <div className="flex items-center gap-3 min-w-0 sm:w-56 sm:flex-shrink-0">
+                    <div className="flex items-center gap-3 min-w-0 flex-1 xl:min-w-0">
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#e5c185] to-[#b39055] text-zinc-900 flex items-center justify-center text-xs font-black tracking-tight flex-shrink-0">
                         {initials}
                       </div>
@@ -2462,19 +2487,62 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {/* Servicio */}
-                    <div className="min-w-0 sm:flex-1 sm:min-w-[8rem]">
-                      <p className="hidden sm:block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Servicio</p>
-                      <p className="text-sm font-medium text-zinc-800 truncate flex items-center gap-1.5">
-                        <Scissors size={12} className="text-zinc-400 shrink-0 sm:hidden" />
-                        <span className="truncate">{app.service}</span>
+                    <div className="flex items-center justify-end gap-1 flex-shrink-0 lg:hidden">
+                      {showAfipBlock && !app.afipCae ? (
+                        <button
+                          type="button"
+                          onClick={() => openAfipInvoiceModal(app)}
+                          disabled={(afipInvoiceBusy && afipInvoiceApp?.id === app.id) || !canAfipInvoice}
+                          className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
+                          title="Facturar AFIP"
+                        >
+                          <Receipt size={16} />
+                        </button>
+                      ) : null}
+                      {waUrl ? (
+                        <a
+                          href={waUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-emerald-700 hover:bg-emerald-50"
+                          title="WhatsApp"
+                        >
+                          <MessageCircle size={16} />
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(app)}
+                        className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-amber-800 hover:bg-amber-50"
+                        title="Editar"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(app.id)}
+                        className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-red-600 hover:bg-red-50"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                    </div>
+
+                    {/* Servicio + barbero (móvil en fila; desktop en columnas) */}
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4 min-w-0 lg:contents">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Servicio</p>
+                      <p className="text-sm font-medium text-zinc-800 flex items-start gap-1.5 min-w-0">
+                        <Scissors size={12} className="text-zinc-400 shrink-0 mt-0.5 lg:hidden" />
+                        <span className="break-words leading-snug">{app.service}</span>
                       </p>
                       {(() => {
                         const summary = formatAppointmentProductsSummary(app.products);
                         if (!summary) return null;
                         return (
                           <p
-                            className="text-[11px] font-semibold text-amber-800 truncate"
+                            className="text-[11px] font-semibold text-amber-800 mt-0.5 break-words"
                             title={(app.products ?? [])
                               .map((l) => `${l.quantity}× ${l.name} · $${formatArs(l.subtotal)}`)
                               .join('\n')}
@@ -2483,12 +2551,11 @@ export default function Dashboard() {
                           </p>
                         );
                       })()}
-                      <p className="text-[11px] text-zinc-500 tabular-nums hidden sm:block">{dm} min</p>
+                      <p className="text-[11px] text-zinc-500 tabular-nums mt-0.5">{dm} min</p>
                     </div>
 
-                    {/* Barbero */}
-                    <div className="min-w-0 sm:w-36 sm:flex-shrink-0">
-                      <p className="hidden sm:block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Barbero</p>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Barbero</p>
                       <div className="flex items-center gap-2 min-w-0">
                         {barberInfo?.photo ? (
                           <img
@@ -2502,13 +2569,15 @@ export default function Dashboard() {
                             {(app.barber ?? '?').slice(0, 1).toUpperCase()}
                           </div>
                         )}
-                        <span className="text-sm font-medium text-zinc-700 truncate">{app.barber ?? '—'}</span>
+                        <span className="text-sm font-medium text-zinc-700 break-words leading-snug">{app.barber ?? '—'}</span>
                       </div>
                     </div>
+                    </div>
 
-                    {/* Estado pago + AFIP */}
-                    <div className="flex flex-col gap-1.5 sm:w-44 sm:flex-shrink-0">
-                      <div className="flex flex-wrap items-center gap-1.5 sm:flex-nowrap">
+                    {/* Cobros: ancho completo en móvil/tablet */}
+                    <div className="min-w-0 w-full lg:min-w-[12rem]">
+                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">Cobros</p>
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                         <AppointmentPaymentBadge app={app} className="whitespace-nowrap" />
                         {showAfipBlock && app.afipCae && (
                           <span
@@ -2522,14 +2591,14 @@ export default function Dashboard() {
                       </div>
                       {renderPaymentSplitsTrigger(app)}
                       {(app.tipAmount ?? 0) > 0 && (
-                        <p className="text-[11px] font-semibold text-violet-700 mt-1">
+                        <p className="text-[11px] font-semibold text-violet-700 mt-1.5">
                           Propina ${formatArs(app.tipAmount!)}
                         </p>
                       )}
                     </div>
 
-                    {/* Acciones (ancho fijo para mantener alineación entre filas) */}
-                    <div className="flex items-center justify-end gap-1 flex-wrap sm:flex-nowrap sm:w-[10.5rem] sm:flex-shrink-0 sm:border-l sm:border-zinc-100 sm:pl-3">
+                    {/* Acciones en desktop */}
+                    <div className="hidden lg:flex items-center justify-end gap-1 flex-shrink-0 border-l border-zinc-100 pl-3 self-stretch">
                       {showAfipBlock && !app.afipCae ? (
                         <button
                           type="button"
@@ -2584,6 +2653,7 @@ export default function Dashboard() {
                       >
                         <Trash2 size={16} />
                       </button>
+                    </div>
                     </div>
                   </li>
                 );
