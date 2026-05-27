@@ -235,10 +235,9 @@ function addMinutesToClock(hhmm: string, minutes: number): string {
   return `${String(H).padStart(2, '0')}:${String(M).padStart(2, '0')}`;
 }
 
-/** El botón de WhatsApp se ofrece para turnos confirmados sin seña pagada (hay que coordinar manualmente). */
+/** El botón de WhatsApp se ofrece para cualquier turno no cancelado con teléfono válido. */
 function appointmentNeedsManualContact(app: Appointment): boolean {
-  if (app.status === 'cancelled' || app.status === 'pending_payment') return false;
-  if (app.depositPaid) return false;
+  if (app.status === 'cancelled') return false;
   return normalizePhoneDigits(app.phone ?? '').length >= 8;
 }
 
