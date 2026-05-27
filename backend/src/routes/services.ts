@@ -1,13 +1,21 @@
 import { Router } from 'express';
 import * as repo from '../repositories/services.js';
 import type { Service } from '../types.js';
-import { requireAuth, requireAdmin, requireStaffOrAdmin } from '../middleware/auth.js';
+import {
+  requireAuth,
+  requireAdmin,
+  requireStaffOrAdmin,
+  optionalAuth,
+  type AuthRequest,
+} from '../middleware/auth.js';
 
 const router = Router();
 
-router.get('/', async (_req, res) => {
+router.get('/', optionalAuth, async (req: AuthRequest, res) => {
   try {
-    const services = await repo.getAllServices();
+    const role = req.user?.role;
+    const canSeeInternal = role === 'admin' || role === 'staff';
+    const services = await repo.getAllServices({ includeInternal: canSeeInternal });
     res.json(services);
   } catch (err) {
     console.error(err);
@@ -17,13 +25,14 @@ router.get('/', async (_req, res) => {
 
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, price, duration, desc, emoji, pointsReward } = req.body as {
+    const { name, price, duration, desc, emoji, pointsReward, internal } = req.body as {
       name?: string;
       price?: unknown;
       duration?: unknown;
       desc?: unknown;
       emoji?: unknown;
       pointsReward?: unknown;
+      internal?: unknown;
     };
     if (!name || price == null || duration == null) {
       res.status(400).json({ error: 'Faltan nombre, precio o duración' });
@@ -40,6 +49,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       desc: desc != null ? String(desc) : '',
       emoji: emoji != null ? String(emoji) : '',
       pointsReward: Number.isFinite(pr) ? pr : 0,
+      internal: internal === true || internal === 1 || internal === '1' || internal === 'true',
     });
     res.status(201).json(service);
   } catch (err) {
@@ -84,13 +94,14 @@ router.put('/:id/points-reward', requireAuth, requireStaffOrAdmin, async (req, r
 
 router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, price, duration, desc, emoji, pointsReward } = req.body as {
+    const { name, price, duration, desc, emoji, pointsReward, internal } = req.body as {
       name?: string;
       price?: string;
       duration?: number;
       desc?: string;
       emoji?: string;
       pointsReward?: number;
+      internal?: unknown;
     };
     const updates: Record<string, unknown> = {};
     if (name !== undefined) updates.name = String(name);
@@ -99,6 +110,10 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
     if (desc !== undefined) updates.desc = String(desc);
     if (emoji !== undefined) updates.emoji = String(emoji);
     if (pointsReward !== undefined) updates.pointsReward = Number(pointsReward);
+    if (internal !== undefined) {
+      updates.internal =
+        internal === true || internal === 1 || internal === '1' || internal === 'true';
+    }
     const service = await repo.updateService(req.params.id, updates as Partial<Service>);
     if (!service) {
       res.status(404).json({ error: 'Servicio no encontrado' });

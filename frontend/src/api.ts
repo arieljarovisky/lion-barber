@@ -73,11 +73,23 @@ export const ANY_BARBER_ID = '__any__';
 
 export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
-export type ServicePaymentMethod = 'cash' | 'card' | 'transfer' | 'mercadopago';
+export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card';
 
 export interface ServicePaymentSplit {
   method: ServicePaymentMethod;
   amount: number;
+}
+
+/** Producto cargado en un turno (venta accesoria). Aparece en el historial. */
+export interface AppointmentProductLine {
+  productId: string;
+  /** Snapshot del nombre al cargarlo. */
+  name: string;
+  quantity: number;
+  /** Precio unitario en ARS (snapshot). */
+  unitPrice: number;
+  /** Subtotal en ARS (quantity * unitPrice). */
+  subtotal: number;
 }
 
 export interface Appointment {
@@ -114,6 +126,8 @@ export interface Appointment {
   servicePaymentMethod?: ServicePaymentMethod | null;
   /** Cobro del saldo en local combinando métodos (cada línea: método + monto ARS). */
   servicePaymentSplits?: ServicePaymentSplit[] | null;
+  /** Productos vendidos junto con el turno (cera, pomada, etc.); aparecen en historial. */
+  products?: AppointmentProductLine[] | null;
   /** Propina en ARS; no se factura con AFIP. */
   tipAmount?: number;
 }
@@ -148,6 +162,8 @@ export interface Service {
   sortOrder?: number;
   /** Puntos que suma el cliente al concretar el servicio (programa de fidelidad). */
   pointsReward?: number;
+  /** Servicio interno: solo visible para admin/staff, no se muestra al público. */
+  internal?: boolean;
 }
 
 /** Productos de venta en local: puntos al comprar. */
@@ -174,8 +190,9 @@ export interface BarberInvoicingUsage {
   barberId: string;
   barberName: string;
   year: number;
+  month: number;
   monotributoCategory: string | null;
-  annualLimit: number | null;
+  monthlyLimit: number | null;
   invoicedTotal: number;
   remaining: number | null;
   percentUsed: number | null;
@@ -190,7 +207,7 @@ export interface Barber {
   desc: string;
   commissionPercent?: number;
   monotributoCategory?: string | null;
-  monotributoAnnualLimit?: number | null;
+  monotributoMonthlyLimit?: number | null;
   afipCuit?: string | null;
   afipPtoVta?: number;
   afipCbteTipo?: number;
@@ -239,6 +256,22 @@ export interface StaffInviteRow {
   email: string;
   name: string | null;
   barberId: string | null;
+  createdAt: string;
+}
+
+export interface FixedMonthlyExpense {
+  id: number;
+  description: string;
+  amount: number;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface CashExpense {
+  id: number;
+  expenseDate: string;
+  description: string;
+  amount: number;
   createdAt: string;
 }
 
@@ -416,9 +449,14 @@ export const api = {
       readyCount: number;
     }>('/api/afip/status'),
 
-  getBarberInvoicingUsage: (year?: number) => {
-    const q = year != null ? `?year=${year}` : '';
-    return fetchApi<{ year: number; barbers: BarberInvoicingUsage[] }>(`/api/afip/barber-invoicing${q}`);
+  getBarberInvoicingUsage: (year?: number, month?: number) => {
+    const params = new URLSearchParams();
+    if (year != null) params.set('year', String(year));
+    if (month != null) params.set('month', String(month));
+    const q = params.toString() ? `?${params}` : '';
+    return fetchApi<{ year: number; month: number; barbers: BarberInvoicingUsage[] }>(
+      `/api/afip/barber-invoicing${q}`
+    );
   },
 
   /** Solo admin: emite comprobante electr?nico AFIP para un turno (opcional: productos de venta). */
@@ -456,7 +494,7 @@ export const api = {
       name?: string;
       commissionPercent?: number;
       monotributoCategory?: string | null;
-      monotributoAnnualLimit?: number | null;
+      monotributoMonthlyLimit?: number | null;
       afipCuit?: string | null;
       afipPtoVta?: number | null;
       afipCbteTipo?: number | null;
@@ -598,7 +636,7 @@ export const api = {
   deleteStaffInvite: (id: number) =>
     fetchApi<void>(`/api/staff-invites/${id}`, { method: 'DELETE' }),
 
-  /** Solo admin: clientes registrados con historial de turnos vinculado a su cuenta. */
+  /** Admin y barberos (staff): clientes con historial de turnos. */
   getAdminClientsWithHistory: () =>
     fetchApi<{ clients: AdminClientWithHistory[] }>('/api/users/clients'),
 
@@ -636,6 +674,50 @@ export const api = {
     fetchApi<void>(`/api/users/clients/${encodeURIComponent(String(clientId))}`, {
       method: 'DELETE',
     }),
+
+  getFixedMonthlyExpenses: () =>
+    fetchApi<{ items: FixedMonthlyExpense[] }>('/api/expenses/fixed'),
+
+  createFixedMonthlyExpense: (data: { description: string; amount: number; active?: boolean }) =>
+    fetchApi<{ item: FixedMonthlyExpense }>('/api/expenses/fixed', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateFixedMonthlyExpense: (
+    id: number,
+    data: Partial<{ description: string; amount: number; active: boolean }>
+  ) =>
+    fetchApi<{ item: FixedMonthlyExpense }>(`/api/expenses/fixed/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteFixedMonthlyExpense: (id: number) =>
+    fetchApi<void>(`/api/expenses/fixed/${id}`, { method: 'DELETE' }),
+
+  getCashExpenses: (fromYmd: string, toYmd: string) =>
+    fetchApi<{ items: CashExpense[] }>(
+      `/api/expenses/cash?from=${encodeURIComponent(fromYmd)}&to=${encodeURIComponent(toYmd)}`
+    ),
+
+  createCashExpense: (data: { expenseDate: string; description: string; amount: number }) =>
+    fetchApi<{ item: CashExpense }>('/api/expenses/cash', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateCashExpense: (
+    id: number,
+    data: Partial<{ expenseDate: string; description: string; amount: number }>
+  ) =>
+    fetchApi<{ item: CashExpense }>(`/api/expenses/cash/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteCashExpense: (id: number) =>
+    fetchApi<void>(`/api/expenses/cash/${id}`, { method: 'DELETE' }),
 
   auth: {
     postGoogle: (idToken: string, linkPhone?: string) =>

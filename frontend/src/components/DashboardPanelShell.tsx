@@ -38,7 +38,7 @@ type DashboardPanelShellProps = {
 };
 
 export default function DashboardPanelShell({ activePanel, onNavigate, children }: DashboardPanelShellProps) {
-  const { profile, logout, isAdmin, isSuperAdmin } = useAuth();
+  const { profile, logout, isAdmin, isSuperAdmin, canAccessDashboard } = useAuth();
   const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -209,7 +209,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
               Equipo
             </button>
           )}
-          {isAdmin && (
+          {canAccessDashboard && (
             <button
               type="button"
               onClick={() => go('clientes')}

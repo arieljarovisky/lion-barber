@@ -10,6 +10,7 @@ interface DbService {
   emoji: string | null;
   sort_order: number;
   points_reward?: number;
+  internal?: number | boolean | null;
 }
 
 function rowToService(r: DbService): Service {
@@ -22,11 +23,22 @@ function rowToService(r: DbService): Service {
     emoji: r.emoji ?? undefined,
     sortOrder: r.sort_order,
     pointsReward: r.points_reward != null ? Number(r.points_reward) : 0,
+    internal: Boolean(r.internal),
   };
 }
 
-export async function getAllServices(): Promise<Service[]> {
-  const rows = await query<DbService[]>('SELECT * FROM services ORDER BY sort_order ASC, name ASC');
+/**
+ * Si `includeInternal` es false, oculta los servicios marcados como internos
+ * (no se muestran al público en la web; siguen disponibles en el panel).
+ */
+export async function getAllServices(
+  options: { includeInternal?: boolean } = {}
+): Promise<Service[]> {
+  const includeInternal = options.includeInternal ?? true;
+  const sql = includeInternal
+    ? 'SELECT * FROM services ORDER BY sort_order ASC, name ASC'
+    : 'SELECT * FROM services WHERE internal = 0 ORDER BY sort_order ASC, name ASC';
+  const rows = await query<DbService[]>(sql);
   return rows.map(rowToService);
 }
 
@@ -59,9 +71,10 @@ export async function createService(data: Omit<Service, 'id'>): Promise<Service>
   );
   const nextOrder = Number(maxRows[0]?.maxOrder ?? 0) + 1;
   const pts = Math.max(0, Math.min(999_999, Math.floor(data.pointsReward ?? 0)));
+  const internal = data.internal ? 1 : 0;
   await query(
-    'INSERT INTO services (id, name, price, duration, `desc`, emoji, sort_order, points_reward) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [id, data.name, data.price, data.duration, data.desc || null, data.emoji || '', nextOrder, pts]
+    'INSERT INTO services (id, name, price, duration, `desc`, emoji, sort_order, points_reward, internal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, data.name, data.price, data.duration, data.desc || null, data.emoji || '', nextOrder, pts, internal]
   );
   const created = await getServiceById(id);
   if (!created) throw new Error('Servicio no creado');
@@ -73,9 +86,10 @@ export async function updateService(id: string, data: Partial<Service>): Promise
   if (!current) return null;
   const updated = { ...current, ...data };
   const pts = Math.max(0, Math.min(999_999, Math.floor(updated.pointsReward ?? 0)));
+  const internal = updated.internal ? 1 : 0;
   await query(
-    'UPDATE services SET name = ?, price = ?, duration = ?, `desc` = ?, emoji = ?, points_reward = ? WHERE id = ?',
-    [updated.name, updated.price, updated.duration, updated.desc || null, updated.emoji ?? '', pts, id]
+    'UPDATE services SET name = ?, price = ?, duration = ?, `desc` = ?, emoji = ?, points_reward = ?, internal = ? WHERE id = ?',
+    [updated.name, updated.price, updated.duration, updated.desc || null, updated.emoji ?? '', pts, internal, id]
   );
   return getServiceById(id);
 }

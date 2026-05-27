@@ -20,6 +20,7 @@ import DashboardPanelShell, { type DashboardPanelId } from '../components/Dashbo
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
 import type { AdminClientWithHistory } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import { displayClientEmail, isPlaceholderManualClientEmail } from '../utils/manualClientEmail';
 import { formatPhonesForInput, parsePhonesInput } from '../utils/adminClientHistory';
 
@@ -67,6 +68,7 @@ function readLayoutMode(): LayoutMode {
 
 export default function AdminClientsListPage() {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [clients, setClients] = useState<AdminClientWithHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -298,14 +300,16 @@ export default function AdminClientsListPage() {
                 Filas
               </button>
             </div>
-            <button
-              type="button"
-              onClick={openModal}
-              className="inline-flex items-center gap-2 rounded-xl bg-[#e5c185] px-4 py-2.5 text-sm font-bold text-zinc-950 shadow-sm transition hover:bg-[#d4b074]"
-            >
-              <Plus size={18} />
-              Nuevo cliente
-            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={openModal}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#e5c185] px-4 py-2.5 text-sm font-bold text-zinc-950 shadow-sm transition hover:bg-[#d4b074]"
+              >
+                <Plus size={18} />
+                Nuevo cliente
+              </button>
+            )}
           </div>
         </div>
 
@@ -495,20 +499,22 @@ export default function AdminClientsListPage() {
                       />
                     </div>
                   </Link>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void handleDeleteClient(c);
-                    }}
-                    disabled={deletingClientId === c.id}
-                    className="absolute right-3 top-3 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                    title="Eliminar cliente"
-                    aria-label={`Eliminar cliente ${c.name}`}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void handleDeleteClient(c);
+                      }}
+                      disabled={deletingClientId === c.id}
+                      className="absolute right-3 top-3 inline-flex items-center justify-center rounded-lg border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      title="Eliminar cliente"
+                      aria-label={`Eliminar cliente ${c.name}`}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </li>
               );
             })}
@@ -581,19 +587,21 @@ export default function AdminClientsListPage() {
                         </td>
                         <td className="px-2 py-3 text-zinc-400">
                           <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleDeleteClient(c);
-                              }}
-                              disabled={deletingClientId === c.id}
-                              className="inline-flex items-center justify-center rounded-md border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
-                              title="Eliminar cliente"
-                              aria-label={`Eliminar cliente ${c.name}`}
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleDeleteClient(c);
+                                }}
+                                disabled={deletingClientId === c.id}
+                                className="inline-flex items-center justify-center rounded-md border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                title="Eliminar cliente"
+                                aria-label={`Eliminar cliente ${c.name}`}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                             <ChevronRight size={18} className="ml-auto" aria-hidden />
                           </div>
                         </td>

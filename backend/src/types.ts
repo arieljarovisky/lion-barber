@@ -1,10 +1,26 @@
 export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
-export type ServicePaymentMethod = 'cash' | 'card' | 'transfer' | 'mercadopago';
+export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card';
 
 export interface ServicePaymentSplit {
   method: ServicePaymentMethod;
   amount: number;
+}
+
+/**
+ * Producto cargado en un turno (venta accesoria al servicio).
+ * Guarda snapshot del nombre y precio unitario al momento de la carga,
+ * para que el historial no cambie si después se edita o borra el producto del catálogo.
+ */
+export interface AppointmentProductLine {
+  productId: string;
+  /** Snapshot del nombre del producto al cargarse. */
+  name: string;
+  quantity: number;
+  /** Precio unitario en ARS al momento de cargarlo. */
+  unitPrice: number;
+  /** Subtotal en ARS (quantity * unitPrice). */
+  subtotal: number;
 }
 
 export interface Appointment {
@@ -42,6 +58,8 @@ export interface Appointment {
   servicePaymentMethod?: ServicePaymentMethod | null;
   /** Cobro del saldo en local repartido entre métodos (suma de montos). */
   servicePaymentSplits?: ServicePaymentSplit[] | null;
+  /** Productos vendidos junto con el turno (cera, pomada, etc.). Aparecen en historial. */
+  products?: AppointmentProductLine[] | null;
   /** Propina en ARS; no se incluye en factura AFIP. */
   tipAmount?: number;
 }
@@ -80,6 +98,8 @@ export interface Service {
   sortOrder?: number;
   /** Puntos de fidelidad que suma el cliente al concretar este servicio (configurable en el panel). */
   pointsReward?: number;
+  /** Servicio interno: solo aparece en el panel (no se muestra al público). */
+  internal?: boolean;
 }
 
 /** Qué puede obtener el cliente al canjear puntos (configurable en el panel). */
@@ -114,8 +134,8 @@ export interface Barber {
   commissionPercent?: number;
   /** Etiqueta de categoría monotributo (ej. «Categoría D»). */
   monotributoCategory?: string | null;
-  /** Tope anual de facturación AFIP en ARS (null = sin límite configurado). */
-  monotributoAnnualLimit?: number | null;
+  /** Tope mensual de facturación AFIP en ARS (null = sin límite configurado). */
+  monotributoMonthlyLimit?: number | null;
   /** CUIT del barbero como emisor AFIP (11 dígitos). */
   afipCuit?: string | null;
   afipPtoVta?: number;

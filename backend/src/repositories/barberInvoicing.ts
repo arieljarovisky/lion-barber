@@ -1,9 +1,21 @@
 import { query } from '../db.js';
 
-/** Total facturado AFIP por barbero en un año calendario (por fecha de emisión). */
-export async function getInvoicedTotalsByBarberYear(year: number): Promise<Map<string, number>> {
-  const start = `${year}-01-01 00:00:00`;
-  const end = `${year + 1}-01-01 00:00:00`;
+function monthRange(year: number, month: number): { start: string; end: string } {
+  const mm = String(month).padStart(2, '0');
+  const start = `${year}-${mm}-01 00:00:00`;
+  if (month === 12) {
+    return { start, end: `${year + 1}-01-01 00:00:00` };
+  }
+  const nextMm = String(month + 1).padStart(2, '0');
+  return { start, end: `${year}-${nextMm}-01 00:00:00` };
+}
+
+/** Total facturado AFIP por barbero en un mes calendario (por fecha de emisión). */
+export async function getInvoicedTotalsByBarberMonth(
+  year: number,
+  month: number
+): Promise<Map<string, number>> {
+  const { start, end } = monthRange(year, month);
   const rows = await query<{ barber_id: string; total: string | number }[]>(
     `SELECT barber_id,
       SUM(
@@ -30,7 +42,11 @@ export async function getInvoicedTotalsByBarberYear(year: number): Promise<Map<s
   return map;
 }
 
-export async function getInvoicedTotalForBarberYear(barberId: string, year: number): Promise<number> {
-  const all = await getInvoicedTotalsByBarberYear(year);
+export async function getInvoicedTotalForBarberMonth(
+  barberId: string,
+  year: number,
+  month: number
+): Promise<number> {
+  const all = await getInvoicedTotalsByBarberMonth(year, month);
   return all.get(barberId) ?? 0;
 }

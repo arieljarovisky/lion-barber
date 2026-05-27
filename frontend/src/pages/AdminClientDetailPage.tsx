@@ -7,6 +7,7 @@ import DashboardPanelShell, { type DashboardPanelId } from '../components/Dashbo
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
 import { api, ApiError } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import type { AdminClientWithHistory } from '../api';
 import {
   adminAppointmentStatusBadge,
@@ -16,6 +17,11 @@ import {
   parsePhonesInput,
 } from '../utils/adminClientHistory';
 import { displayClientEmail, isPlaceholderManualClientEmail } from '../utils/manualClientEmail';
+import {
+  formatAppointmentProductsSummary,
+  sumAppointmentProducts,
+} from '../utils/appointmentProducts';
+import { formatArs } from '../utils/money';
 
 function clientPhones(client: AdminClientWithHistory): string[] {
   if (Array.isArray(client.phones) && client.phones.length > 0) return client.phones.filter((p) => p.trim().length > 0);
@@ -26,6 +32,7 @@ function clientPhones(client: AdminClientWithHistory): string[] {
 export default function AdminClientDetailPage() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [client, setClient] = useState<AdminClientWithHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
@@ -185,7 +192,7 @@ export default function AdminClientDetailPage() {
             <ChevronLeft size={18} />
             Volver al listado
           </Link>
-          {!loading && client && (
+          {isAdmin && !loading && client && (
             <button
               type="button"
               onClick={() => void handleDeleteClient()}
@@ -261,6 +268,7 @@ export default function AdminClientDetailPage() {
               )}
             </div>
 
+            {isAdmin ? (
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -378,6 +386,11 @@ export default function AdminClientDetailPage() {
                 {saving ? 'Guardando…' : 'Guardar cambios'}
               </button>
             </form>
+            ) : (
+              <p className="mb-8 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+                Podés consultar la ficha y el historial. Solo un administrador puede editar datos del cliente.
+              </p>
+            )}
 
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-black text-zinc-900">Historial de turnos</h2>
@@ -408,14 +421,28 @@ export default function AdminClientDetailPage() {
                     <tbody className="divide-y divide-zinc-100">
                       {client.appointments.map((app) => {
                         const st = adminAppointmentStatusBadge(app);
+                        const productsSummary = formatAppointmentProductsSummary(app.products);
                         return (
-                          <tr key={app.id} className="bg-white hover:bg-zinc-50/90">
+                          <tr key={app.id} className="bg-white hover:bg-zinc-50/90 align-top">
                             <td className="whitespace-nowrap px-4 py-3 tabular-nums text-zinc-700">
                               {formatAppointmentDateYmd(app.date)}
                             </td>
                             <td className="px-4 py-3 font-mono text-xs text-zinc-800">{normalizeAppointmentTime(app.time)}</td>
-                            <td className="max-w-[12rem] px-4 py-3 font-medium text-zinc-900 truncate sm:max-w-xs">
-                              {app.service}
+                            <td className="max-w-[14rem] px-4 py-3 font-medium text-zinc-900 sm:max-w-md">
+                              <span className="block truncate">{app.service}</span>
+                              {productsSummary && (
+                                <span
+                                  className="mt-0.5 block text-[11px] font-semibold text-amber-800"
+                                  title={(app.products ?? [])
+                                    .map(
+                                      (l) =>
+                                        `${l.quantity}× ${l.name} · $${formatArs(l.subtotal)}`
+                                    )
+                                    .join('\n')}
+                                >
+                                  + {productsSummary}
+                                </span>
+                              )}
                             </td>
                             <td className="max-w-[8rem] px-4 py-3 text-xs text-zinc-600 truncate">{app.barber ?? '—'}</td>
                             <td className="px-4 py-3">
@@ -427,6 +454,11 @@ export default function AdminClientDetailPage() {
                             </td>
                             <td className="px-4 py-3 text-right">
                               <AppointmentPaymentBadge app={app} />
+                              {sumAppointmentProducts(app.products) > 0 && (
+                                <span className="mt-1 block text-[10px] text-zinc-500 tabular-nums">
+                                  Productos ${formatArs(sumAppointmentProducts(app.products))}
+                                </span>
+                              )}
                             </td>
                           </tr>
                         );

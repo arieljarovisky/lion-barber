@@ -14,6 +14,7 @@ import {
 } from '../barberCommission.js';
 import type { AfipInvoiceDetail, Appointment } from '../types.js';
 import { assertBarberCanInvoice } from './barberInvoicingLimits.js';
+import { parseArsAmount } from '../arsAmount.js';
 
 const require = createRequire(import.meta.url);
 // Paquete CommonJS (@afipsdk/afip.js)
@@ -33,33 +34,6 @@ const Afip = require('@afipsdk/afip.js') as new (opts: {
     }>;
   };
 };
-
-function parseArsAmount(raw: string | undefined): number | null {
-  if (!raw) return null;
-  const cleaned = raw.replace(/\s/g, '').replace(/[^\d.,-]/g, '');
-  if (!cleaned) return null;
-  const hasDot = cleaned.includes('.');
-  const hasComma = cleaned.includes(',');
-  let normalized = cleaned;
-  if (hasDot && hasComma) {
-    normalized = cleaned.replace(/\./g, '').replace(',', '.');
-  } else if (hasDot) {
-    const parts = cleaned.split('.');
-    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
-      normalized = cleaned.replace(/\./g, '');
-    }
-  } else if (hasComma) {
-    const parts = cleaned.split(',');
-    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
-      normalized = cleaned.replace(/,/g, '');
-    } else {
-      normalized = cleaned.replace(',', '.');
-    }
-  }
-  const n = Number(normalized);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return n;
-}
 
 /** Fecha del turno yyyy-mm-dd → entero yyyymmdd (AFIP). */
 function yyyymmddFromDateStr(yyyyMmDd: string): number {

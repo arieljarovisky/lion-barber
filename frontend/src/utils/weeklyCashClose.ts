@@ -1,8 +1,16 @@
 import {
   startOfWeek,
   endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfDay,
+  endOfDay,
   addWeeks,
   subWeeks,
+  addMonths,
+  subMonths,
+  addDays,
+  subDays,
   format,
   parseISO,
   isWithinInterval,
@@ -16,6 +24,57 @@ import type { ServicePaymentSplit } from '../api';
 
 /** Semana de cierre: lunes a domingo (Argentina). */
 export const WEEK_OPTS = { weekStartsOn: 1 as const, locale: es };
+
+export type CashClosePeriodMode = 'week' | 'day' | 'month';
+
+export function dayBoundsFromAnchor(anchor: Date): { start: Date; end: Date; fromYmd: string; toYmd: string } {
+  const start = startOfDay(anchor);
+  const end = endOfDay(anchor);
+  const ymd = format(start, 'yyyy-MM-dd');
+  return { start, end, fromYmd: ymd, toYmd: ymd };
+}
+
+export function formatDayLabel(day: Date): string {
+  return format(day, "EEEE d 'de' MMMM yyyy", { locale: es });
+}
+
+export function shiftDayAnchor(anchor: Date, deltaDays: number): Date {
+  return deltaDays >= 0 ? addDays(anchor, deltaDays) : subDays(anchor, Math.abs(deltaDays));
+}
+
+export function monthBoundsFromAnchor(anchor: Date): { start: Date; end: Date; fromYmd: string; toYmd: string } {
+  const start = startOfMonth(anchor);
+  const end = endOfMonth(anchor);
+  return {
+    start,
+    end,
+    fromYmd: format(start, 'yyyy-MM-dd'),
+    toYmd: format(end, 'yyyy-MM-dd'),
+  };
+}
+
+export function formatMonthLabel(monthStart: Date): string {
+  return format(monthStart, "MMMM yyyy", { locale: es });
+}
+
+export function shiftMonthAnchor(anchor: Date, deltaMonths: number): Date {
+  return deltaMonths >= 0 ? addMonths(anchor, deltaMonths) : subMonths(anchor, Math.abs(deltaMonths));
+}
+
+export function periodBoundsFromAnchor(
+  anchor: Date,
+  mode: CashClosePeriodMode
+): { start: Date; end: Date; fromYmd: string; toYmd: string } {
+  if (mode === 'day') return dayBoundsFromAnchor(anchor);
+  if (mode === 'month') return monthBoundsFromAnchor(anchor);
+  return weekBoundsFromAnchor(anchor);
+}
+
+export function formatPeriodLabel(start: Date, end: Date, mode: CashClosePeriodMode): string {
+  if (mode === 'day') return formatDayLabel(start);
+  if (mode === 'month') return formatMonthLabel(start);
+  return formatWeekLabel(start, end);
+}
 
 export function weekBoundsFromAnchor(anchor: Date): { start: Date; end: Date; fromYmd: string; toYmd: string } {
   const start = startOfWeek(anchor, WEEK_OPTS);
@@ -314,4 +373,19 @@ export function buildWeeklyCashClose(
 
 export function shiftWeekAnchor(anchor: Date, deltaWeeks: number): Date {
   return deltaWeeks >= 0 ? addWeeks(anchor, deltaWeeks) : subWeeks(anchor, Math.abs(deltaWeeks));
+}
+
+export function shiftPeriodAnchor(
+  anchor: Date,
+  mode: CashClosePeriodMode,
+  delta: number
+): Date {
+  if (mode === 'day') return shiftDayAnchor(anchor, delta);
+  if (mode === 'month') return shiftMonthAnchor(anchor, delta);
+  return shiftWeekAnchor(anchor, delta);
+}
+
+/** Valor para input type="month" (yyyy-MM). */
+export function monthInputValueFromAnchor(anchor: Date): string {
+  return format(anchor, 'yyyy-MM');
 }

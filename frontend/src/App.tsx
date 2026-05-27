@@ -12,6 +12,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import MercadoPagoInit from './components/MercadoPagoInit';
+import FloatingWhatsAppButton from './components/FloatingWhatsAppButton';
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
 
@@ -28,7 +29,7 @@ export default function App() {
           <Route
             path="/dashboard/clientes/:clientId"
             element={
-              <ProtectedRoute dashboardAccess adminOnly>
+              <ProtectedRoute dashboardAccess>
                 <AdminClientDetailPage />
               </ProtectedRoute>
             }
@@ -36,7 +37,7 @@ export default function App() {
           <Route
             path="/dashboard/clientes"
             element={
-              <ProtectedRoute dashboardAccess adminOnly>
+              <ProtectedRoute dashboardAccess>
                 <AdminClientsListPage />
               </ProtectedRoute>
             }
@@ -75,6 +76,7 @@ export default function App() {
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        <FloatingWhatsAppButton />
       </BrowserRouter>
         </ConfirmProvider>
       </AuthProvider>

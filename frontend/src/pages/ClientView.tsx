@@ -3,7 +3,6 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle } from 'lucide-react';
 import { BOOKING_FALLBACK_WHATSAPP_URL, checkBackendHealth } from '../utils/backendHealth';
 import { WhatsAppIcon } from '../components/WhatsAppIcon';
-import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import { api } from '../store';
 import { ANY_BARBER_ID } from '../api';
 import type { Service, Barber } from '../api';
@@ -1128,12 +1127,9 @@ export default function ClientView() {
                         profile.depositExempt ? (
                           'Confirmar turno'
                         ) : (
-                          <span className="inline-flex items-center justify-center gap-2">
-                            <MercadoPagoLogo size="sm" />
-                            {senaCheckoutPreferenceId
-                              ? 'Preferencia lista — pagá abajo'
-                              : 'Pagar seña y confirmar turno'}
-                          </span>
+                          senaCheckoutPreferenceId
+                            ? 'Preferencia lista — pagá abajo'
+                            : 'Pagar seña y confirmar turno'
                         )
                       ) : (
                         'Iniciar sesión para confirmar'
@@ -1141,12 +1137,9 @@ export default function ClientView() {
                     </button>
                     {senaCheckoutPreferenceId && (
                       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 min-h-[120px]">
-                        <p className="text-xs text-zinc-400 mb-3 text-center inline-flex flex-wrap items-center justify-center gap-2 w-full">
-                          <MercadoPagoLogo size="sm" />
-                          <span>
-                            Completá el pago con Mercado Pago. Si te redirige al checkout, al volver podés ver el estado del
-                            turno en tu perfil.
-                          </span>
+                        <p className="text-xs text-zinc-400 mb-3 text-center w-full">
+                          Completá el pago con Mercado Pago. Si te redirige al checkout, al volver podés ver el estado del
+                          turno en tu perfil.
                         </p>
                         <Wallet
                           initialization={{ preferenceId: senaCheckoutPreferenceId, redirectMode: 'self' }}
@@ -1191,7 +1184,7 @@ export default function ClientView() {
           </div>
 
           <div className="flex justify-center md:justify-end gap-4">
-            <a href="https://wa.link/xxyvs9" target="_blank" rel="noreferrer" className="w-10 h-10 sm:w-11 sm:h-11 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-[#e5c185] hover:text-zinc-950 transition-colors flex-shrink-0">
+            <a href={BOOKING_FALLBACK_WHATSAPP_URL} target="_blank" rel="noreferrer" className="w-10 h-10 sm:w-11 sm:h-11 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-[#e5c185] hover:text-zinc-950 transition-colors flex-shrink-0" aria-label="WhatsApp">
               <Phone size={18} />
             </a>
           </div>

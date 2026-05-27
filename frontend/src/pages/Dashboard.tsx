@@ -50,18 +50,19 @@ import BillingPanel from '../components/BillingPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplitsModal';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
-import MercadoPagoLogo from '../components/MercadoPagoLogo';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError, downloadDatabaseBackup } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barberAfip';
-import {
-  formatArs,
-  resolveAppointmentDepositAmountArs,
-  resolveAppointmentServiceAmountArs,
-} from '../utils/money';
+import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
+import { formatMonthYearEs } from '../utils/monotributoPeriod';
+import {
+  applyWhatsappMessageTemplate,
+  WHATSAPP_TEMPLATE_HELP,
+  WHATSAPP_TEMPLATE_PLACEHOLDER,
+} from '../utils/whatsappAppointmentMessage';
 import type {
   Appointment,
   Barber,
@@ -76,11 +77,12 @@ import type {
   type BarberInvoicingUsage,
 } from '../api';
 import {
-  appointmentLocalPendingArs,
+  appointmentSplitsTargetArs,
   cleanServicePaymentSplits,
-  formatServicePaymentSplits,
+  formatAppointmentPaymentDisplay,
   initialSplitsFromAppointment,
 } from '../utils/servicePaymentMethod';
+import { formatAppointmentProductsSummary, sumAppointmentProducts } from '../utils/appointmentProducts';
 function normalizePhoneDigits(phone: string): string {
   return phone.replace(/\D/g, '');
 }
@@ -234,10 +236,9 @@ function addMinutesToClock(hhmm: string, minutes: number): string {
   return `${String(H).padStart(2, '0')}:${String(M).padStart(2, '0')}`;
 }
 
-/** El botón de WhatsApp se ofrece para turnos confirmados sin seña pagada (hay que coordinar manualmente). */
+/** El botón de WhatsApp se ofrece para cualquier turno no cancelado con teléfono válido. */
 function appointmentNeedsManualContact(app: Appointment): boolean {
-  if (app.status === 'cancelled' || app.status === 'pending_payment') return false;
-  if (app.depositPaid) return false;
+  if (app.status === 'cancelled') return false;
   return normalizePhoneDigits(app.phone ?? '').length >= 8;
 }
 
@@ -253,50 +254,6 @@ function buildWhatsappPhone(rawPhone: string): string | null {
     return `549${digits}`;
   }
   return `549${digits}`;
-}
-
-function formatAppointmentDateForMessage(ymd: string): string {
-  const [y, m, d] = ymd.split('-');
-  if (!y || !m || !d) return ymd;
-  return `${d}/${m}/${y}`;
-}
-
-/** Texto de ayuda en configuración (coincide con el mensaje por defecto si dejás el campo vacío). */
-const WHATSAPP_TEMPLATE_HELP = `Podés usar: {nombre}, {nombre_completo}, {fecha}, {hora}, {servicio}, {barbero}. Si dejás vacío, se usa el mensaje clásico de Lion Barber.`;
-
-function applyWhatsappMessageTemplate(template: string | null | undefined, app: Appointment): string {
-  const t = (template ?? '').trim();
-  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
-  const fullName = (app.name ?? '').trim() || greetingName;
-  const fecha = formatAppointmentDateForMessage(app.date);
-  const hora = app.time;
-  const servicio = app.service;
-  const barbero = (app.barber ?? '').trim();
-  if (!t) {
-    const lines = [
-      `Hola ${greetingName}! Te confirmo tu turno en Lion Barber:`,
-      '',
-      `Fecha: ${fecha}`,
-      `Hora: ${hora}`,
-      `Servicio: ${servicio}`,
-    ];
-    if (barbero) lines.push(`Barbero: ${barbero}`);
-    lines.push('', '¿Podés confirmármelo?');
-    return lines.join('\n');
-  }
-  return t
-    .split('{nombre_completo}')
-    .join(fullName)
-    .split('{nombre}')
-    .join(greetingName)
-    .split('{fecha}')
-    .join(fecha)
-    .split('{hora}')
-    .join(hora)
-    .split('{servicio}')
-    .join(servicio)
-    .split('{barbero}')
-    .join(barbero);
 }
 
 function buildAppointmentWhatsappUrl(app: Appointment, messageTemplate: string | null): string | null {
@@ -382,8 +339,6 @@ export default function Dashboard() {
   const [agendaRestrictionsByBarber, setAgendaRestrictionsByBarber] = useState<
     Record<string, { offWeekdays: Set<number>; blocks: BarberTimeBlockRow[] }>
   >({});
-  const [availableFormSlots, setAvailableFormSlots] = useState<string[]>([]);
-  const [availableFormSlotsLoading, setAvailableFormSlotsLoading] = useState(false);
   const [view, setView] = useState<
     | 'agenda'
     | 'servicios'
@@ -403,6 +358,7 @@ export default function Dashboard() {
     desc: '',
     emoji: '',
     pointsReward: '0',
+    internal: false,
   });
   const [savingService, setSavingService] = useState(false);
   const [sortingServices, setSortingServices] = useState(false);
@@ -453,6 +409,7 @@ export default function Dashboard() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [barberInvoicing, setBarberInvoicing] = useState<BarberInvoicingUsage[]>([]);
   const [barberInvoicingYear, setBarberInvoicingYear] = useState(() => new Date().getFullYear());
+  const [barberInvoicingMonth, setBarberInvoicingMonth] = useState(() => new Date().getMonth() + 1);
   const [barberInvoicingLoading, setBarberInvoicingLoading] = useState(false);
   const knownPaidAppointmentIdsRef = useRef<Set<string>>(new Set());
   const didInitPaidAppointmentsRef = useRef(false);
@@ -522,7 +479,7 @@ export default function Dashboard() {
   );
 
   useEffect(() => {
-    if (!modalOpen || !isAdmin || editingAppointment) return;
+    if (!modalOpen || !canAccessDashboard || editingAppointment) return;
     let cancelled = false;
     setAdminClientsLoading(true);
     api
@@ -539,10 +496,10 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-  }, [modalOpen, isAdmin, editingAppointment]);
+  }, [modalOpen, canAccessDashboard, editingAppointment]);
 
   const clientNameSuggestions = useMemo(() => {
-    if (!isAdmin || editingAppointment || !modalOpen) return [];
+    if (!canAccessDashboard || editingAppointment || !modalOpen) return [];
     const q = form.name.trim().toLowerCase();
     const phoneDigits = normalizePhoneDigits(form.phone);
     if (q.length < 1 && phoneDigits.length < 6) return [];
@@ -556,7 +513,7 @@ export default function Dashboard() {
       })
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
       .slice(0, 8);
-  }, [isAdmin, editingAppointment, modalOpen, form.name, form.phone, adminClients]);
+  }, [canAccessDashboard, editingAppointment, modalOpen, form.name, form.phone, adminClients]);
 
   useEffect(() => {
     if (!nameSuggestionsOpen) return;
@@ -642,6 +599,7 @@ export default function Dashboard() {
       .then((r) => {
         setBarberInvoicing(r.barbers);
         setBarberInvoicingYear(r.year);
+        setBarberInvoicingMonth(r.month);
       })
       .catch(() => {
         setBarberInvoicing([]);
@@ -715,6 +673,22 @@ export default function Dashboard() {
     () => buildTimeSlotsInRange(selectedDayHours.openTime, selectedDayHours.closeTime),
     [selectedDayHours.openTime, selectedDayHours.closeTime]
   );
+  const formDayHours = useMemo(() => {
+    if (!form.date) {
+      return selectedDayHours;
+    }
+    return shopWeekdayHours[getIsoWeekdayFromYmd(form.date)] ?? { openTime: '10:00', closeTime: shopCloseTime };
+  }, [form.date, shopWeekdayHours, shopCloseTime, selectedDayHours]);
+  const formTimeSlots = useMemo(
+    () => buildTimeSlotsInRange(formDayHours.openTime, formDayHours.closeTime),
+    [formDayHours.openTime, formDayHours.closeTime]
+  );
+  const modalTimeSlots = useMemo(() => {
+    if (form.time && !formTimeSlots.includes(form.time)) {
+      return [...formTimeSlots, form.time].sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
+    }
+    return formTimeSlots;
+  }, [formTimeSlots, form.time]);
   const blockEndTimeOptions = useMemo(() => {
     const close = selectedDayHours.closeTime;
     return agendaTimeSlots.includes(close) ? agendaTimeSlots : [...agendaTimeSlots, close];
@@ -1036,11 +1010,15 @@ export default function Dashboard() {
     return undefined;
   }
 
+  /** Si el turno tiene barberId asignado, manda ese (la columna del nombre puede estar desincronizada). */
+  const matchesBarber = (a: Appointment, b: Barber): boolean => {
+    if (a.barberId) return a.barberId === b.id;
+    return a.barber === b.name;
+  };
+
   const appointmentsByBarber = barbers.map((barber) => ({
     barber,
-    appointments: dayAppointments.filter(
-      (a) => a.barberId === barber.id || a.barber === barber.name
-    ),
+    appointments: dayAppointments.filter((a) => matchesBarber(a, barber)),
   }));
 
   const selectedBarber = barbers.find((b) => b.id === selectedBarberId);
@@ -1095,40 +1073,12 @@ export default function Dashboard() {
   }, [agendaTimeSlots, blockEndTimeOptions]);
 
   useEffect(() => {
-    if (!modalOpen || editingAppointment) {
-      setAvailableFormSlots([]);
-      setAvailableFormSlotsLoading(false);
-      return;
-    }
-    const barberId = staffBarberId ?? form.barberId;
-    if (!form.date || !barberId) {
-      setAvailableFormSlots([]);
-      return;
-    }
-    const serviceDuration = services.find((s) => s.id === form.service)?.duration ?? 30;
-    let cancelled = false;
-    setAvailableFormSlotsLoading(true);
-    api
-      .getAvailability(form.date, barberId, serviceDuration)
-      .then((res) => {
-        if (cancelled) return;
-        setAvailableFormSlots(res.slots);
-        setForm((prev) => ({
-          ...prev,
-          time: res.slots.includes(prev.time) ? prev.time : (res.slots[0] ?? ''),
-        }));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAvailableFormSlots([]);
-      })
-      .finally(() => {
-        if (!cancelled) setAvailableFormSlotsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [modalOpen, editingAppointment, staffBarberId, form.barberId, form.date, form.service, services]);
+    if (!modalOpen || editingAppointment || formTimeSlots.length === 0) return;
+    setForm((prev) => ({
+      ...prev,
+      time: formTimeSlots.includes(prev.time) ? prev.time : (formTimeSlots[0] ?? prev.time),
+    }));
+  }, [modalOpen, editingAppointment, form.date, formTimeSlots]);
 
   const weekColumnCellsByDay = weekAppointmentsByDay.map(({ dateStr: dayDate, appointments: dayApps }) =>
     buildWeekColumnCells(dayApps, agendaTimeSlots, getBlockedSlotsForBarberDate(selectedBarberId, dayDate))
@@ -1186,7 +1136,12 @@ export default function Dashboard() {
       barberId,
       date: app.date,
       time: app.time,
-      servicePaymentSplits: initialSplitsFromAppointment(app, services, DEPOSIT_PERCENT),
+      servicePaymentSplits: initialSplitsFromAppointment(
+        app,
+        services,
+        DEPOSIT_PERCENT,
+        sumAppointmentProducts(app.products)
+      ),
       tipAmount:
         app.tipAmount != null && app.tipAmount > 0
           ? String(app.tipAmount).replace('.', ',')
@@ -1202,24 +1157,12 @@ export default function Dashboard() {
 
   const renderPaymentSplitsTrigger = (app: Appointment, compact?: boolean) => {
     if (app.status !== 'scheduled') return null;
-    const deposit = resolveAppointmentDepositAmountArs(app, services, DEPOSIT_PERCENT);
-    const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
-    const local = Math.max(0, serviceAmount - deposit);
-    const splitsLabel = formatServicePaymentSplits(
-      app.servicePaymentSplits,
-      app.servicePaymentMethod,
-      local > 0 ? local : undefined
+    const label = formatAppointmentPaymentDisplay(
+      app,
+      services,
+      DEPOSIT_PERCENT,
+      sumAppointmentProducts(app.products)
     );
-    const label =
-      app.depositPaid && deposit > 0
-        ? splitsLabel && splitsLabel !== 'Sin registrar'
-          ? `Mercado Pago $${deposit.toLocaleString('es-AR')} (seña) · ${splitsLabel}`
-          : `Mercado Pago $${deposit.toLocaleString('es-AR')} (seña)`
-        : splitsLabel;
-    const showMpLogo =
-      app.depositPaid ||
-      app.servicePaymentMethod === 'mercadopago' ||
-      app.servicePaymentSplits?.some((s) => s.method === 'mercadopago');
     return (
       <button
         type="button"
@@ -1235,11 +1178,7 @@ export default function Dashboard() {
         title="Registrar cobros (varios métodos)"
       >
         <span className="inline-flex items-center gap-1 truncate">
-          {showMpLogo ? (
-            <MercadoPagoLogo size="xs" />
-          ) : (
-            <Banknote size={compact ? 12 : 14} className="shrink-0 text-[#b39055]" />
-          )}
+          <Banknote size={compact ? 12 : 14} className="shrink-0 text-[#b39055]" />
           <span className="truncate">{label}</span>
         </span>
       </button>
@@ -1302,7 +1241,7 @@ export default function Dashboard() {
           return;
         }
 
-        if (isAdmin && !editingAppointment) {
+        if (canAccessDashboard && !editingAppointment) {
           if (linkedClientId != null) {
             const c = adminClients.find((x) => x.id === linkedClientId);
             if (c && c.name.trim().toLowerCase() === nameForApp.toLowerCase()) {
@@ -1420,7 +1359,15 @@ export default function Dashboard() {
 
   const openCreateServiceModal = () => {
     setEditingService(null);
-    setServiceForm({ name: '', price: '', duration: 30, desc: '', emoji: '✂️', pointsReward: '0' });
+    setServiceForm({
+      name: '',
+      price: '',
+      duration: 30,
+      desc: '',
+      emoji: '✂️',
+      pointsReward: '0',
+      internal: false,
+    });
     setServiceError('');
     setServiceModalOpen(true);
   };
@@ -1434,6 +1381,7 @@ export default function Dashboard() {
       desc: s.desc ?? '',
       emoji: s.emoji ?? '',
       pointsReward: String(s.pointsReward ?? 0),
+      internal: Boolean(s.internal),
     });
     setServiceError('');
     setServiceModalOpen(true);
@@ -1460,6 +1408,7 @@ export default function Dashboard() {
           desc: serviceForm.desc,
           emoji: serviceForm.emoji || undefined,
           pointsReward,
+          internal: serviceForm.internal,
         });
       } else {
         await api.createService({
@@ -1469,6 +1418,7 @@ export default function Dashboard() {
           desc: serviceForm.desc,
           emoji: serviceForm.emoji || undefined,
           pointsReward,
+          internal: serviceForm.internal,
         });
       }
       closeServiceModal();
@@ -1586,7 +1536,7 @@ export default function Dashboard() {
     if (!isSuperAdmin) return [];
     return barbers
       .map((b) => {
-        const apps = dayAppointments.filter((a) => a.barberId === b.id || a.barber === b.name);
+        const apps = dayAppointments.filter((a) => matchesBarber(a, b));
         const gross = apps.reduce((acc, curr) => acc + (resolveAppointmentServiceAmountArs(curr, services) ?? 0), 0);
         const estimatedIncome = Math.round(gross * BARBER_ESTIMATED_SHARE);
         return {
@@ -2048,6 +1998,20 @@ export default function Dashboard() {
                                     {normalizeAppointmentTime(app.time)} – {endClock} · {dm} min
                                   </p>
                                   <p className="text-zinc-600 text-xs truncate mt-0.5">{app.service}</p>
+                                  {(() => {
+                                    const summary = formatAppointmentProductsSummary(app.products);
+                                    if (!summary) return null;
+                                    return (
+                                      <p
+                                        className="text-amber-800 text-[10px] truncate mt-0.5"
+                                        title={(app.products ?? [])
+                                          .map((l) => `${l.quantity}× ${l.name}`)
+                                          .join(' · ')}
+                                      >
+                                        + {summary}
+                                      </p>
+                                    );
+                                  })()}
                                   <div className="flex gap-1 mt-auto pt-2">
                                     {appointmentNeedsManualContact(app) && (() => {
                                       const waUrl = buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate);
@@ -2209,6 +2173,20 @@ export default function Dashboard() {
                                   <div className="min-w-0">
                                     <p className="font-bold text-zinc-900 text-base leading-tight">{app.name}</p>
                                     <p className="text-sm text-zinc-600 mt-1">{app.service}</p>
+                                    {(() => {
+                                      const summary = formatAppointmentProductsSummary(app.products);
+                                      if (!summary) return null;
+                                      return (
+                                        <p
+                                          className="text-[11px] font-semibold text-amber-800 mt-0.5"
+                                          title={(app.products ?? [])
+                                            .map((l) => `${l.quantity}× ${l.name} · $${formatArs(l.subtotal)}`)
+                                            .join('\n')}
+                                        >
+                                          + {summary}
+                                        </p>
+                                      );
+                                    })()}
                                     <p className="text-[11px] text-zinc-500 mt-1">
                                       {slot} – {endClock} · {dm} min
                                     </p>
@@ -2491,6 +2469,20 @@ export default function Dashboard() {
                         <Scissors size={12} className="text-zinc-400 shrink-0 sm:hidden" />
                         <span className="truncate">{app.service}</span>
                       </p>
+                      {(() => {
+                        const summary = formatAppointmentProductsSummary(app.products);
+                        if (!summary) return null;
+                        return (
+                          <p
+                            className="text-[11px] font-semibold text-amber-800 truncate"
+                            title={(app.products ?? [])
+                              .map((l) => `${l.quantity}× ${l.name} · $${formatArs(l.subtotal)}`)
+                              .join('\n')}
+                          >
+                            + {summary}
+                          </p>
+                        );
+                      })()}
                       <p className="text-[11px] text-zinc-500 tabular-nums hidden sm:block">{dm} min</p>
                     </div>
 
@@ -2668,7 +2660,19 @@ export default function Dashboard() {
                         if (icon.kind === 'emoji') return <span className="text-2xl">{icon.value}</span>;
                         return <span className="text-zinc-400">—</span>;
                       })()}</td>
-                      <td className="py-4 px-4 font-medium text-zinc-900">{s.name}</td>
+                      <td className="py-4 px-4 font-medium text-zinc-900">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span>{s.name}</span>
+                          {s.internal && (
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200"
+                              title="Servicio interno: no se muestra al público"
+                            >
+                              Interno
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-4 px-4 text-zinc-700">{s.price}</td>
                       <td className="py-4 px-4 text-zinc-700">{s.duration} min</td>
                       <td className="py-4 px-4 text-zinc-500 text-sm hidden md:table-cell max-w-[200px] truncate" title={s.desc}>{s.desc || '—'}</td>
@@ -2937,6 +2941,7 @@ export default function Dashboard() {
             onBulkInvoice={handleBulkAfipInvoice}
             barberInvoicing={barberInvoicing}
             barberInvoicingYear={barberInvoicingYear}
+            barberInvoicingMonth={barberInvoicingMonth}
             barberInvoicingLoading={barberInvoicingLoading}
           />
         )}
@@ -3133,18 +3138,18 @@ export default function Dashboard() {
               <div>
                 <h3 className="font-black text-lg text-zinc-900">Mensaje de WhatsApp</h3>
                 <p className="text-sm text-zinc-500 mt-1">
-                  Texto que se prellena al tocar «WhatsApp» en la agenda para turnos sin seña pagada. Dejalo vacío para usar el
-                  mensaje por defecto.
+                  Texto al abrir WhatsApp desde la agenda (turnos sin seña). Dejalo vacío para el mensaje automático con negritas,
+                  tolerancia y pie de página. Usá *asteriscos* para negrita y _guiones bajos_ para cursiva.
                 </p>
                 <p className="text-xs text-zinc-500 mt-2">{WHATSAPP_TEMPLATE_HELP}</p>
                 <textarea
                   value={shopWhatsappMessageTemplate}
                   onChange={(e) => setShopWhatsappMessageTemplate(e.target.value)}
-                  rows={8}
+                  rows={10}
                   maxLength={8000}
                   spellCheck={false}
                   className="mt-3 w-full border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 font-mono leading-relaxed"
-                  placeholder={`Hola {nombre}! Te confirmo tu turno…\n\nFecha: {fecha}\nHora: {hora}\nServicio: {servicio}\nBarbero: {barbero}`}
+                  placeholder={WHATSAPP_TEMPLATE_PLACEHOLDER}
                 />
                 <p className="text-[11px] text-zinc-400 mt-1">
                   {shopWhatsappMessageTemplate.length} / 8000 caracteres
@@ -3267,7 +3272,7 @@ export default function Dashboard() {
               </h3>
               <p className="text-sm text-zinc-500 mt-1">
                 {isSuperAdmin
-                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al facturar) y tope anual AFIP. La factura AFIP es por el importe completo.`
+                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al facturar) y tope mensual AFIP. La factura AFIP es por el importe completo.`
                   : `Nombre público y comisión de referencia (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos).`}
               </p>
               {shopLoading ? (
@@ -3356,26 +3361,26 @@ export default function Dashboard() {
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
-                            Tope anual facturación (ARS)
+                            Tope mensual facturación (ARS)
                           </label>
                           <input
                             type="number"
                             min={0}
                             step={1000}
-                            defaultValue={b.monotributoAnnualLimit ?? ''}
-                            key={`${b.id}-lim-${b.monotributoAnnualLimit ?? ''}`}
+                            defaultValue={b.monotributoMonthlyLimit ?? ''}
+                            key={`${b.id}-lim-${b.monotributoMonthlyLimit ?? ''}`}
                             placeholder="Sin límite"
                             onBlur={(e) => {
                               const raw = e.target.value.trim();
                               const next = raw === '' ? null : Number(raw);
-                              const prev = b.monotributoAnnualLimit ?? null;
+                              const prev = b.monotributoMonthlyLimit ?? null;
                               if (next === prev || (next != null && !Number.isFinite(next))) return;
                               void api
-                                .updateBarber(b.id, { monotributoAnnualLimit: next })
+                                .updateBarber(b.id, { monotributoMonthlyLimit: next })
                                 .then(() => {
                                   loadData();
                                   if (view === 'facturacion' || view === 'configuracion') void loadBarberInvoicing();
-                                  showToast(`Tope anual de ${b.name} guardado`);
+                                  showToast(`Tope mensual de ${b.name} guardado`);
                                 })
                                 .catch((err) =>
                                   showToast(err instanceof Error ? err.message : 'No se pudo guardar', 'err')
@@ -3384,14 +3389,14 @@ export default function Dashboard() {
                             className="w-36 border border-zinc-200 rounded-lg px-3 py-2 text-sm tabular-nums"
                           />
                         </div>
-                        {usage && usage.annualLimit != null && usage.annualLimit > 0 && (
+                        {usage && usage.monthlyLimit != null && usage.monthlyLimit > 0 && (
                           <p className="text-xs text-zinc-500 pb-2">
-                            Facturado {barberInvoicingYear}:{' '}
+                            Facturado {formatMonthYearEs(barberInvoicingYear, barberInvoicingMonth)}:{' '}
                             <span className="font-bold text-zinc-800">
                               ${usage.invoicedTotal.toLocaleString('es-AR')}
                             </span>
                             {' '}
-                            de ${usage.annualLimit.toLocaleString('es-AR')} ({usage.percentUsed}%)
+                            de ${usage.monthlyLimit.toLocaleString('es-AR')} ({usage.percentUsed}%)
                           </p>
                         )}
                         <div className="w-full space-y-2 border-t border-zinc-100 pt-3 mt-2">
@@ -3569,8 +3574,11 @@ export default function Dashboard() {
       {/* Modal crear/editar cita */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto" onClick={closeModal}>
-          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto my-4" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b border-zinc-200 flex justify-between items-center">
+          <div
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-lg max-h-[min(90dvh,calc(100vh-2rem))] flex flex-col overflow-hidden my-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-zinc-200 flex justify-between items-center shrink-0">
               <h3 className="text-xl font-black text-zinc-900">
                 {editingAppointment ? 'Editar cita' : 'Nueva cita'}
               </h3>
@@ -3578,7 +3586,8 @@ export default function Dashboard() {
                 <X size={24} />
               </button>
             </div>
-            <form onSubmit={handleSaveAppointment} className="p-6 space-y-4">
+            <form onSubmit={handleSaveAppointment} className="flex flex-col min-h-0 flex-1">
+              <div className="p-6 space-y-4 min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {error && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">Nombre</label>
@@ -3598,12 +3607,12 @@ export default function Dashboard() {
                         if (c.name.trim().toLowerCase() === v.trim().toLowerCase()) return prev;
                         return null;
                       });
-                      if (isAdmin && !editingAppointment) {
+                      if (canAccessDashboard && !editingAppointment) {
                         setNameSuggestionsOpen(true);
                       }
                     }}
                     onFocus={() => {
-                      if (isAdmin && !editingAppointment) {
+                      if (canAccessDashboard && !editingAppointment) {
                         setNameSuggestionsOpen(true);
                       }
                     }}
@@ -3616,7 +3625,7 @@ export default function Dashboard() {
                       }
                     }}
                     onBlur={() => {
-                      if (!isAdmin || editingAppointment) return;
+                      if (!canAccessDashboard || editingAppointment) return;
                       const t = form.name.trim().toLowerCase();
                       if (!t) return;
                       const matches = adminClients.filter(
@@ -3636,10 +3645,10 @@ export default function Dashboard() {
                     placeholder="Nombre completo"
                     autoComplete="name"
                   />
-                  {isAdmin && !editingAppointment && adminClientsLoading && (
+                  {canAccessDashboard && !editingAppointment && adminClientsLoading && (
                     <p className="mt-1 text-xs text-zinc-400">Cargando clientes…</p>
                   )}
-                  {isAdmin &&
+                  {canAccessDashboard &&
                     !editingAppointment &&
                     nameSuggestionsOpen &&
                     linkedClientId == null &&
@@ -3692,7 +3701,7 @@ export default function Dashboard() {
                     </ul>
                   )}
                 </div>
-                {isAdmin && !editingAppointment && linkedClientId != null && (
+                {canAccessDashboard && !editingAppointment && linkedClientId != null && (
                   <p className="mt-1 text-xs text-zinc-500">
                     Vinculado a ficha:{' '}
                     <span className="font-medium text-zinc-700">
@@ -3717,7 +3726,7 @@ export default function Dashboard() {
                   placeholder="Ej. 11 2345 6789"
                 />
               </div>
-              {isAdmin && !editingAppointment && (
+              {canAccessDashboard && !editingAppointment && (
                 <div>
                   <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                     Email del cliente <span className="font-normal normal-case text-zinc-400">(opcional)</span>
@@ -3782,33 +3791,17 @@ export default function Dashboard() {
                     onChange={(e) => setForm((f) => ({ ...f, time: e.target.value }))}
                     className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900"
                   >
-                  {!editingAppointment && availableFormSlotsLoading ? (
-                    <option value="" disabled>
-                      Cargando horarios…
+                  {modalTimeSlots.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
                     </option>
-                  ) : null}
-                  {!editingAppointment && !availableFormSlotsLoading
-                    ? availableFormSlots.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))
-                    : null}
-                  {editingAppointment
-                    ? agendaTimeSlots.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))
-                    : null}
-                  {!editingAppointment && !availableFormSlotsLoading && availableFormSlots.length === 0 ? (
-                    <option value="" disabled>
-                      Sin horarios disponibles
-                    </option>
-                  ) : null}
+                  ))}
                   </select>
-                {!editingAppointment && !availableFormSlotsLoading && availableFormSlots.length === 0 ? (
-                  <p className="mt-1 text-xs text-amber-700">No hay huecos disponibles para esa fecha/barbero/servicio.</p>
+                {!editingAppointment ? (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Podés elegir cualquier horario del día (pasado o futuro). Si ya hay otro turno en ese horario, el
+                    sistema avisará al guardar.
+                  </p>
                 ) : null}
                 </div>
               </div>
@@ -3816,6 +3809,28 @@ export default function Dashboard() {
                 editingAppointment.status !== 'cancelled' &&
                 editingAppointment.status !== 'pending_payment' && (
                   <>
+                    <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                      Cobros del servicio en local
+                    </label>
+                    <ServicePaymentSplitsEditor
+                      splits={form.servicePaymentSplits}
+                      onChange={(servicePaymentSplits) =>
+                        setForm((f) => ({ ...f, servicePaymentSplits }))
+                      }
+                      expectedLocalAmount={appointmentSplitsTargetArs(
+                        editingAppointment,
+                        services,
+                        DEPOSIT_PERCENT,
+                        sumAppointmentProducts(editingAppointment.products)
+                      )}
+                      excludedMethods={editingAppointment.depositPaid ? ['mercadopago'] : []}
+                    />
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Combiná métodos y montos hasta cubrir el saldo en local. La seña por Mercado Pago no se incluye
+                      acá.
+                    </p>
+                  </div>
                     <div>
                       <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
                         Propina (opcional)
@@ -3832,29 +3847,10 @@ export default function Dashboard() {
                         No se factura con AFIP. Se muestra en el cierre de caja.
                       </p>
                     </div>
-                    <div>
-                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
-                      Cobros del servicio en local
-                    </label>
-                    <ServicePaymentSplitsEditor
-                      splits={form.servicePaymentSplits}
-                      onChange={(servicePaymentSplits) =>
-                        setForm((f) => ({ ...f, servicePaymentSplits }))
-                      }
-                      expectedLocalAmount={appointmentLocalPendingArs(
-                        editingAppointment,
-                        services,
-                        DEPOSIT_PERCENT
-                      )}
-                    />
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Combiná métodos y montos hasta cubrir el saldo en local. La seña por Mercado Pago no se incluye
-                      acá.
-                    </p>
-                  </div>
                   </>
                 )}
-              <div className="flex gap-3 pt-4">
+              </div>
+              <div className="flex gap-3 p-6 pt-4 border-t border-zinc-200 shrink-0 bg-white">
                 <button
                   type="button"
                   onClick={closeModal}
@@ -3864,7 +3860,7 @@ export default function Dashboard() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving || (!editingAppointment && (availableFormSlotsLoading || availableFormSlots.length === 0))}
+                  disabled={saving || (!editingAppointment && !form.time)}
                   className="flex-1 py-3 rounded-xl bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950 font-bold disabled:opacity-50"
                 >
                   {saving ? 'Guardando...' : editingAppointment ? 'Guardar cambios' : 'Crear cita'}
@@ -3992,6 +3988,22 @@ export default function Dashboard() {
                   className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900 min-h-[80px]"
                   placeholder="Descripción opcional del servicio"
                 />
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={serviceForm.internal}
+                    onChange={(e) => setServiceForm((f) => ({ ...f, internal: e.target.checked }))}
+                    className="mt-0.5 h-4 w-4 rounded border-zinc-300 text-amber-700 focus:ring-amber-500"
+                  />
+                  <span>
+                    <span className="block text-sm font-bold text-zinc-800">Servicio interno</span>
+                    <span className="block text-[11px] text-zinc-500">
+                      No se muestra al público en la web. Solo aparece en el panel para que lo agendes vos.
+                    </span>
+                  </span>
+                </label>
               </div>
               <div className="flex gap-3 pt-4">
                 <button
