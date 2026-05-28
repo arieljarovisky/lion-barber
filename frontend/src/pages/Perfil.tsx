@@ -472,6 +472,22 @@ export default function Perfil() {
           <p className="text-zinc-400 text-xs sm:text-sm mt-1 break-all px-2 max-w-full">{profile.email}</p>
         </div>
 
+        {profile.subscription && (
+          <section className="bg-violet-950/40 border border-violet-800/60 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0">
+            <h2 className="text-base sm:text-lg font-bold text-violet-100">Abono {profile.subscription.planName}</h2>
+            <p className="mt-2 text-sm text-violet-200/90">
+              Este mes tenés{' '}
+              <span className="font-black text-white">{profile.subscription.cutsRemaining}</span> de{' '}
+              {profile.subscription.cutsPerMonth} cortes. Sin seña al reservar.
+            </p>
+            {profile.subscription.cutsRemaining <= 0 && (
+              <p className="mt-2 text-sm font-semibold text-amber-300">
+                No podés reservar online hasta el próximo mes o hasta que el local renueve tu cupo.
+              </p>
+            )}
+          </section>
+        )}
+
         <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#e5c185]/20 flex items-center justify-center flex-shrink-0">

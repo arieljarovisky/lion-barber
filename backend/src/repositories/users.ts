@@ -40,6 +40,9 @@ export interface DbUser {
   deposit_exempt?: number | boolean | null;
   /** Notas internas del panel (recordatorios para el equipo). */
   admin_notes?: string | null;
+  subscription_plan_id?: string | null;
+  subscription_period_start?: string | Date | null;
+  subscription_cuts_used?: number;
   created_at: Date;
 }
 
@@ -123,11 +126,17 @@ export async function updateAdminClientById(
   }
 
   if (input.depositExempt != null) {
-    await query('UPDATE users SET deposit_exempt = ? WHERE id = ? AND role = ?', [
-      input.depositExempt ? 1 : 0,
-      userId,
-      'client',
-    ]);
+    const subRows = await query<{ subscription_plan_id: string | null }[]>(
+      'SELECT subscription_plan_id FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+    if (!subRows[0]?.subscription_plan_id) {
+      await query('UPDATE users SET deposit_exempt = ? WHERE id = ? AND role = ?', [
+        input.depositExempt ? 1 : 0,
+        userId,
+        'client',
+      ]);
+    }
   }
 
   if (input.adminNotes !== undefined) {

@@ -60,8 +60,30 @@ export interface Appointment {
   servicePaymentSplits?: ServicePaymentSplit[] | null;
   /** Productos vendidos junto con el turno (cera, pomada, etc.). Aparecen en historial. */
   products?: AppointmentProductLine[] | null;
+  /** Si el turno consumió un corte del abono mensual del cliente. */
+  subscriptionCutApplied?: boolean;
   /** Propina en ARS; no se incluye en factura AFIP. */
   tipAmount?: number;
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  monthlyPrice: string;
+  cutsPerMonth: number;
+  active: boolean;
+  sortOrder?: number;
+}
+
+export interface ClientSubscriptionInfo {
+  planId: string;
+  planName: string;
+  cutsPerMonth: number;
+  cutsUsed: number;
+  cutsRemaining: number;
+  periodStart: string;
+  periodEnd: string;
+  monthlyPrice: string;
 }
 
 /** Desglose persistido al facturar con AFIP. */

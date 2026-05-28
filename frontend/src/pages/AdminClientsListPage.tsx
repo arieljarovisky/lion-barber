@@ -463,7 +463,15 @@ export default function AdminClientsListPage() {
                               <StickyNote size={14} />
                             </span>
                           )}
-                          {c.depositExempt && (
+                          {c.subscription && (
+                            <span
+                              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700"
+                              title={`Abono: ${c.subscription.cutsRemaining}/${c.subscription.cutsPerMonth} cortes este mes`}
+                            >
+                              Abono
+                            </span>
+                          )}
+                          {c.depositExempt && !c.subscription && (
                             <span
                               className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700"
                               title="Cliente exento de pagar seña"
@@ -565,7 +573,15 @@ export default function AdminClientsListPage() {
                                 <StickyNote size={14} aria-label="Tiene nota recordatoria" />
                               </span>
                             )}
-                            {c.depositExempt && (
+                            {c.subscription && (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700"
+                                title={`Abono: ${c.subscription.cutsRemaining}/${c.subscription.cutsPerMonth} cortes`}
+                              >
+                                Abono
+                              </span>
+                            )}
+                            {c.depositExempt && !c.subscription && (
                               <span
                                 className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700"
                                 title="Cliente exento de pagar seña"

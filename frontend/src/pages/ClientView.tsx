@@ -782,6 +782,16 @@ export default function ClientView() {
                 </div>
               )}
 
+              {profile?.subscription && (
+                <div className="mb-6 p-4 rounded-xl border border-violet-500/30 bg-violet-950/30 text-violet-100 text-sm">
+                  <p className="font-bold">Abono {profile.subscription.planName}</p>
+                  <p className="mt-1 text-violet-200/90">
+                    {profile.subscription.cutsRemaining > 0
+                      ? `Te quedan ${profile.subscription.cutsRemaining} de ${profile.subscription.cutsPerMonth} cortes este mes. Confirmás sin pagar seña.`
+                      : `Usaste los ${profile.subscription.cutsPerMonth} cortes del mes. No podés reservar online hasta el próximo período.`}
+                  </p>
+                </div>
+              )}
               {bookingError && backendReachable && (
                 <div className="mb-6 p-4 bg-red-950/30 border border-red-500/30 rounded-xl text-red-400 text-sm">{bookingError}</div>
               )}
@@ -1114,7 +1124,10 @@ export default function ClientView() {
                     <button
                       type="button"
                       onClick={handlePaySena}
-                      disabled={senaCheckoutLoading}
+                      disabled={
+                        senaCheckoutLoading ||
+                        Boolean(profile?.subscription && profile.subscription.cutsRemaining <= 0)
+                      }
                       className="bg-[#e5c185] hover:bg-[#d4b074] disabled:opacity-60 disabled:pointer-events-none text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
                       {senaCheckoutLoading ? (

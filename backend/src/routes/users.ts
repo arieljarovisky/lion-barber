@@ -3,6 +3,7 @@ import { requireAuth, requireAdmin, requireStaffOrAdmin } from '../middleware/au
 import * as userRepo from '../repositories/users.js';
 import * as appointmentRepo from '../repositories/appointments.js';
 import { toAdminClientPayload } from './adminClientPayload.js';
+import { assignSubscriptionPlanToClient } from '../services/clientSubscription.js';
 
 const router = Router();
 
@@ -51,7 +52,7 @@ router.post('/clients', requireAuth, requireStaffOrAdmin, async (req, res) => {
     });
     const userPhones = user.phones ?? (await userRepo.getClientPhonesByUserId(user.id));
     res.status(201).json({
-      client: toAdminClientPayload(user, userPhones, []),
+      client: await toAdminClientPayload(user, userPhones, []),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error al crear cliente';
@@ -67,8 +68,10 @@ router.get('/clients', requireAuth, requireStaffOrAdmin, async (_req, res) => {
     const ids = clients.map((c) => c.id);
     const phonesByUser = await userRepo.getClientPhonesByUserIds(ids);
     const byUser = await appointmentRepo.getAppointmentsByUserIds(ids);
-    const body = clients.map((c) =>
-      toAdminClientPayload(c, phonesByUser.get(c.id) ?? [], byUser.get(c.id) ?? [])
+    const body = await Promise.all(
+      clients.map((c) =>
+        toAdminClientPayload(c, phonesByUser.get(c.id) ?? [], byUser.get(c.id) ?? [])
+      )
     );
     res.json({ clients: body });
   } catch (err) {
@@ -91,7 +94,7 @@ router.get('/clients/:id', requireAuth, requireStaffOrAdmin, async (req, res) =>
     const phones = await userRepo.getClientPhonesByUserId(id);
     const appointments = map.get(id) ?? [];
     res.json({
-      client: toAdminClientPayload(user, phones, appointments),
+      client: await toAdminClientPayload(user, phones, appointments),
     });
   } catch (err) {
     console.error(err);
@@ -111,6 +114,7 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     phone?: unknown;
     points?: unknown;
     depositExempt?: unknown;
+    subscriptionPlanId?: unknown;
     adminNotes?: unknown;
   };
 
@@ -155,6 +159,17 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     }
     patch.depositExempt = body.depositExempt;
   }
+  let subscriptionPlanIdPatch: string | null | undefined;
+  if (body.subscriptionPlanId !== undefined) {
+    if (body.subscriptionPlanId === null || body.subscriptionPlanId === '') {
+      subscriptionPlanIdPatch = null;
+    } else if (typeof body.subscriptionPlanId === 'string') {
+      subscriptionPlanIdPatch = body.subscriptionPlanId.trim();
+      if (!subscriptionPlanIdPatch) subscriptionPlanIdPatch = null;
+    } else {
+      return res.status(400).json({ error: 'subscriptionPlanId debe ser texto o null' });
+    }
+  }
   if (body.adminNotes !== undefined) {
     if (body.adminNotes !== null && typeof body.adminNotes !== 'string') {
       return res.status(400).json({ error: 'adminNotes debe ser texto o null' });
@@ -162,7 +177,7 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     patch.adminNotes = body.adminNotes === null ? null : body.adminNotes;
   }
 
-  if (Object.keys(patch).length === 0) {
+  if (Object.keys(patch).length === 0 && subscriptionPlanIdPatch === undefined) {
     return res.status(400).json({ error: 'No hay campos para actualizar' });
   }
 
@@ -176,14 +191,21 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
         error: 'No se puede cambiar el email de un cliente vinculado a Google',
       });
     }
-    const updated = await userRepo.updateAdminClientById(id, patch);
+    if (subscriptionPlanIdPatch !== undefined) {
+      await assignSubscriptionPlanToClient(id, subscriptionPlanIdPatch);
+    }
+
+    const updated =
+      Object.keys(patch).length > 0
+        ? await userRepo.updateAdminClientById(id, patch)
+        : await userRepo.findUserById(id);
     if (!updated) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
     }
     const phones = await userRepo.getClientPhonesByUserId(id);
     const map = await appointmentRepo.getAppointmentsByUserIds([id]);
     res.json({
-      client: toAdminClientPayload(updated, phones, map.get(id) ?? []),
+      client: await toAdminClientPayload(updated, phones, map.get(id) ?? []),
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error al actualizar el cliente';

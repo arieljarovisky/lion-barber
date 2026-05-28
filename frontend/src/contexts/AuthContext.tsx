@@ -1,5 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { api, setAuthToken, ApiError, getJwtExpSeconds, isJwtExpired, setUnauthorizedHandler } from '../api';
+import {
+  api,
+  setAuthToken,
+  ApiError,
+  getJwtExpSeconds,
+  isJwtExpired,
+  setUnauthorizedHandler,
+  type ClientSubscriptionInfo,
+} from '../api';
 
 const TOKEN_KEY = 'lion_barber_token';
 
@@ -15,6 +23,8 @@ export interface UserProfile {
   avatarUrl?: string | null;
   /** Cliente exento de pagar seña: reserva turnos directo, sin Mercado Pago. */
   depositExempt?: boolean;
+  /** Abono mensual activo (cortes incluidos). */
+  subscription?: ClientSubscriptionInfo | null;
   /** Facturación AFIP, cierre de caja, estadísticas contables y monotributo. */
   isSuperAdmin?: boolean;
 }
@@ -60,6 +70,7 @@ function profileFromBackend(u: {
   barberId?: string | null;
   avatarUrl?: string | null;
   depositExempt?: boolean;
+  subscription?: ClientSubscriptionInfo | null;
   isSuperAdmin?: boolean;
 }): UserProfile {
   const role =
@@ -73,6 +84,7 @@ function profileFromBackend(u: {
     barberId: u.barberId ?? null,
     avatarUrl: u.avatarUrl ?? null,
     depositExempt: Boolean(u.depositExempt),
+    subscription: u.subscription ?? null,
     isSuperAdmin: Boolean(u.isSuperAdmin),
   };
 }

@@ -12,6 +12,7 @@ import {
   Award,
   ShoppingBag,
   Receipt,
+  Repeat,
   LogOut,
   Menu,
   X,
@@ -24,6 +25,7 @@ export type DashboardPanelId =
   | 'horarios'
   | 'puntos'
   | 'productos'
+  | 'abonos'
   | 'facturacion'
   | 'estadisticas'
   | 'cierreCaja'
@@ -153,6 +155,20 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             >
               <ShoppingBag size={18} className="flex-shrink-0" />
               Productos
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => go('abonos')}
+              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+                activePanel === 'abonos'
+                  ? 'bg-[#e5c185] text-zinc-950'
+                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              <Repeat size={18} className="flex-shrink-0" />
+              Abonos
             </button>
           )}
           {isSuperAdmin && (

@@ -17,6 +17,10 @@ import {
 import { getScheduleRestrictionIntervals } from './barberSchedule.js';
 import { getShopSettings } from './shopSettings.js';
 import { isDateClosed, isDateOnOpenWeekday } from '../appointmentRules.js';
+import {
+  onAppointmentCancelled,
+  onAppointmentConfirmed,
+} from '../services/clientSubscription.js';
 
 export const ANY_BARBER_ID = '__any__';
 
@@ -71,6 +75,7 @@ interface DbAppointment {
   client_chose_any_barber?: number;
   tip_amount?: number | string | null;
   products?: string | unknown | null;
+  subscription_cut_applied?: number;
 }
 
 function parseAfipDetail(raw: string | null | undefined): AfipInvoiceDetail | undefined {
@@ -116,6 +121,7 @@ function rowToAppointment(row: DbAppointment): Appointment {
     servicePaymentMethod: parseServicePaymentMethod(row.service_payment_method),
     servicePaymentSplits: parseServicePaymentSplits(row.service_payment_splits),
     products: parseAppointmentProductLines(row.products),
+    subscriptionCutApplied: Boolean(row.subscription_cut_applied),
     tipAmount:
       row.tip_amount != null && Number.isFinite(Number(row.tip_amount))
         ? Math.round(Number(row.tip_amount) * 100) / 100
@@ -446,6 +452,10 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
       await userRepo.addClientPhone(Number(uid), p);
     }
   }
+  if (created.status === 'scheduled') {
+    await onAppointmentConfirmed(created);
+    return (await getAppointmentById(created.id)) ?? created;
+  }
   return created;
 }
 
@@ -527,6 +537,10 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       : current.products ?? null;
   const productsJson = products && products.length > 0 ? JSON.stringify(products) : null;
 
+  if (data.status === 'cancelled' && current.status !== 'cancelled') {
+    await onAppointmentCancelled(current);
+  }
+
   await query(
     `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?, tip_amount = ?, products = ?
      WHERE id = ?`,
@@ -554,6 +568,20 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
   if (saved && saved.userId != null) {
     const p = String(saved.phone ?? '').trim();
     await userRepo.addClientPhone(saved.userId, p);
+  }
+  if (
+    saved?.status === 'scheduled' &&
+    current.status !== 'scheduled'
+  ) {
+    await onAppointmentConfirmed(saved);
+    const refreshed = await getAppointmentById(id);
+    if (
+      refreshed &&
+      ((data.date != null && data.date !== current.date) || (data.time != null && data.time !== current.time))
+    ) {
+      await query('UPDATE appointments SET reminder_1h_sent = 0 WHERE id = ?', [id]);
+    }
+    return refreshed;
   }
   if (
     saved &&
@@ -586,7 +614,12 @@ export async function markAppointmentPaidAndScheduled(
     "UPDATE appointments SET status = 'scheduled', deposit_paid = 1, mercadopago_payment_id = ?, deposit_amount_ars = ?, payment_due_at = NULL WHERE id = ? AND status != 'cancelled'",
     [paymentId, amount, appointmentId]
   );
-  return getAppointmentById(appointmentId);
+  const app = await getAppointmentById(appointmentId);
+  if (app?.status === 'scheduled') {
+    await onAppointmentConfirmed(app);
+    return getAppointmentById(appointmentId);
+  }
+  return app;
 }
 
 /** Cliente exento: pasa de pending_payment a scheduled sin marcar seña pagada ni vincular pago MP. */
@@ -595,7 +628,12 @@ export async function markAppointmentScheduledByExempt(appointmentId: string): P
     "UPDATE appointments SET status = 'scheduled', payment_due_at = NULL WHERE id = ? AND status = 'pending_payment'",
     [appointmentId]
   );
-  return getAppointmentById(appointmentId);
+  const app = await getAppointmentById(appointmentId);
+  if (app?.status === 'scheduled') {
+    await onAppointmentConfirmed(app);
+    return getAppointmentById(appointmentId);
+  }
+  return app;
 }
 
 /** Cancelación por el cliente (soft). */
@@ -603,11 +641,14 @@ export async function cancelAppointmentByUser(id: string, userId: number): Promi
   const app = await getAppointmentById(id);
   if (!app || app.userId !== userId) return null;
   if (app.status === 'cancelled') return app;
+  await onAppointmentCancelled(app);
   await pool.execute(`UPDATE appointments SET status = 'cancelled' WHERE id = ? AND user_id = ?`, [id, userId]);
   return getAppointmentById(id);
 }
 
 export async function deleteAppointment(id: string): Promise<boolean> {
+  const app = await getAppointmentById(id);
+  if (app) await onAppointmentCancelled(app);
   const [res] = await pool.execute('DELETE FROM appointments WHERE id = ?', [id]);
   return (res as { affectedRows: number }).affectedRows > 0;
 }
