@@ -2,6 +2,17 @@ import type { Appointment, AfipInvoiceDetail, Barber, Service } from '../api';
 import { formatInstantInArgentina } from './argentinaTime';
 import { formatArs, resolveAppointmentServiceAmountArs } from './money';
 
+export type AfipComprobantePrintVariant = 'invoice' | 'credit_note';
+
+type LineRow = {
+  qty: number;
+  code: string;
+  description: string;
+  dispatch: string;
+  unitPrice: number;
+  amount: number;
+};
+
 function esc(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -16,7 +27,18 @@ function formatCuitAr(digits: string): string {
   return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`;
 }
 
-/** Nombre completo del peluquero según ficha (agenda); si no hay id, el texto guardado en el turno. */
+function formatDateArFromYmd(ymd: string): string {
+  const clean = ymd.slice(0, 10);
+  const [y, m, d] = clean.split('-');
+  if (!y || !m || !d) return esc(clean);
+  return `${d}/${m}/${y}`;
+}
+
+function formatMoneyAr(amount: number): string {
+  return `$ ${formatArs(amount)}`;
+}
+
+/** Nombre completo del peluquero según ficha (agenda). */
 export function resolveBarberNameForInvoice(app: Appointment, barbers?: Barber[]): string {
   const bid = app.barberId?.trim();
   if (bid && barbers?.length) {
@@ -26,207 +48,325 @@ export function resolveBarberNameForInvoice(app: Appointment, barbers?: Barber[]
   return app.barber?.trim() || '—';
 }
 
-function comprobanteTitle(cbteTipo?: number): string {
-  if (cbteTipo === 11) return 'Factura C · Monotributo';
-  if (cbteTipo === 6) return 'Factura B';
-  return 'Comprobante de venta electrónico';
+function resolveCbteTipoForPrint(cbteTipo: number | undefined, variant: AfipComprobantePrintVariant): number {
+  const base = cbteTipo ?? 11;
+  if (variant === 'credit_note') {
+    if (base === 6) return 8;
+    if (base === 11) return 13;
+    if (base === 1) return 3;
+    if (base === 19) return 21;
+    return 13;
+  }
+  return base;
 }
 
-function buildDetailRows(detail: AfipInvoiceDetail | undefined, app: Appointment, services: Service[]): string {
+function comprobanteLetter(cbteTipo: number): string {
+  if (cbteTipo === 11 || cbteTipo === 13) return 'C';
+  if (cbteTipo === 6 || cbteTipo === 8) return 'B';
+  if (cbteTipo === 1 || cbteTipo === 3) return 'A';
+  return 'X';
+}
+
+function comprobanteTitle(cbteTipo: number, variant: AfipComprobantePrintVariant): string {
+  const letter = comprobanteLetter(cbteTipo);
+  if (variant === 'credit_note') return `NOTA DE CRÉDITO ${letter}`;
+  if (letter === 'C') return 'FACTURA C';
+  if (letter === 'B') return 'FACTURA B';
+  if (letter === 'A') return 'FACTURA A';
+  return 'COMPROBANTE';
+}
+
+function buildLineRows(
+  detail: AfipInvoiceDetail | undefined,
+  app: Appointment,
+  services: Service[]
+): LineRow[] {
+  const rows: LineRow[] = [];
   if (detail) {
-    const lines: string[] = [];
-    lines.push(
-      `<tr><td colspan="2">${esc(detail.serviceLabel)}</td><td class="r">$ ${formatArs(detail.serviceAmount)}</td></tr>`
-    );
+    rows.push({
+      qty: 1,
+      code: app.serviceId?.trim() || 'SRV',
+      description: detail.serviceLabel,
+      dispatch: '',
+      unitPrice: detail.serviceAmount,
+      amount: detail.serviceAmount,
+    });
     for (const pl of detail.productLines) {
-      lines.push(
-        `<tr><td>${esc(pl.name)}</td><td class="c">${pl.quantity} × $ ${formatArs(pl.unitPrice)}</td><td class="r">$ ${formatArs(pl.subtotal)}</td></tr>`
-      );
+      rows.push({
+        qty: pl.quantity,
+        code: pl.productId,
+        description: pl.name,
+        dispatch: '',
+        unitPrice: pl.unitPrice,
+        amount: pl.subtotal,
+      });
     }
-    lines.push(
-      `<tr class="total"><td colspan="2">Total</td><td class="r">$ ${formatArs(detail.total)}</td></tr>`
-    );
-    return lines.join('');
+    return rows;
   }
   const amt = resolveAppointmentServiceAmountArs(app, services);
-  const row = amt != null ? `$ ${formatArs(amt)}` : '—';
-  return `<tr><td colspan="2">${esc(app.service)}</td><td class="r">${row}</td></tr>`;
+  if (amt != null) {
+    rows.push({
+      qty: 1,
+      code: app.serviceId?.trim() || 'SRV',
+      description: app.service,
+      dispatch: '',
+      unitPrice: amt,
+      amount: amt,
+    });
+  }
+  return rows;
 }
 
-/**
- * Abre una ventana con el comprobante estilizado Lion Barber y dispara el diálogo de impresión
- * (el usuario puede elegir «Guardar como PDF» en el navegador).
- *
- * Nota: no usar `noopener` en window.open: en Chrome la ventana queda en about:blank y document.write no aplica.
- */
-export function printLionBarberInvoice(opts: {
-  appointment: Appointment;
+function buildAfipComprobanteHtml(opts: {
+  app: Appointment;
   services: Service[];
   barbers?: Barber[];
   emitterCuit?: string | null;
   cbteTipo?: number;
-}): void {
-  const { appointment: app, services, barbers, emitterCuit, cbteTipo } = opts;
+  variant: AfipComprobantePrintVariant;
+}): string {
+  const { app, services, barbers, emitterCuit, variant } = opts;
+  const cbteTipo = resolveCbteTipoForPrint(opts.cbteTipo, variant);
+  const title = comprobanteTitle(cbteTipo, variant);
   const barberLabel = resolveBarberNameForInvoice(app, barbers);
-  if (!app.afipCae) return;
+  const detail = app.afipInvoiceDetail;
+  const lineRows = buildLineRows(detail, app, services);
+  const total =
+    detail?.total ??
+    lineRows.reduce((s, r) => s + r.amount, 0) ??
+    resolveAppointmentServiceAmountArs(app, services) ??
+    0;
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const logoUrl = `${origin}/lion-barber-logo.png`;
-  const title = comprobanteTitle(cbteTipo);
-  const detailRows = buildDetailRows(app.afipInvoiceDetail, app, services);
-  const fechaServ = new Date(app.date + 'T12:00:00').toLocaleDateString('es-AR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-  const emitido = app.afipFacturadoAt ? formatInstantInArgentina(app.afipFacturadoAt) : '—';
+  const fechaServYmd = app.date.slice(0, 10);
+  const emitidoAr = app.afipFacturadoAt ? formatInstantInArgentina(app.afipFacturadoAt) : null;
+  const fechaCbteDisplay = emitidoAr
+    ? emitidoAr.split(',')[0]?.trim() || formatDateArFromYmd(fechaServYmd)
+    : formatDateArFromYmd(fechaServYmd);
 
-  const html = `<!DOCTYPE html>
+  const periodFrom = formatDateArFromYmd(fechaServYmd);
+  const periodTo = formatDateArFromYmd(fechaServYmd);
+  const vtoPago = formatDateArFromYmd(fechaServYmd);
+
+  const tableBody =
+    lineRows.length > 0
+      ? lineRows
+          .map(
+            (r) => `<tr>
+      <td class="n">${r.qty}</td>
+      <td class="c">${esc(r.code)}</td>
+      <td class="d">${esc(r.description)}</td>
+      <td class="c">${esc(r.dispatch)}</td>
+      <td class="n">${formatMoneyAr(r.unitPrice)}</td>
+      <td class="n">${formatMoneyAr(r.amount)}</td>
+    </tr>`
+          )
+          .join('')
+      : `<tr><td colspan="6" class="d" style="text-align:center;color:#666">Sin detalle</td></tr>`;
+
+  const refInvoice =
+    variant === 'credit_note' && app.afipCbteNro != null && app.afipPtoVta != null
+      ? `<p class="ref">Comprobante asociado: Factura ${comprobanteLetter(opts.cbteTipo ?? 11)} · Pto. Vta. ${app.afipPtoVta} · Nº ${String(app.afipCbteNro).padStart(8, '0')}</p>`
+      : '';
+
+  return `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Lion Barber · Comprobante</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet" />
+  <title>${esc(title)} · Lion Barber</title>
   <style>
-    @page { margin: 14mm; size: A4; }
+    @page { margin: 12mm; size: A4; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Montserrat", system-ui, sans-serif;
-      color: #18181b;
-      background: #fafaf9;
-      font-size: 13px;
-      line-height: 1.45;
-    }
-    .sheet {
-      max-width: 720px;
-      margin: 0 auto;
-      background: #fff;
-      border: 1px solid #e4e4e7;
-      border-radius: 12px;
-      overflow: hidden;
-      box-shadow: 0 12px 40px rgba(0,0,0,.06);
-    }
-    .head {
-      background: linear-gradient(145deg, #18181b 0%, #27272a 55%, #18181b 100%);
-      color: #fafafa;
-      padding: 28px 32px 24px;
-      text-align: center;
-      border-bottom: 4px solid #b39055;
-    }
-    .head img { max-height: 52px; width: auto; margin-bottom: 10px; filter: brightness(1.08); }
-    .brand-script {
-      font-family: "Playfair Display", Georgia, serif;
-      font-style: italic;
-      font-size: 1.35rem;
-      color: #e5c185;
-      letter-spacing: 0.02em;
-      margin: 0 0 4px;
-    }
-    .head h1 {
-      margin: 0;
-      font-size: 0.72rem;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.22em;
-      color: #a1a1aa;
-    }
-    .badge {
-      display: inline-block;
-      margin-top: 14px;
-      padding: 6px 14px;
-      border-radius: 999px;
-      background: rgba(179, 144, 85, 0.18);
-      color: #e5c185;
+      font-family: Arial, Helvetica, sans-serif;
       font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
+      color: #000;
+      background: #fff;
+      line-height: 1.35;
     }
-    .body { padding: 28px 32px 32px; }
-    .grid {
+    .wrap { max-width: 210mm; margin: 0 auto; }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #000;
+    }
+    .emitter { flex: 1; }
+    .emitter h2 { margin: 0 0 4px; font-size: 14px; font-weight: 700; text-transform: uppercase; }
+    .emitter p { margin: 0; font-size: 10px; }
+    .tipo-box {
+      border: 2px solid #000;
+      text-align: center;
+      min-width: 88px;
+      padding: 6px 10px;
+    }
+    .tipo-box .letter { font-size: 28px; font-weight: 800; line-height: 1; }
+    .tipo-box .label { font-size: 9px; font-weight: 700; text-transform: uppercase; margin-top: 4px; }
+    .tipo-box .meta { font-size: 9px; margin-top: 6px; border-top: 1px solid #000; padding-top: 4px; }
+    .period-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px 24px;
-      margin-bottom: 22px;
-      font-size: 12px;
+      border: 1px solid #000;
+      margin-bottom: 0;
     }
-    .grid dt { color: #71717a; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; margin: 0; }
-    .grid dd { margin: 2px 0 0; font-weight: 600; color: #18181b; }
-    table.lines { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    table.lines th {
-      text-align: left;
+    .period-row .cell {
+      padding: 6px 8px;
       font-size: 10px;
+      border-right: 1px solid #000;
+    }
+    .period-row .cell:last-child { border-right: none; }
+    .period-row .cell strong { font-weight: 700; }
+    .party-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid #000;
+      border-top: none;
+      margin-bottom: 10px;
+    }
+    .party-row .cell {
+      padding: 8px;
+      font-size: 10px;
+      border-right: 1px solid #000;
+      min-height: 72px;
+    }
+    .party-row .cell:last-child { border-right: none; }
+    .party-row p { margin: 0 0 4px; }
+    .party-row .lbl { font-weight: 700; }
+    table.items {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #000;
+      font-size: 10px;
+    }
+    table.items thead th {
+      border-bottom: 1px solid #000;
+      padding: 6px 5px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: #71717a;
-      border-bottom: 2px solid #e4e4e7;
-      padding: 10px 8px;
+      font-size: 9px;
+      text-align: left;
+      background: #fff;
     }
-    table.lines td { padding: 10px 8px; border-bottom: 1px solid #f4f4f5; vertical-align: top; }
-    table.lines .r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    table.lines .c { text-align: center; font-variant-numeric: tabular-nums; }
-    table.lines tr.total td { border-bottom: none; font-weight: 800; font-size: 1.05rem; padding-top: 16px; color: #18181b; }
-    .cae {
-      margin-top: 24px;
-      padding: 16px 18px;
-      border-radius: 10px;
-      background: linear-gradient(135deg, #fefce8 0%, #fef9c3 100%);
-      border: 1px solid #fde047;
+    table.items tbody td {
+      border-bottom: 1px solid #ccc;
+      padding: 5px;
+      vertical-align: top;
+    }
+    table.items tbody tr:last-child td { border-bottom: none; }
+    table.items .n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    table.items .c { text-align: left; }
+    table.items .d { text-align: left; }
+    table.items th.n, table.items th:last-child { text-align: right; }
+    table.items th:nth-child(5), table.items th:nth-child(6) { text-align: right; }
+    .total-row {
+      display: flex;
+      justify-content: flex-end;
+      border: 1px solid #000;
+      border-top: none;
+      padding: 8px 10px;
       font-size: 12px;
+      font-weight: 700;
     }
-    .cae strong { color: #854d0e; }
-    .foot {
-      margin-top: 28px;
-      padding-top: 16px;
-      border-top: 1px solid #e4e4e7;
+    .cae {
+      margin-top: 12px;
+      border: 1px solid #000;
+      padding: 10px 12px;
       font-size: 10px;
-      color: #a1a1aa;
+    }
+    .cae strong { font-weight: 700; }
+    .ref { margin: 8px 0 0; font-size: 10px; font-style: italic; }
+    .foot {
+      margin-top: 10px;
+      font-size: 8px;
+      color: #444;
       text-align: center;
-      letter-spacing: 0.04em;
     }
     @media print {
-      body { background: #fff; }
-      .sheet { border: none; box-shadow: none; border-radius: 0; max-width: none; }
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
 </head>
 <body>
-  <div class="sheet">
-    <header class="head">
-      <img src="${logoUrl.replace(/"/g, '%22')}" alt="Lion Barber" />
-      <p class="brand-script">lionBARBER</p>
-      <h1>${esc(title)}</h1>
-      <div class="badge">${esc(app.afipPtoVta != null && app.afipCbteNro != null ? `Pto. venta ${app.afipPtoVta} · Nº ${app.afipCbteNro}` : 'AFIP')}</div>
-    </header>
-    <div class="body">
-      <dl class="grid">
-        <div><dt>Emisor (CUIT)</dt><dd>${emitterCuit ? formatCuitAr(emitterCuit) : '—'}</dd></div>
-        <div><dt>Cliente</dt><dd>${esc(app.name)}</dd></div>
-        <div><dt>Teléfono</dt><dd>${esc(app.phone || '—')}</dd></div>
-        <div><dt>Fecha del servicio</dt><dd>${esc(fechaServ)} · ${esc(app.time)}</dd></div>
-        <div><dt>Emitido</dt><dd>${esc(emitido)}</dd></div>
-        <div><dt>Barbero</dt><dd>${esc(barberLabel)}</dd></div>
-      </dl>
-      <table class="lines" aria-label="Detalle">
-        <thead><tr><th>Concepto</th><th class="c">Cant. / Precio</th><th class="r">Importe</th></tr></thead>
-        <tbody>${detailRows}</tbody>
-      </table>
-      <div class="cae">
-        <strong>CAE</strong> ${esc(app.afipCae)}<br />
-        <strong>Vto. CAE</strong> ${esc(app.afipCaeVto || '—')}
+  <div class="wrap">
+    <div class="top">
+      <div class="emitter">
+        <h2>Lion Barber</h2>
+        <p><span class="lbl">Prestador / Barbero:</span> ${esc(barberLabel)}</p>
+        <p><span class="lbl">CUIT emisor:</span> ${emitterCuit ? formatCuitAr(emitterCuit) : '—'}</p>
       </div>
-      <p class="foot">Documento no válido como factura en soporte papel salvo disposición normativa · Lion Barber</p>
+      <div class="tipo-box">
+        <div class="letter">${comprobanteLetter(cbteTipo)}</div>
+        <div class="label">${esc(title)}</div>
+        <div class="meta">
+          Pto. Vta. ${app.afipPtoVta ?? '—'}<br />
+          Comp. Nº ${app.afipCbteNro != null ? String(app.afipCbteNro).padStart(8, '0') : '—'}<br />
+          Fecha ${esc(fechaCbteDisplay)}
+        </div>
+      </div>
     </div>
+
+    <div class="period-row">
+      <div class="cell">
+        <strong>Período Facturado Desde:</strong> ${periodFrom}
+        &nbsp;&nbsp;<strong>Hasta:</strong> ${periodTo}
+      </div>
+      <div class="cell">
+        <strong>Fecha de Vto. para el pago:</strong> ${vtoPago}
+      </div>
+    </div>
+
+    <div class="party-row">
+      <div class="cell">
+        <p><span class="lbl">Sr./es:</span> ${esc(app.name)}</p>
+        <p><span class="lbl">Tel.:</span> ${esc(app.phone || '—')}</p>
+        <p><span class="lbl">C.U.I.T.:</span> —</p>
+        <p><span class="lbl">Condición frente al IVA:</span> Consumidor Final</p>
+      </div>
+      <div class="cell">
+        <p><span class="lbl">Transporte:</span> —</p>
+        <p><span class="lbl">N° Transporte:</span> —</p>
+        <p><span class="lbl">Condición de venta:</span> Contado</p>
+        <p><span class="lbl">Servicio:</span> ${esc(fechaServYmd)} · ${esc(app.time)}</p>
+      </div>
+    </div>
+
+    ${refInvoice}
+
+    <table class="items" aria-label="Detalle">
+      <thead>
+        <tr>
+          <th class="n" style="width:8%">Cant.</th>
+          <th style="width:12%">Código</th>
+          <th style="width:36%">Descripción</th>
+          <th style="width:14%">N° Despacho</th>
+          <th class="n" style="width:15%">P. Unitario</th>
+          <th class="n" style="width:15%">Importe</th>
+        </tr>
+      </thead>
+      <tbody>${tableBody}</tbody>
+    </table>
+
+    <div class="total-row">
+      <span>Importe total:&nbsp; ${formatMoneyAr(total)}</span>
+    </div>
+
+    <div class="cae">
+      <strong>CAE Nº</strong> ${esc(app.afipCae ?? '—')} &nbsp;|&nbsp;
+      <strong>Fecha Vto. CAE</strong> ${app.afipCaeVto ? esc(formatDateArFromYmd(app.afipCaeVto)) : '—'}
+    </div>
+
+    <p class="foot">Comprobante autorizado por AFIP · Documento no válido como factura en soporte papel salvo normativa vigente</p>
   </div>
 </body>
 </html>`;
+}
 
+function openPrintWindow(html: string): void {
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  /** Sin `noopener`: si no, en varios Chromium document del hijo no queda accesible y la pestaña sigue en about:blank. */
   const w = window.open(url, '_blank', 'width=980,height=1200');
   if (!w) {
     URL.revokeObjectURL(url);
@@ -253,4 +393,48 @@ export function printLionBarberInvoice(opts: {
   setTimeout(triggerPrint, 450);
   w.addEventListener('afterprint', revokeLater, { once: true });
   setTimeout(revokeLater, 5 * 60 * 1000);
+}
+
+function printAfipComprobante(opts: {
+  appointment: Appointment;
+  services: Service[];
+  barbers?: Barber[];
+  emitterCuit?: string | null;
+  cbteTipo?: number;
+  variant: AfipComprobantePrintVariant;
+}): void {
+  if (!opts.appointment.afipCae) return;
+  const html = buildAfipComprobanteHtml({
+    app: opts.appointment,
+    services: opts.services,
+    barbers: opts.barbers,
+    emitterCuit: opts.emitterCuit,
+    cbteTipo: opts.cbteTipo,
+    variant: opts.variant,
+  });
+  openPrintWindow(html);
+}
+
+/**
+ * Comprobante estilo AFIP (período, cliente, tabla CANT/CÓDIGO/DESCRIPCIÓN/P. UNITARIO/IMPORTE).
+ */
+export function printLionBarberInvoice(opts: {
+  appointment: Appointment;
+  services: Service[];
+  barbers?: Barber[];
+  emitterCuit?: string | null;
+  cbteTipo?: number;
+}): void {
+  printAfipComprobante({ ...opts, variant: 'invoice' });
+}
+
+/** Misma plantilla AFIP, titulada como Nota de Crédito (tipo 13/8 según factura original). */
+export function printLionBarberCreditNote(opts: {
+  appointment: Appointment;
+  services: Service[];
+  barbers?: Barber[];
+  emitterCuit?: string | null;
+  cbteTipo?: number;
+}): void {
+  printAfipComprobante({ ...opts, variant: 'credit_note' });
 }
