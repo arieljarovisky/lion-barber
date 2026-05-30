@@ -16,7 +16,7 @@ import {
 } from '../slotUtils.js';
 import { getScheduleRestrictionIntervals } from './barberSchedule.js';
 import { getShopSettings } from './shopSettings.js';
-import { isDateClosed, isDateOnOpenWeekday } from '../appointmentRules.js';
+import { isDateClosed, isDateOnOpenWeekday, normalizeTimeSlot } from '../appointmentRules.js';
 
 export const ANY_BARBER_ID = '__any__';
 
@@ -171,6 +171,15 @@ export function isSlotFreeForBarber(
   return !intervalOverlapsExisting(startMin, endMin, blocked);
 }
 
+function activeAppointmentsForOverlap(apps: Appointment[], excludeAppointmentId?: string): Appointment[] {
+  const excludeId = excludeAppointmentId != null ? String(excludeAppointmentId) : undefined;
+  return apps.filter((a) => {
+    if ((a.status ?? 'scheduled') === 'cancelled') return false;
+    if (excludeId != null && String(a.id) === excludeId) return false;
+    return true;
+  });
+}
+
 /** Comprueba solapamiento antes de crear o mover un turno. */
 export async function assertNoOverlap(
   barberId: string,
@@ -181,17 +190,15 @@ export async function assertNoOverlap(
   openMinutes?: number,
   closeMinutes?: number
 ): Promise<void> {
-  const blocked = await getBlockedIntervalsForBarber(barberId, date);
-  if (excludeAppointmentId) {
-    const apps = await getAppointmentsByBarber(barberId, date);
-    const filtered = apps.filter((a) => a.id !== excludeAppointmentId);
-    const intervals = appointmentIntervalsForDay(filtered);
-    if (!isSlotFreeForBarber(barberId, date, time, durationMinutes, intervals, openMinutes, closeMinutes)) {
-      throw new Error('Ese horario ya está ocupado o se solapa con otro turno');
-    }
-    return;
-  }
-  if (!isSlotFreeForBarber(barberId, date, time, durationMinutes, blocked, openMinutes, closeMinutes)) {
+  const timeNorm = normalizeTimeSlot(time);
+  const apps = activeAppointmentsForOverlap(
+    await getAppointmentsByBarber(barberId, date),
+    excludeAppointmentId
+  );
+  const fromApps = appointmentIntervalsForDay(apps);
+  const fromSchedule = await getScheduleRestrictionIntervals(barberId, date);
+  const blocked = [...fromApps, ...fromSchedule];
+  if (!isSlotFreeForBarber(barberId, date, timeNorm, durationMinutes, blocked, openMinutes, closeMinutes)) {
     throw new Error('Ese horario ya está ocupado o se solapa con otro turno');
   }
 }
@@ -474,10 +481,19 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
   const dayHours = weekdayHours[weekday] ?? { openTime: '10:00', closeTime };
   const openMinutes = openTimeToMinutes(dayHours.openTime);
   const closeMinutes = closeTimeToMinutes(dayHours.closeTime);
+  const timeNorm = normalizeTimeSlot(time);
+  const currentTimeNorm = normalizeTimeSlot(current.time);
+  const sameSlot =
+    String(barberId ?? '') === String(current.barberId ?? '') &&
+    String(date).slice(0, 10) === String(current.date).slice(0, 10) &&
+    timeNorm === currentTimeNorm &&
+    durationMinutes === (current.durationMinutes ?? 30);
 
-  if (barberId && date && time) {
-    await assertNoOverlap(barberId, date, time, durationMinutes, id, openMinutes, closeMinutes);
+  if (barberId && date && time && !sameSlot) {
+    await assertNoOverlap(barberId, date, timeNorm, durationMinutes, id, openMinutes, closeMinutes);
   }
+  updated.time = timeNorm;
+  updated.date = String(date).slice(0, 10);
 
   let barberName = updated.barber;
   if (data.barberId != null && data.barberId !== current.barberId) {
