@@ -2008,7 +2008,7 @@ export default function Dashboard() {
             {loading ? (
               <div className="p-12 text-center text-zinc-400">Cargando...</div>
             ) : (
-              <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-220px)] sm:max-h-[calc(100vh-240px)] -mx-2 sm:mx-0">
+              <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)] sm:max-h-[calc(100vh-320px)] -mx-2 sm:mx-0">
                 <table className="w-full min-w-[640px] sm:min-w-[720px] border-collapse table-fixed">
                   <tbody>
                     {agendaTimeSlots.map((slot, slotIndex) => (
@@ -2156,7 +2156,7 @@ export default function Dashboard() {
                   <span className="text-xs text-zinc-500 hidden sm:inline">Deslizá si hay muchos turnos</span>
                 </div>
                 <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-                  <div className="max-h-[min(78vh,680px)] overflow-y-auto overscroll-contain">
+                  <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-contain">
                     <ul className="divide-y divide-zinc-100">
                       {buildDayTimelineRows(
                         appointmentsByBarber[0].appointments,
@@ -2309,7 +2309,7 @@ export default function Dashboard() {
                         />
                         <p className="font-bold text-base leading-tight">{barber.name}</p>
                       </div>
-                      <div className="p-3 divide-y divide-zinc-100 max-h-[min(78vh,680px)] overflow-y-auto overscroll-contain">
+                      <div className="p-3 divide-y divide-zinc-100 max-h-[300px] overflow-y-auto">
                         {buildDayTimelineRows(
                           barberAppointments,
                           agendaTimeSlots,
