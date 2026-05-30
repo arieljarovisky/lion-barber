@@ -110,11 +110,12 @@ export default function ServicePaymentSplitsEditor({
                   const n = Math.max(0, Math.round(Number(e.target.value) || 0));
                   updateRow(index, { amount: n });
                 }}
+                onWheel={(e) => e.currentTarget.blur()}
                 placeholder="0"
                 className={
                   compact
-                    ? 'w-20 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] tabular-nums'
-                    : 'w-28 rounded-xl border border-zinc-200 px-3 py-2 text-sm tabular-nums'
+                    ? 'no-number-spin w-20 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] tabular-nums'
+                    : 'no-number-spin w-28 rounded-xl border border-zinc-200 px-3 py-2 text-sm tabular-nums'
                 }
               />
             </div>

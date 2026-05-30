@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, Trash2, ShieldCheck, StickyNote, Save } from 'lucide-react';
+import { ChevronLeft, Trash2, ShieldCheck, StickyNote, Save, Repeat } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
 import { api, ApiError } from '../api';
 import { useAuth } from '../contexts/AuthContext';
-import type { AdminClientWithHistory } from '../api';
+import type { AdminClientWithHistory, SubscriptionPlan } from '../api';
 import {
   adminAppointmentStatusBadge,
   formatAppointmentDateYmd,
@@ -46,6 +46,8 @@ export default function AdminClientDetailPage() {
   const [formPoints, setFormPoints] = useState('0');
   const [formNotes, setFormNotes] = useState('');
   const [formExempt, setFormExempt] = useState(false);
+  const [formSubscriptionPlanId, setFormSubscriptionPlanId] = useState('');
+  const [availablePlans, setAvailablePlans] = useState<SubscriptionPlan[]>([]);
 
   const idNum = Number(clientId);
   const invalidId = !Number.isFinite(idNum) || idNum < 1;
@@ -81,6 +83,22 @@ export default function AdminClientDetailPage() {
   }, [idNum, invalidId]);
 
   useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    api
+      .getSubscriptionPlans()
+      .then((r) => {
+        if (!cancelled) setAvailablePlans(r.plans.filter((p) => p.active));
+      })
+      .catch(() => {
+        if (!cancelled) setAvailablePlans([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
+  useEffect(() => {
     if (!client) return;
     setFormName(client.name);
     setFormEmail(isPlaceholderManualClientEmail(client.email) ? '' : client.email);
@@ -88,6 +106,7 @@ export default function AdminClientDetailPage() {
     setFormPoints(String(client.points));
     setFormNotes(client.adminNotes ?? '');
     setFormExempt(Boolean(client.depositExempt));
+    setFormSubscriptionPlanId(client.subscription?.planId ?? '');
   }, [client]);
 
   const handlePanelNavigate = useCallback(
@@ -135,7 +154,8 @@ export default function AdminClientDetailPage() {
         name,
         phones: parsePhonesInput(formPhones),
         points: pts,
-        depositExempt: formExempt,
+        depositExempt: client.subscription ? undefined : formExempt,
+        subscriptionPlanId: formSubscriptionPlanId || null,
         adminNotes: formNotes.trim() || null,
       };
       if (!emailLocked) {
@@ -151,7 +171,18 @@ export default function AdminClientDetailPage() {
     } finally {
       setSaving(false);
     }
-  }, [client, saving, formName, formEmail, formPhones, formPoints, formNotes, formExempt, emailLocked]);
+  }, [
+    client,
+    saving,
+    formName,
+    formEmail,
+    formPhones,
+    formPoints,
+    formNotes,
+    formExempt,
+    formSubscriptionPlanId,
+    emailLocked,
+  ]);
 
   const handleDeleteClient = useCallback(async () => {
     if (!client || deleting) return;
@@ -345,6 +376,38 @@ export default function AdminClientDetailPage() {
                 <p className="mt-1 text-[11px] text-zinc-400">{formNotes.length} / 8000 · Solo visible en el panel</p>
               </div>
 
+              <div className="rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                    <Repeat size={20} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-zinc-900">Plan de abono</p>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      Sin seña en la web. Los cortes se renuevan cada mes calendario.
+                    </p>
+                    {client.subscription && (
+                      <p className="mt-2 text-sm font-semibold text-violet-900">
+                        Este mes: {client.subscription.cutsRemaining} de {client.subscription.cutsPerMonth}{' '}
+                        cortes disponibles
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <select
+                  value={formSubscriptionPlanId}
+                  onChange={(e) => setFormSubscriptionPlanId(e.target.value)}
+                  className="w-full rounded-xl border border-violet-200 bg-white px-4 py-2.5 text-sm"
+                >
+                  <option value="">Sin abono</option>
+                  {availablePlans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {p.monthlyPrice} ({p.cutsPerMonth} cortes/mes)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3">
                 <div className="flex items-start gap-3">
                   <div
@@ -355,17 +418,20 @@ export default function AdminClientDetailPage() {
                     <ShieldCheck size={20} />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-zinc-900">Exento de pagar seña</p>
+                    <p className="text-sm font-bold text-zinc-900">Exento de pagar seña (manual)</p>
                     <p className="mt-0.5 text-xs text-zinc-500">
-                      Reserva confirmada sin Mercado Pago.
+                      {client.subscription
+                        ? 'Con abono activo la exención ya está incluida.'
+                        : 'Reserva confirmada sin Mercado Pago.'}
                     </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setFormExempt((v) => !v)}
+                  disabled={Boolean(client.subscription)}
                   aria-pressed={formExempt}
-                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
+                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition disabled:opacity-40 ${
                     formExempt ? 'bg-emerald-500' : 'bg-zinc-300'
                   }`}
                 >

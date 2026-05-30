@@ -19,8 +19,12 @@ import {
   sendAppointmentScheduledEmail,
   isRealClientEmail,
 } from '../services/email.js';
-import { findUserById, isUserDepositExempt } from '../repositories/users.js';
+import { findUserById } from '../repositories/users.js';
 import { DEPOSIT_PERCENT } from '../constants/deposit.js';
+import {
+  assertClientCanBookWithSubscription,
+  isClientDepositExempt,
+} from '../services/clientSubscription.js';
 import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
 import { parseMercadoPagoTransactionAmountArs } from '../mercadopagoAmount.js';
 
@@ -385,9 +389,16 @@ router.post('/sena', async (req, res) => {
     return res.status(409).json({ error: msg });
   }
 
-  /** Atajo: si el cliente está exento de seña, confirmamos el turno sin pasar por Mercado Pago. */
+  try {
+    await assertClientCanBookWithSubscription(uid);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'No podés reservar con el abono actual';
+    return res.status(400).json({ error: msg });
+  }
+
+  /** Atajo: si el cliente está exento de seña (manual o abono), confirmamos sin Mercado Pago. */
   const requesterUser = await findUserById(uid);
-  if (requesterUser && isUserDepositExempt(requesterUser)) {
+  if (requesterUser && (await isClientDepositExempt(uid))) {
     let confirmed;
     try {
       confirmed = await repo.createAppointment({
@@ -534,9 +545,16 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
     const durationMinutes =
       app.durationMinutes ?? (await repo.resolveDurationMinutes(app.serviceId, app.service));
 
-    /** Atajo: si el cliente quedó marcado como exento de seña, confirmamos el turno sin Mercado Pago. */
+    try {
+      await assertClientCanBookWithSubscription(authReq.user!.id);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No podés reservar con el abono actual';
+      return res.status(400).json({ error: msg });
+    }
+
+    /** Atajo: si el cliente está exento de seña (manual o abono), confirmamos sin Mercado Pago. */
     const requesterUser = await findUserById(authReq.user!.id);
-    if (requesterUser && isUserDepositExempt(requesterUser)) {
+    if (requesterUser && (await isClientDepositExempt(authReq.user!.id))) {
       const updated = await repo.markAppointmentScheduledByExempt(app.id);
       const finalApp = updated ?? app;
       res.json({ exempt: true, appointmentId: finalApp.id });

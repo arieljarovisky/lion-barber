@@ -280,6 +280,7 @@ export default function AppointmentPaymentSplitsModal({
               onChange={setSplits}
               expectedLocalAmount={expectedLocal}
               excludedMethods={depositAmount > 0 ? ['mercadopago'] : []}
+              disabled={saving}
             />
             <p className="text-xs text-zinc-500 mt-1">
               {depositAmount > 0
@@ -336,8 +337,10 @@ export default function AppointmentPaymentSplitsModal({
                     type="number"
                     min={1}
                     value={pickQty}
+                    disabled={saving || productsLoading}
                     onChange={(e) => setPickQty(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs tabular-nums"
+                    onWheel={(e) => e.currentTarget.blur()}
+                    className="no-number-spin mt-1 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-xs tabular-nums disabled:opacity-50"
                   />
                 </div>
                 <button
@@ -363,8 +366,10 @@ export default function AppointmentPaymentSplitsModal({
                         type="number"
                         min={1}
                         value={l.quantity}
+                        disabled={saving}
                         onChange={(e) => updateProductQty(l.productId, Number(e.target.value))}
-                        className="w-12 rounded border border-zinc-200 px-1.5 py-0.5 text-right text-[11px] tabular-nums"
+                        onWheel={(e) => e.currentTarget.blur()}
+                        className="no-number-spin w-12 rounded border border-zinc-200 px-1.5 py-0.5 text-right text-[11px] tabular-nums disabled:opacity-50"
                       />
                     </div>
                     <span className="w-20 text-right font-mono text-[11px] text-zinc-700 tabular-nums">

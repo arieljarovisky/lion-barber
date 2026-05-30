@@ -45,6 +45,7 @@ import DashboardPanelShell, { type DashboardPanelId } from '../components/Dashbo
 import PointsProgramPanel from '../components/PointsProgramPanel';
 import PointsRedemptionPanel from '../components/PointsRedemptionPanel';
 import ShopProductsPanel from '../components/ShopProductsPanel';
+import SubscriptionPlansPanel from '../components/SubscriptionPlansPanel';
 import ProductPointsPanel from '../components/ProductPointsPanel';
 import BillingPanel from '../components/BillingPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
@@ -71,6 +72,7 @@ import type {
   BarberTimeBlockRow,
   StaffInviteRow,
   ShopProduct,
+  SubscriptionPlan,
   AdminClientWithHistory,
   type PointsRedemptionOption,
   type ServicePaymentSplit,
@@ -346,6 +348,7 @@ export default function Dashboard() {
     | 'equipo'
     | 'puntos'
     | 'productos'
+    | 'abonos'
     | 'facturacion'
     | 'configuracion'
   >('agenda');
@@ -399,6 +402,8 @@ export default function Dashboard() {
   const [shopProducts, setShopProducts] = useState<ShopProduct[]>([]);
   const [pointsPanelLoading, setPointsPanelLoading] = useState(false);
   const [shopProductsPanelLoading, setShopProductsPanelLoading] = useState(false);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
+  const [subscriptionPlansLoading, setSubscriptionPlansLoading] = useState(false);
   const [redemptionOptions, setRedemptionOptions] = useState<PointsRedemptionOption[]>([]);
   const [redemptionOptionsLoading, setRedemptionOptionsLoading] = useState(false);
   const [afipConfigured, setAfipConfigured] = useState(false);
@@ -565,6 +570,18 @@ export default function Dashboard() {
     }
   }, [showToast]);
 
+  const loadSubscriptionPlansPanel = useCallback(async () => {
+    setSubscriptionPlansLoading(true);
+    try {
+      const r = await api.getSubscriptionPlans();
+      setSubscriptionPlans(r.plans);
+    } catch {
+      showToast('No se pudo cargar los planes de abono', 'err');
+    } finally {
+      setSubscriptionPlansLoading(false);
+    }
+  }, [showToast]);
+
   const loadRedemptionOptionsPanel = useCallback(async () => {
     setRedemptionOptionsLoading(true);
     try {
@@ -591,6 +608,11 @@ export default function Dashboard() {
     if (view !== 'productos' && view !== 'puntos') return;
     void loadShopProductsPanel();
   }, [view, loadShopProductsPanel]);
+
+  useEffect(() => {
+    if (view !== 'abonos') return;
+    void loadSubscriptionPlansPanel();
+  }, [view, loadSubscriptionPlansPanel]);
 
   const loadBarberInvoicing = useCallback(() => {
     setBarberInvoicingLoading(true);
@@ -791,7 +813,7 @@ export default function Dashboard() {
   }, [view, scheduleBarberId, loadSchedule]);
 
   useEffect(() => {
-    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion')) {
+    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion' || view === 'abonos')) {
       setView('agenda');
     }
     if (!isSuperAdmin && view === 'facturacion') {
@@ -1686,6 +1708,11 @@ export default function Dashboard() {
                   title: 'Productos',
                   subtitle: 'Alta y edición del catálogo de venta (nombre y precio). Los puntos se asignan en Puntos.',
                 }
+              : view === 'abonos'
+                ? {
+                    title: 'Abonos',
+                    subtitle: 'Planes mensuales con cortes incluidos. Asignalos desde la ficha de cada cliente.',
+                  }
               : view === 'facturacion'
                 ? {
                     title: 'Facturación',
@@ -2995,6 +3022,15 @@ export default function Dashboard() {
           />
         )}
 
+        {view === 'abonos' && isAdmin && (
+          <SubscriptionPlansPanel
+            plans={subscriptionPlans}
+            loading={subscriptionPlansLoading}
+            onRefresh={loadSubscriptionPlansPanel}
+            showToast={showToast}
+          />
+        )}
+
         {view === 'facturacion' && isSuperAdmin && (
           <BillingPanel
             appointments={billingAppointments}
@@ -3895,6 +3931,7 @@ export default function Dashboard() {
                         sumAppointmentProducts(editingAppointment.products)
                       )}
                       excludedMethods={editingAppointment.depositPaid ? ['mercadopago'] : []}
+                      disabled={saving}
                     />
                     <p className="mt-1 text-xs text-zinc-500">
                       Combiná métodos y montos hasta cubrir el saldo en local. La seña por Mercado Pago no se incluye

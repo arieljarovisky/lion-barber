@@ -162,6 +162,33 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE users ADD COLUMN subscription_plan_id VARCHAR(50) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE users ADD COLUMN subscription_period_start DATE NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE users ADD COLUMN subscription_cuts_used INT NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS subscription_plans (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      monthly_price VARCHAR(50) NOT NULL,
+      cuts_per_month INT NOT NULL,
+      active TINYINT(1) NOT NULL DEFAULT 1,
+      sort_order INT NOT NULL DEFAULT 0
+    )
+  `);
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS client_phones (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -452,6 +479,13 @@ export async function initDb(): Promise<void> {
   try {
     await pool.execute(
       'ALTER TABLE appointments ADD COLUMN products JSON NULL'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE appointments ADD COLUMN subscription_cut_applied TINYINT(1) NOT NULL DEFAULT 0'
     );
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;

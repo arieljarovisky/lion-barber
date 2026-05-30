@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { verifyGoogleToken, isAdminEmail, isSuperAdminEmail, signJwt } from '../auth.js';
 import * as userRepo from '../repositories/users.js';
+import {
+  getClientSubscriptionStatus,
+  isClientDepositExempt,
+} from '../services/clientSubscription.js';
 import * as appointmentRepo from '../repositories/appointments.js';
 import * as staffInvites from '../repositories/staffInvites.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -121,7 +125,8 @@ router.post('/google', async (req, res) => {
         points: user.points ?? 0,
         barberId: user.barber_id ?? null,
         avatarUrl: user.avatar_url ?? null,
-        depositExempt: userRepo.isUserDepositExempt(user),
+        depositExempt: await isClientDepositExempt(user.id),
+        subscription: await getClientSubscriptionStatus(user.id),
         isSuperAdmin: isSuperAdminEmail(user.email),
       },
     });
@@ -143,7 +148,8 @@ router.get('/me', requireAuth, async (req, res) => {
     points: user.points ?? 0,
     barberId: user.barber_id ?? null,
     avatarUrl: user.avatar_url ?? null,
-    depositExempt: userRepo.isUserDepositExempt(user),
+    depositExempt: await isClientDepositExempt(user.id),
+    subscription: await getClientSubscriptionStatus(user.id),
     isSuperAdmin: isSuperAdminEmail(user.email),
   });
 });

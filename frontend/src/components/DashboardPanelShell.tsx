@@ -12,6 +12,7 @@ import {
   Award,
   ShoppingBag,
   Receipt,
+  Repeat,
   LogOut,
   Menu,
   X,
@@ -24,6 +25,7 @@ export type DashboardPanelId =
   | 'horarios'
   | 'puntos'
   | 'productos'
+  | 'abonos'
   | 'facturacion'
   | 'estadisticas'
   | 'cierreCaja'
@@ -90,11 +92,11 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+        <nav className="flex-1 min-h-0 space-y-0.5 overflow-y-auto hide-scrollbar p-2">
           <button
             type="button"
             onClick={() => go('agenda')}
-            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
               activePanel === 'agenda' ? 'bg-[#e5c185] text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
             }`}
           >
@@ -105,7 +107,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             <button
               type="button"
               onClick={() => go('servicios')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
                 activePanel === 'servicios'
                   ? 'bg-[#e5c185] text-zinc-950'
                   : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
@@ -118,7 +120,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
           <button
             type="button"
             onClick={() => go('horarios')}
-            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
               activePanel === 'horarios'
                 ? 'bg-[#e5c185] text-zinc-950'
                 : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
@@ -131,7 +133,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             <button
               type="button"
               onClick={() => go('puntos')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
                 activePanel === 'puntos'
                   ? 'bg-[#e5c185] text-zinc-950'
                   : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
@@ -145,7 +147,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             <button
               type="button"
               onClick={() => go('productos')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
                 activePanel === 'productos'
                   ? 'bg-[#e5c185] text-zinc-950'
                   : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
@@ -155,11 +157,25 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
               Productos
             </button>
           )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => go('abonos')}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
+                activePanel === 'abonos'
+                  ? 'bg-[#e5c185] text-zinc-950'
+                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              <Repeat size={18} className="flex-shrink-0" />
+              Abonos
+            </button>
+          )}
           {isSuperAdmin && (
             <button
               type="button"
               onClick={() => go('facturacion')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
                 activePanel === 'facturacion'
                   ? 'bg-[#e5c185] text-zinc-950'
                   : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
@@ -173,7 +189,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             <button
               type="button"
               onClick={() => go('estadisticas')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
                 activePanel === 'estadisticas'
                   ? 'bg-[#e5c185] text-zinc-950'
                   : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
@@ -187,7 +203,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             <button
               type="button"
               onClick={() => go('cierreCaja')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
                 activePanel === 'cierreCaja'
                   ? 'bg-[#e5c185] text-zinc-950'
                   : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
@@ -201,7 +217,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             <button
               type="button"
               onClick={() => go('equipo')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
                 activePanel === 'equipo' ? 'bg-[#e5c185] text-zinc-950' : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
               }`}
             >
@@ -213,7 +229,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             <button
               type="button"
               onClick={() => go('clientes')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
                 activePanel === 'clientes'
                   ? 'bg-[#e5c185] text-zinc-950'
                   : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
@@ -227,7 +243,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
             <button
               type="button"
               onClick={() => go('configuracion')}
-              className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold ${
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
                 activePanel === 'configuracion'
                   ? 'bg-[#e5c185] text-zinc-950'
                   : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
@@ -239,7 +255,7 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
           )}
         </nav>
 
-        <div className="space-y-3 border-t border-zinc-800 p-4">
+        <div className="shrink-0 space-y-2 border-t border-zinc-800 p-3">
           {profile && (
             <p className="text-sm text-zinc-400">
               {profile.name}{' '}

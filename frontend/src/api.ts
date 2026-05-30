@@ -275,6 +275,26 @@ export interface CashExpense {
   createdAt: string;
 }
 
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  monthlyPrice: string;
+  cutsPerMonth: number;
+  active: boolean;
+  sortOrder?: number;
+}
+
+export interface ClientSubscriptionInfo {
+  planId: string;
+  planName: string;
+  cutsPerMonth: number;
+  cutsUsed: number;
+  cutsRemaining: number;
+  periodStart: string;
+  periodEnd: string;
+  monthlyPrice: string;
+}
+
 /** Respuesta de GET /api/users/clients (solo admin). */
 export interface AdminClientWithHistory {
   id: number;
@@ -289,6 +309,8 @@ export interface AdminClientWithHistory {
   avatarUrl?: string | null;
   /** Cliente exento de pagar seña: sus reservas se confirman sin Mercado Pago. */
   depositExempt?: boolean;
+  /** Abono mensual activo (cortes incluidos, sin seña en la web). */
+  subscription?: ClientSubscriptionInfo | null;
   /** Notas internas / recordatorios (solo panel admin). */
   adminNotes?: string | null;
   /** Cuenta vinculada a Google (email no editable desde el panel). */
@@ -661,6 +683,7 @@ export const api = {
       phone?: string;
       points?: number;
       depositExempt?: boolean;
+      subscriptionPlanId?: string | null;
       adminNotes?: string | null;
     }
   ) =>
@@ -719,6 +742,32 @@ export const api = {
   deleteCashExpense: (id: number) =>
     fetchApi<void>(`/api/expenses/cash/${id}`, { method: 'DELETE' }),
 
+  getSubscriptionPlans: () =>
+    fetchApi<{ plans: SubscriptionPlan[] }>('/api/subscription-plans'),
+
+  createSubscriptionPlan: (data: {
+    name: string;
+    monthlyPrice: string;
+    cutsPerMonth: number;
+    active?: boolean;
+  }) =>
+    fetchApi<SubscriptionPlan>('/api/subscription-plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateSubscriptionPlan: (
+    id: string,
+    data: Partial<{ name: string; monthlyPrice: string; cutsPerMonth: number; active: boolean }>
+  ) =>
+    fetchApi<SubscriptionPlan>(`/api/subscription-plans/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteSubscriptionPlan: (id: string) =>
+    fetchApi<void>(`/api/subscription-plans/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   auth: {
     postGoogle: (idToken: string, linkPhone?: string) =>
       fetchApi<{
@@ -732,6 +781,7 @@ export const api = {
           barberId?: string | null;
           avatarUrl?: string | null;
           depositExempt?: boolean;
+          subscription?: ClientSubscriptionInfo | null;
           isSuperAdmin?: boolean;
         };
       }>('/api/auth/google', {
@@ -753,6 +803,7 @@ export const api = {
         barberId?: string | null;
         avatarUrl?: string | null;
         depositExempt?: boolean;
+        subscription?: ClientSubscriptionInfo | null;
         isSuperAdmin?: boolean;
       }>('/api/auth/me'),
   },
