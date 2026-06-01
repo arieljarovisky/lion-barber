@@ -3930,12 +3930,11 @@ export default function Dashboard() {
                         DEPOSIT_PERCENT,
                         sumAppointmentProducts(editingAppointment.products)
                       )}
-                      excludedMethods={editingAppointment.depositPaid ? ['mercadopago'] : []}
                       disabled={saving}
                     />
                     <p className="mt-1 text-xs text-zinc-500">
-                      Combiná métodos y montos hasta cubrir el saldo en local. La seña por Mercado Pago no se incluye
-                      acá.
+                      Combiná métodos y montos hasta cubrir el saldo del turno. La seña por Mercado Pago no se incluye
+                      acá; el resto sí puede cargarse como Mercado Pago.
                     </p>
                   </div>
                     <div>

@@ -81,8 +81,8 @@ export function appointmentSplitsTargetArs(
 }
 
 /**
- * Los cobros guardados son solo lo cobrado en el local. Si hubo seña por MP, no va en splits
- * (el cierre de caja ya la suma por depositPaid). Corrige datos viejos que cargaban el total.
+ * Los cobros guardados cubren el saldo del turno (servicio − seña + productos). La seña MP
+ * va aparte (depositPaid). Corrige datos viejos que cargaban más del saldo esperado.
  */
 export function normalizeAppointmentPaymentSplits(
   splits: ServicePaymentSplit[],
@@ -94,13 +94,9 @@ export function normalizeAppointmentPaymentSplits(
   const target = appointmentSplitsTargetArs(app, services, depositPercent, productsSubtotal);
   if (target <= 0) return [];
 
-  let cleaned = splits
+  const cleaned = splits
     .filter((s) => s.amount > 0)
     .map((s) => ({ ...s }));
-
-  if (app.depositPaid) {
-    cleaned = cleaned.filter((s) => s.method !== 'mercadopago');
-  }
 
   const sum = sumServicePaymentSplits(cleaned);
   if (sum <= target) return cleaned;
@@ -165,7 +161,6 @@ export function formatAppointmentPaymentDisplay(
 
   if (splits?.length) {
     for (const s of splits) {
-      if (app.depositPaid && s.method === 'mercadopago') continue;
       if (s.amount > 0) {
         parts.push(
           `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}`

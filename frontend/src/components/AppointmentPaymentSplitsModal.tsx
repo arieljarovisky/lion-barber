@@ -234,7 +234,7 @@ export default function AppointmentPaymentSplitsModal({
               {depositAmount > 0 && (
                 <span className="text-zinc-400">
                   {' '}
-                  · seña MP ${formatArs(depositAmount)} + saldo en local ${formatArs(expectedLocal)}
+                  · seña MP ${formatArs(depositAmount)} + saldo ${formatArs(expectedLocal)}
                 </span>
               )}
             </p>
@@ -258,7 +258,7 @@ export default function AppointmentPaymentSplitsModal({
           <div>
             <div className="flex items-center gap-2 mb-2">
               <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-                Cobro en local
+                {depositAmount > 0 ? 'Saldo restante' : 'Cobro en local'}
               </p>
             </div>
             {depositAmount > 0 && (
@@ -270,8 +270,8 @@ export default function AppointmentPaymentSplitsModal({
                   Mercado Pago · ${formatArs(depositAmount)}
                 </p>
                 <p className="mt-1 text-[11px] text-sky-800/90">
-                  Ya está registrada. Abajo cargá solo lo que se cobra en el local (
-                  ${formatArs(expectedLocal)}).
+                  Ya está registrada. Abajo cargá el saldo restante (${formatArs(expectedLocal)}), con el
+                  método que corresponda.
                 </p>
               </div>
             )}
@@ -279,12 +279,11 @@ export default function AppointmentPaymentSplitsModal({
               splits={splits}
               onChange={setSplits}
               expectedLocalAmount={expectedLocal}
-              excludedMethods={depositAmount > 0 ? ['mercadopago'] : []}
               disabled={saving}
             />
             <p className="text-xs text-zinc-500 mt-1">
               {depositAmount > 0
-                ? 'La seña por Mercado Pago no se vuelve a cargar acá. Registrá el saldo restante (efectivo, tarjeta, etc.).'
+                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago u otro método.'
                 : 'Podés combinar métodos (ej. parte en efectivo y parte con tarjeta). Cada método solo aparece una vez.'}
             </p>
           </div>

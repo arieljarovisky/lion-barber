@@ -12,7 +12,7 @@ type Props = {
   onChange: (splits: ServicePaymentSplit[]) => void;
   /** Saldo esperado en local (servicio − seña + productos). */
   expectedLocalAmount?: number;
-  /** Métodos no elegibles (ej. mercadopago si la seña ya se cobró online). */
+  /** Métodos no elegibles en este formulario (p. ej. restricciones puntuales). */
   excludedMethods?: ServicePaymentMethod[];
   disabled?: boolean;
   compact?: boolean;
