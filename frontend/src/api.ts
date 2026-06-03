@@ -313,6 +313,8 @@ export interface AdminClientWithHistory {
   subscription?: ClientSubscriptionInfo | null;
   /** Notas internas / recordatorios (solo panel admin). */
   adminNotes?: string | null;
+  /** Saldo cuenta corriente (ARS). Negativo = el cliente debe plata. */
+  accountBalanceArs?: number;
   /** Cuenta vinculada a Google (email no editable desde el panel). */
   hasGoogleAccount?: boolean;
   createdAt: string;
@@ -685,6 +687,7 @@ export const api = {
       depositExempt?: boolean;
       subscriptionPlanId?: string | null;
       adminNotes?: string | null;
+      accountBalanceArs?: number;
     }
   ) =>
     fetchApi<{ client: AdminClientWithHistory }>(

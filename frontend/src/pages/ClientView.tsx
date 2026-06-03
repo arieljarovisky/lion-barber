@@ -224,6 +224,7 @@ export default function ClientView() {
 
   const selectedServiceRow = services.find((s) => s.id === selectedService);
   const selectedServiceDuration = selectedServiceRow?.duration ?? 30;
+  const serviceSelected = Boolean(selectedService);
   const depositPreviewArs = useMemo(() => {
     if (!selectedServiceRow?.price || profile?.depositExempt) return null;
     const price = parseArsAmount(selectedServiceRow.price);
@@ -240,6 +241,13 @@ export default function ClientView() {
     () => filterPastSlotsForToday(availableSlots, selectedDate),
     [availableSlots, selectedDate, timeTick]
   );
+
+  useEffect(() => {
+    if (!selectedService) {
+      setSelectedBarber('');
+      setSelectedTime('');
+    }
+  }, [selectedService]);
 
   useEffect(() => {
     const todayStr = format(startOfToday(), 'yyyy-MM-dd');
@@ -861,8 +869,19 @@ export default function ClientView() {
                           <option key={s.id} value={s.id}>{s.name} - {s.price}</option>
                         ))}
                       </select>
+                      {!serviceSelected && (
+                        <p className="text-xs text-zinc-500 mt-1">
+                          Elegí un servicio para continuar con barbero, fecha y hora.
+                        </p>
+                      )}
                     </div>
 
+                    <div
+                      className={`md:col-span-2 space-y-6 transition-opacity ${
+                        serviceSelected ? '' : 'opacity-40 pointer-events-none select-none'
+                      }`}
+                      aria-disabled={!serviceSelected}
+                    >
                     {/* Barber Selection */}
                     <div className="space-y-2 md:col-span-2 min-w-0">
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
@@ -871,8 +890,9 @@ export default function ClientView() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
                         <button
                           type="button"
+                          disabled={!serviceSelected}
                           onClick={() => setSelectedBarber(ANY_BARBER_ID)}
-                          className={`flex items-center gap-2 sm:gap-3 p-3 rounded-xl border transition-all text-left min-w-0 ${
+                          className={`flex items-center gap-2 sm:gap-3 p-3 rounded-xl border transition-all text-left min-w-0 disabled:cursor-not-allowed ${
                             selectedBarber === ANY_BARBER_ID
                               ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.2)]'
                               : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
@@ -898,8 +918,9 @@ export default function ClientView() {
                           <button
                             key={b.id}
                             type="button"
+                            disabled={!serviceSelected}
                             onClick={() => setSelectedBarber(b.id)}
-                            className={`flex items-center gap-2 sm:gap-3 p-3 rounded-xl border transition-all text-left min-w-0 ${
+                            className={`flex items-center gap-2 sm:gap-3 p-3 rounded-xl border transition-all text-left min-w-0 disabled:cursor-not-allowed ${
                               selectedBarber === b.id
                                 ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.2)]'
                                 : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
@@ -932,16 +953,19 @@ export default function ClientView() {
                         <div className="absolute left-0 top-0 bottom-2 w-12 bg-gradient-to-r from-zinc-950 to-transparent z-10 pointer-events-none"></div>
                         <button 
                           type="button" 
+                          disabled={!serviceSelected}
                           onClick={() => scrollDates('left')} 
-                          className="absolute left-0 top-1/2 -translate-y-1/2 -mt-1 z-20 bg-zinc-800/80 hover:bg-[#e5c185] hover:text-black p-1.5 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all hidden md:block shadow-lg"
+                          className="absolute left-0 top-1/2 -translate-y-1/2 -mt-1 z-20 bg-zinc-800/80 hover:bg-[#e5c185] hover:text-black p-1.5 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all hidden md:block shadow-lg disabled:pointer-events-none"
                         >
                           <ChevronLeft size={20} />
                         </button>
 
                         <div 
                           ref={scrollContainerRef} 
-                          className={`flex gap-3 overflow-x-auto pb-2 hide-scrollbar w-full relative z-0 px-1 select-none ${isDragging ? 'cursor-grabbing' : 'snap-x cursor-grab'}`}
-                          onMouseDown={handleMouseDown}
+                          className={`flex gap-3 overflow-x-auto pb-2 hide-scrollbar w-full relative z-0 px-1 select-none ${
+                            !serviceSelected ? 'cursor-not-allowed' : isDragging ? 'cursor-grabbing' : 'snap-x cursor-grab'
+                          }`}
+                          onMouseDown={serviceSelected ? handleMouseDown : undefined}
                           onMouseLeave={handleMouseLeave}
                           onMouseUp={handleMouseUp}
                           onMouseMove={handleMouseMove}
@@ -954,8 +978,9 @@ export default function ClientView() {
                               <button
                                 key={dateStr}
                                 type="button"
-                                disabled={isPastDay}
+                                disabled={!serviceSelected || isPastDay}
                                 onClick={(e) => {
+                                  if (!serviceSelected) return;
                                   if (dragged) {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -988,8 +1013,10 @@ export default function ClientView() {
                           {/* Botón de Más Fechas */}
                           <button 
                             type="button"
-                            className="relative flex-shrink-0 w-16 sm:w-20 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 text-zinc-400 hover:border-[#e5c185] hover:bg-zinc-900 hover:text-[#e5c185] flex flex-col items-center justify-center transition-all snap-start cursor-pointer group/calendar overflow-hidden min-w-0"
+                            disabled={!serviceSelected}
+                            className="relative flex-shrink-0 w-16 sm:w-20 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 text-zinc-400 hover:border-[#e5c185] hover:bg-zinc-900 hover:text-[#e5c185] flex flex-col items-center justify-center transition-all snap-start cursor-pointer group/calendar overflow-hidden min-w-0 disabled:cursor-not-allowed disabled:opacity-50"
                             onClick={(e) => {
+                              if (!serviceSelected) return;
                               if (dragged) {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -1014,8 +1041,9 @@ export default function ClientView() {
                         <div className="absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-zinc-950 to-transparent z-10 pointer-events-none"></div>
                         <button 
                           type="button" 
+                          disabled={!serviceSelected}
                           onClick={() => scrollDates('right')} 
-                          className="absolute right-0 top-1/2 -translate-y-1/2 -mt-1 z-20 bg-zinc-800/80 hover:bg-[#e5c185] hover:text-black p-1.5 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all hidden md:block shadow-lg"
+                          className="absolute right-0 top-1/2 -translate-y-1/2 -mt-1 z-20 bg-zinc-800/80 hover:bg-[#e5c185] hover:text-black p-1.5 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all hidden md:block shadow-lg disabled:pointer-events-none"
                         >
                           <ChevronRight size={20} />
                         </button>
@@ -1032,7 +1060,11 @@ export default function ClientView() {
                           La barbería está cerrada ese día. Elegí otra fecha para ver horarios.
                         </p>
                       )}
-                      {!selectedBarber ? (
+                      {!serviceSelected ? (
+                        <p className="text-zinc-500 text-sm">
+                          Elegí un servicio para ver los horarios disponibles.
+                        </p>
+                      ) : !selectedBarber ? (
                         <p className="text-zinc-500 text-sm">
                           Elegí un barbero para ver los horarios disponibles.
                         </p>
@@ -1064,8 +1096,9 @@ export default function ClientView() {
                                 <button
                                   key={time}
                                   type="button"
+                                  disabled={!serviceSelected}
                                   onClick={() => setSelectedTime(time)}
-                                  className={`py-3 rounded-xl border text-sm font-bold transition-all flex items-center justify-center ${
+                                  className={`py-3 rounded-xl border text-sm font-bold transition-all flex items-center justify-center disabled:cursor-not-allowed ${
                                     isSelected
                                       ? 'bg-[#e5c185] border-[#e5c185] text-black shadow-[0_0_15px_rgba(229,193,133,0.3)]'
                                       : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-[#e5c185]/50 hover:text-zinc-200'
@@ -1080,6 +1113,7 @@ export default function ClientView() {
                       )}
                     </div>
 
+                    <div className="grid md:grid-cols-2 gap-6">
                     {/* Name Input */}
                     <div className="space-y-2 min-w-0">
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
@@ -1088,9 +1122,10 @@ export default function ClientView() {
                       <input 
                         type="text" 
                         placeholder="Ej. Juan Pérez"
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-white focus:ring-2 focus:ring-[#e5c185] focus:border-[#e5c185] outline-none transition-all placeholder:text-zinc-600"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-white focus:ring-2 focus:ring-[#e5c185] focus:border-[#e5c185] outline-none transition-all placeholder:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-60"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
+                        disabled={!serviceSelected}
                         required
                       />
                     </div>
@@ -1103,15 +1138,18 @@ export default function ClientView() {
                       <input 
                         type="tel" 
                         placeholder="Ej. 11 2345 6789"
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-white focus:ring-2 focus:ring-[#e5c185] focus:border-[#e5c185] outline-none transition-all placeholder:text-zinc-600"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-white focus:ring-2 focus:ring-[#e5c185] focus:border-[#e5c185] outline-none transition-all placeholder:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-60"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
+                        disabled={!serviceSelected}
                         required
                       />
                     </div>
+                    </div>
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 mt-4">
+                  <div className={`flex flex-col gap-3 mt-4 transition-opacity ${serviceSelected ? '' : 'opacity-40 pointer-events-none'}`}>
                     {depositPreviewArs != null && (
                       <p className="text-center text-sm text-zinc-400">
                         Seña online:{' '}
@@ -1125,6 +1163,7 @@ export default function ClientView() {
                       type="button"
                       onClick={handlePaySena}
                       disabled={
+                        !serviceSelected ||
                         senaCheckoutLoading ||
                         Boolean(profile?.subscription && profile.subscription.cutsRemaining <= 0)
                       }

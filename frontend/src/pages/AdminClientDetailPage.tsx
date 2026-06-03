@@ -21,7 +21,7 @@ import {
   formatAppointmentProductsSummary,
   sumAppointmentProducts,
 } from '../utils/appointmentProducts';
-import { formatArs } from '../utils/money';
+import { formatArs, parseSignedArsInput, clientAccountBalanceOwedArs } from '../utils/money';
 
 function clientPhones(client: AdminClientWithHistory): string[] {
   if (Array.isArray(client.phones) && client.phones.length > 0) return client.phones.filter((p) => p.trim().length > 0);
@@ -44,6 +44,7 @@ export default function AdminClientDetailPage() {
   const [formEmail, setFormEmail] = useState('');
   const [formPhones, setFormPhones] = useState('');
   const [formPoints, setFormPoints] = useState('0');
+  const [formAccountBalance, setFormAccountBalance] = useState('0');
   const [formNotes, setFormNotes] = useState('');
   const [formExempt, setFormExempt] = useState(false);
   const [formSubscriptionPlanId, setFormSubscriptionPlanId] = useState('');
@@ -104,6 +105,7 @@ export default function AdminClientDetailPage() {
     setFormEmail(isPlaceholderManualClientEmail(client.email) ? '' : client.email);
     setFormPhones(formatPhonesForInput(clientPhones(client)));
     setFormPoints(String(client.points));
+    setFormAccountBalance(String(client.accountBalanceArs ?? 0));
     setFormNotes(client.adminNotes ?? '');
     setFormExempt(Boolean(client.depositExempt));
     setFormSubscriptionPlanId(client.subscription?.planId ?? '');
@@ -145,6 +147,11 @@ export default function AdminClientDetailPage() {
       setError('Los puntos deben ser un número ≥ 0.');
       return;
     }
+    const balanceParsed = parseSignedArsInput(formAccountBalance);
+    if (balanceParsed === 'invalid') {
+      setError('El saldo de cuenta corriente no es válido.');
+      return;
+    }
 
     setSaving(true);
     setError('');
@@ -154,6 +161,7 @@ export default function AdminClientDetailPage() {
         name,
         phones: parsePhonesInput(formPhones),
         points: pts,
+        accountBalanceArs: balanceParsed,
         depositExempt: client.subscription ? undefined : formExempt,
         subscriptionPlanId: formSubscriptionPlanId || null,
         adminNotes: formNotes.trim() || null,
@@ -178,6 +186,7 @@ export default function AdminClientDetailPage() {
     formEmail,
     formPhones,
     formPoints,
+    formAccountBalance,
     formNotes,
     formExempt,
     formSubscriptionPlanId,
@@ -358,6 +367,28 @@ export default function AdminClientDetailPage() {
                   onChange={(e) => setFormPoints(e.target.value)}
                   className="w-32 rounded-xl border border-zinc-200 px-4 py-2.5 text-sm tabular-nums"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                  Saldo cuenta corriente (ARS)
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={formAccountBalance}
+                  onChange={(e) => setFormAccountBalance(e.target.value)}
+                  className="w-full max-w-xs rounded-xl border border-zinc-200 px-4 py-2.5 text-sm tabular-nums"
+                  placeholder="0 o -5000"
+                />
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Negativo = el cliente debe plata. Al agendar un turno, el panel avisa si hay deuda.
+                </p>
+                {clientAccountBalanceOwedArs(client?.accountBalanceArs) > 0 && (
+                  <p className="mt-2 text-sm font-semibold text-amber-800">
+                    Debe ${formatArs(clientAccountBalanceOwedArs(client?.accountBalanceArs))}
+                  </p>
+                )}
               </div>
 
               <div>

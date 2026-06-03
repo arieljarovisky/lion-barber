@@ -32,6 +32,45 @@ export function formatArs(n: number): string {
   return n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Parsea importe ARS con signo (negativo = debe plata). */
+export function parseSignedArsInput(raw: string): number | 'invalid' {
+  let t = raw.trim().replace(/\s/g, '');
+  if (!t || t === '-') return 0;
+  const neg = t.startsWith('-');
+  if (neg) t = t.slice(1);
+  if (!t) return 0;
+
+  const hasDot = t.includes('.');
+  const hasComma = t.includes(',');
+  let normalized = t;
+  if (hasDot && hasComma) {
+    normalized = t.replace(/\./g, '').replace(',', '.');
+  } else if (hasDot) {
+    const parts = t.split('.');
+    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+      normalized = t.replace(/\./g, '');
+    }
+  } else if (hasComma) {
+    const parts = t.split(',');
+    if (parts.length > 1 && parts[parts.length - 1].length === 3) {
+      normalized = t.replace(/,/g, '');
+    } else {
+      normalized = t.replace(',', '.');
+    }
+  }
+
+  const n = Number(normalized);
+  if (!Number.isFinite(n)) return 'invalid';
+  const signed = neg ? -n : n;
+  return Math.round(signed * 100) / 100;
+}
+
+/** Deuda del cliente según saldo (solo si el saldo es negativo). */
+export function clientAccountBalanceOwedArs(balance: number | null | undefined): number {
+  if (balance == null || !Number.isFinite(balance) || balance >= 0) return 0;
+  return Math.round(Math.abs(balance) * 100) / 100;
+}
+
 /** Misma lógica que el backend al crear la preferencia de seña en Mercado Pago. */
 export function calculateDepositAmountArs(servicePriceArs: number, depositPercent: number): number {
   const raw = (servicePriceArs * depositPercent) / 100;

@@ -56,7 +56,7 @@ import { api, ApiError, downloadDatabaseBackup } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barberAfip';
-import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
+import { formatArs, resolveAppointmentServiceAmountArs, clientAccountBalanceOwedArs } from '../utils/money';
 import { displayClientEmail } from '../utils/manualClientEmail';
 import { formatMonthYearEs } from '../utils/monotributoPeriod';
 import {
@@ -104,6 +104,29 @@ function adminClientPrimaryPhone(c: AdminClientWithHistory): string {
     .map((a) => (a.phone ?? '').trim())
     .find((p) => p.length > 0);
   return byHistory ?? '';
+}
+
+function resolveClientForNewAppointment(
+  adminClients: AdminClientWithHistory[],
+  linkedClientId: number | null,
+  name: string,
+  phone: string
+): AdminClientWithHistory | null {
+  if (linkedClientId != null) {
+    const byId = adminClients.find((c) => c.id === linkedClientId);
+    if (byId) return byId;
+  }
+  const nameNorm = name.trim().toLowerCase();
+  if (nameNorm) {
+    const byName = adminClients.filter((c) => c.name.trim().toLowerCase() === nameNorm);
+    if (byName.length === 1) return byName[0];
+  }
+  const phoneDigits = normalizePhoneDigits(phone);
+  if (phoneDigits.length >= 8) {
+    const byPhone = adminClients.filter((c) => adminClientMatchesPhoneDigits(c, phoneDigits));
+    if (byPhone.length === 1) return byPhone[0];
+  }
+  return null;
 }
 
 const TIME_SLOTS = [
@@ -1315,6 +1338,22 @@ export default function Dashboard() {
               setSaving(false);
               return;
             }
+          }
+        }
+
+        const matchedClient = canAccessDashboard
+          ? resolveClientForNewAppointment(adminClients, linkedClientId, nameForApp, phoneForApp)
+          : null;
+        const owedArs = clientAccountBalanceOwedArs(matchedClient?.accountBalanceArs);
+        if (owedArs > 0 && matchedClient) {
+          const proceed = await confirm({
+            title: 'Cliente con deuda',
+            message: `${matchedClient.name} debe $${formatArs(owedArs)} en cuenta corriente. ¿Agendar el turno igualmente?`,
+            confirmLabel: 'Agendar turno',
+          });
+          if (!proceed) {
+            setSaving(false);
+            return;
           }
         }
 
@@ -3815,6 +3854,17 @@ export default function Dashboard() {
                     </span>
                   </p>
                 )}
+                {canAccessDashboard && !editingAppointment && linkedClientId != null && (() => {
+                  const linked = adminClients.find((x) => x.id === linkedClientId);
+                  const owed = clientAccountBalanceOwedArs(linked?.accountBalanceArs);
+                  if (owed <= 0) return null;
+                  return (
+                    <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      Este cliente debe{' '}
+                      <strong className="tabular-nums">${formatArs(owed)}</strong> en cuenta corriente.
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">

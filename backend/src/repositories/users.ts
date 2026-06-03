@@ -43,6 +43,8 @@ export interface DbUser {
   subscription_plan_id?: string | null;
   subscription_period_start?: string | Date | null;
   subscription_cuts_used?: number;
+  /** Saldo cuenta corriente en ARS. Negativo = el cliente debe plata. */
+  account_balance_ars?: number | string | null;
   created_at: Date;
 }
 
@@ -53,6 +55,7 @@ export type UpdateAdminClientInput = {
   points?: number;
   depositExempt?: boolean;
   adminNotes?: string | null;
+  accountBalanceArs?: number;
 };
 
 export function isUserDepositExempt(u: Pick<DbUser, 'deposit_exempt'>): boolean {
@@ -90,6 +93,21 @@ function normalizeAdminNotes(raw: string | null | undefined): string | null {
   const t = String(raw).trim();
   if (!t) return null;
   return t.slice(0, 8000);
+}
+
+function normalizeAccountBalanceArs(raw: number): number {
+  if (!Number.isFinite(raw)) throw new Error('El saldo debe ser un número válido');
+  if (raw < -999_999_999.99 || raw > 999_999_999.99) {
+    throw new Error('El saldo está fuera del rango permitido');
+  }
+  return Math.round(raw * 100) / 100;
+}
+
+export function parseDbAccountBalanceArs(raw: unknown): number {
+  if (raw == null || raw === '') return 0;
+  const n = typeof raw === 'number' ? raw : Number(String(raw).replace(',', '.'));
+  if (!Number.isFinite(n)) return 0;
+  return normalizeAccountBalanceArs(n);
 }
 
 /** Actualiza ficha de cliente (panel admin). */
@@ -142,6 +160,15 @@ export async function updateAdminClientById(
   if (input.adminNotes !== undefined) {
     await query('UPDATE users SET admin_notes = ? WHERE id = ? AND role = ?', [
       normalizeAdminNotes(input.adminNotes),
+      userId,
+      'client',
+    ]);
+  }
+
+  if (input.accountBalanceArs !== undefined) {
+    const balance = normalizeAccountBalanceArs(Number(input.accountBalanceArs));
+    await query('UPDATE users SET account_balance_ars = ? WHERE id = ? AND role = ?', [
+      balance,
       userId,
       'client',
     ]);

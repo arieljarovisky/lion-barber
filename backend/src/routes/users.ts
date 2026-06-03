@@ -116,6 +116,7 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     depositExempt?: unknown;
     subscriptionPlanId?: unknown;
     adminNotes?: unknown;
+    accountBalanceArs?: unknown;
   };
 
   const patch: userRepo.UpdateAdminClientInput = {};
@@ -175,6 +176,16 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'adminNotes debe ser texto o null' });
     }
     patch.adminNotes = body.adminNotes === null ? null : body.adminNotes;
+  }
+  if (body.accountBalanceArs !== undefined) {
+    const raw =
+      typeof body.accountBalanceArs === 'number'
+        ? body.accountBalanceArs
+        : parseFloat(String(body.accountBalanceArs).trim().replace(',', '.'));
+    if (!Number.isFinite(raw)) {
+      return res.status(400).json({ error: 'accountBalanceArs debe ser un número' });
+    }
+    patch.accountBalanceArs = raw;
   }
 
   if (Object.keys(patch).length === 0 && subscriptionPlanIdPatch === undefined) {

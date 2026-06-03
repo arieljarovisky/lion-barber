@@ -1,6 +1,7 @@
 import type { Appointment } from '../types.js';
 import { dbDateTimeToIsoUtc } from '../dbDateTime.js';
 import type { DbUser } from '../repositories/users.js';
+import { parseDbAccountBalanceArs } from '../repositories/users.js';
 import {
   getClientSubscriptionStatus,
   isClientDepositExempt,
@@ -24,6 +25,7 @@ export async function toAdminClientPayload(
     depositExempt,
     subscription,
     adminNotes: user.admin_notes?.trim() ? user.admin_notes.trim() : null,
+    accountBalanceArs: parseDbAccountBalanceArs(user.account_balance_ars),
     hasGoogleAccount: Boolean(user.google_uid),
     createdAt: dbDateTimeToIsoUtc(user.created_at),
     appointments,

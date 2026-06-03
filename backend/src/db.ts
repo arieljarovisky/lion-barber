@@ -179,6 +179,13 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute(
+      'ALTER TABLE users ADD COLUMN account_balance_ars DECIMAL(12,2) NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS subscription_plans (
       id VARCHAR(50) PRIMARY KEY,
