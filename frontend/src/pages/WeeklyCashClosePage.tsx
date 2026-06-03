@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Printer, Wallet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Lock, Printer, Unlock, Wallet } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
-import { api } from '../api';
-import type { Appointment, Barber, Service } from '../api';
+import { api, ApiError } from '../api';
+import type { Appointment, Barber, DailyCashClose, Service } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { formatArs } from '../utils/money';
@@ -31,7 +32,8 @@ import type { CashExpense, FixedMonthlyExpense } from '../api';
 
 export default function WeeklyCashClosePage() {
   const navigate = useNavigate();
-  const [periodMode, setPeriodMode] = useState<CashClosePeriodMode>('week');
+  const { isSuperAdmin } = useAuth();
+  const [periodMode, setPeriodMode] = useState<CashClosePeriodMode>('day');
   const [periodAnchor, setPeriodAnchor] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -41,6 +43,9 @@ export default function WeeklyCashClosePage() {
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
   const [fixedExpenses, setFixedExpenses] = useState<FixedMonthlyExpense[]>([]);
   const [cashExpenses, setCashExpenses] = useState<CashExpense[]>([]);
+  const [dailyClose, setDailyClose] = useState<DailyCashClose | null>(null);
+  const [closingDay, setClosingDay] = useState(false);
+  const [closeActionError, setCloseActionError] = useState('');
 
   const { start, end, fromYmd, toYmd } = useMemo(
     () => periodBoundsFromAnchor(periodAnchor, periodMode),
@@ -107,6 +112,55 @@ export default function WeeklyCashClosePage() {
       cancelled = true;
     };
   }, [fromYmd, toYmd]);
+
+  useEffect(() => {
+    if (periodMode !== 'day') {
+      setDailyClose(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getDailyCashCloses(fromYmd, fromYmd)
+      .then((r) => {
+        if (!cancelled) setDailyClose(r.closes[0] ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setDailyClose(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [periodMode, fromYmd]);
+
+  const handleCloseDay = async () => {
+    if (!window.confirm(`¿Cerrar la caja del ${periodLabel}?\n\nDespués del cierre, solo super administradores podrán modificar turnos de ese día.`)) {
+      return;
+    }
+    setCloseActionError('');
+    setClosingDay(true);
+    try {
+      const { close } = await api.closeDailyCash(fromYmd);
+      setDailyClose(close);
+    } catch (e) {
+      setCloseActionError(e instanceof ApiError ? e.message : 'No se pudo cerrar el día');
+    } finally {
+      setClosingDay(false);
+    }
+  };
+
+  const handleReopenDay = async () => {
+    if (!window.confirm(`¿Reabrir la caja del ${periodLabel}?`)) return;
+    setCloseActionError('');
+    setClosingDay(true);
+    try {
+      await api.reopenDailyCash(fromYmd);
+      setDailyClose(null);
+    } catch (e) {
+      setCloseActionError(e instanceof ApiError ? e.message : 'No se pudo reabrir el día');
+    } finally {
+      setClosingDay(false);
+    }
+  };
 
   const { rows, byBarber, summary } = useMemo(
     () => buildWeeklyCashClose(appointments, services, barbers, DEPOSIT_PERCENT, start, end),
@@ -299,6 +353,29 @@ export default function WeeklyCashClosePage() {
                   aria-label="Elegir mes"
                 />
               ) : null}
+              {periodMode === 'day' && isSuperAdmin ? (
+                dailyClose ? (
+                  <button
+                    type="button"
+                    disabled={closingDay}
+                    onClick={() => void handleReopenDay()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    <Unlock size={16} />
+                    {closingDay ? 'Procesando…' : 'Reabrir día'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={closingDay || loading}
+                    onClick={() => void handleCloseDay()}
+                    className="inline-flex items-center gap-2 rounded-xl border border-emerald-400 bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    <Lock size={16} />
+                    {closingDay ? 'Cerrando…' : 'Cerrar caja del día'}
+                  </button>
+                )
+              ) : null}
               <button
                 type="button"
                 disabled={loading || exporting !== null}
@@ -333,6 +410,29 @@ export default function WeeklyCashClosePage() {
           {error && (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
+            </div>
+          )}
+          {closeActionError && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {closeActionError}
+            </div>
+          )}
+          {periodMode === 'day' && dailyClose && (
+            <div className="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              <p className="font-bold flex items-center gap-2">
+                <Lock size={16} />
+                Caja cerrada para este día
+              </p>
+              <p className="mt-1 text-emerald-800/90">
+                Cerrado por {dailyClose.closedByName ?? `usuario #${dailyClose.closedByUserId}`}. Solo super
+                administradores pueden modificar turnos o reabrir el día.
+              </p>
+            </div>
+          )}
+          {periodMode === 'day' && !dailyClose && isSuperAdmin && (
+            <div className="mb-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+              Día abierto: podés revisar los cobros y usar <strong>Cerrar caja del día</strong> cuando termines.
+              Después del cierre, el resto del equipo no podrá editar turnos de esta fecha.
             </div>
           )}
 

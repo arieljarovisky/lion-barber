@@ -26,6 +26,8 @@ import type { ServicePaymentSplit } from '../types.js';
 import { MAX_APPOINTMENT_PRODUCT_LINES } from '../appointmentProducts.js';
 import { getShopProductById } from '../repositories/shopProducts.js';
 import { parseArsAmount } from '../arsAmount.js';
+import { assertCanModifyAppointment, isSuperAdminUser } from '../services/appointmentModifyPermission.js';
+import { isDailyCashCloseDate } from '../repositories/dailyCashClose.js';
 
 function parseSplitsBodyField(raw: unknown): ServicePaymentSplit[] | null | undefined {
   if (raw === undefined) return undefined;
@@ -310,6 +312,13 @@ router.post('/', optionalAuth, async (req, res) => {
     if (isDateClosed(date, shop.closedDates)) {
       return res.status(400).json({ error: 'La barbería está cerrada en esa fecha.' });
     }
+    if (isStaffOrAdmin && u && !isSuperAdminUser(u)) {
+      if (await isDailyCashCloseDate(String(date))) {
+        return res.status(403).json({
+          error: 'El día ya fue cerrado. Solo un super administrador puede cargar turnos.',
+        });
+      }
+    }
     const created = await repo.createAppointment({
       name,
       phone: phoneTrim,
@@ -322,6 +331,7 @@ router.post('/', optionalAuth, async (req, res) => {
       userId: userId != null ? Number(userId) : undefined,
       depositPaid: Boolean(depositPaid),
       ...(durationMinutes != null ? { durationMinutes: Number(durationMinutes) } : {}),
+      ...(isStaffOrAdmin && u ? { createdByUserId: u.id } : {}),
     });
     if ((created.status ?? 'scheduled') === 'scheduled') {
       void notifyShopPhoneAppointmentCreated(created);
@@ -346,6 +356,11 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
       if (!bid || existing.barberId !== bid) {
         return res.status(403).json({ error: 'No autorizado' });
       }
+    }
+    try {
+      await assertCanModifyAppointment(authReq.user!, existing);
+    } catch (e) {
+      return res.status(403).json({ error: e instanceof Error ? e.message : 'No autorizado' });
     }
     const body = req.body as Record<string, unknown>;
     let payload: Partial<Appointment>;
@@ -431,7 +446,10 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
         }
       }
     }
-    const updated = await repo.updateAppointment(req.params.id, payload);
+    const updated = await repo.updateAppointment(req.params.id, {
+      ...payload,
+      updatedByUserId: authReq.user!.id,
+    });
     if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
     res.json(updated);
   } catch (err) {
@@ -451,6 +469,11 @@ router.delete('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
     if (!bid || existing.barberId !== bid) {
       return res.status(403).json({ error: 'No autorizado' });
     }
+  }
+  try {
+    await assertCanModifyAppointment(authReq.user!, existing);
+  } catch (e) {
+    return res.status(403).json({ error: e instanceof Error ? e.message : 'No autorizado' });
   }
   const ok = await repo.deleteAppointment(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Cita no encontrada' });

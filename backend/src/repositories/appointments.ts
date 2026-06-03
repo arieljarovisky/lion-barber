@@ -76,6 +76,8 @@ interface DbAppointment {
   tip_amount?: number | string | null;
   products?: string | unknown | null;
   subscription_cut_applied?: number;
+  created_by_user_id?: number | null;
+  updated_by_user_id?: number | null;
 }
 
 function parseAfipDetail(raw: string | null | undefined): AfipInvoiceDetail | undefined {
@@ -126,6 +128,8 @@ function rowToAppointment(row: DbAppointment): Appointment {
       row.tip_amount != null && Number.isFinite(Number(row.tip_amount))
         ? Math.round(Number(row.tip_amount) * 100) / 100
         : 0,
+    createdByUserId: row.created_by_user_id ?? undefined,
+    updatedByUserId: row.updated_by_user_id ?? undefined,
   };
 }
 
@@ -428,8 +432,8 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
   const paymentDueAt = data.paymentDueAt ?? null;
 
   const [res] = await pool.execute(
-    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, client_chose_any_barber, date, time, duration_minutes, deposit_paid, deposit_amount_ars, mercadopago_payment_id, status, payment_due_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, client_chose_any_barber, date, time, duration_minutes, deposit_paid, deposit_amount_ars, mercadopago_payment_id, status, payment_due_at, created_by_user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.userId ?? null,
       data.name,
@@ -447,6 +451,7 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
       mpId,
       status,
       paymentDueAt,
+      data.createdByUserId ?? null,
     ]
   );
   const insertId = (res as { insertId: number }).insertId;
@@ -558,7 +563,7 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
   }
 
   await query(
-    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?, tip_amount = ?, products = ?
+    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?, tip_amount = ?, products = ?, updated_by_user_id = ?
      WHERE id = ?`,
     [
       updated.name,
@@ -577,6 +582,7 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
       splitsJson,
       tipAmount,
       productsJson,
+      data.updatedByUserId ?? null,
       id,
     ]
   );

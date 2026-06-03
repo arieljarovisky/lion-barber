@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { ServicePaymentMethod, ServicePaymentSplit } from '../api';
 import {
@@ -38,6 +39,9 @@ export default function ServicePaymentSplitsEditor({
   disabled,
   compact,
 }: Props) {
+  /** Texto en curso por método (permite escribir "-" antes del número en cuenta corriente). */
+  const [amountDrafts, setAmountDrafts] = useState<Partial<Record<ServicePaymentMethod, string>>>({});
+
   const total = sumServicePaymentSplits(splits);
   const expected = expectedLocalAmount ?? 0;
   const diff = expected > 0 ? total - expected : 0;
@@ -58,7 +62,30 @@ export default function ServicePaymentSplitsEditor({
   };
 
   const removeRow = (index: number) => {
+    const method = splits[index]?.method;
+    if (method) {
+      setAmountDrafts((d) => {
+        const next = { ...d };
+        delete next[method];
+        return next;
+      });
+    }
     onChange(splits.filter((_, i) => i !== index));
+  };
+
+  const amountDisplay = (row: ServicePaymentSplit) => {
+    const draft = amountDrafts[row.method];
+    if (draft !== undefined) return draft;
+    return row.amount !== 0 ? String(row.amount) : '';
+  };
+
+  const clearAmountDraft = (method: ServicePaymentMethod) => {
+    setAmountDrafts((d) => {
+      if (!(method in d)) return d;
+      const next = { ...d };
+      delete next[method];
+      return next;
+    });
   };
 
   const rowClass = compact
@@ -82,6 +109,8 @@ export default function ServicePaymentSplitsEditor({
                 const method = e.target.value as ServicePaymentMethod;
                 const amount =
                   method !== 'account' && row.amount < 0 ? 0 : row.amount;
+                clearAmountDraft(row.method);
+                clearAmountDraft(method);
                 updateRow(index, { method, amount });
               }}
               className={
@@ -107,9 +136,14 @@ export default function ServicePaymentSplitsEditor({
                 type="text"
                 inputMode="decimal"
                 disabled={disabled}
-                value={row.amount !== 0 ? String(row.amount) : ''}
+                value={amountDisplay(row)}
                 onChange={(e) => {
-                  const raw = e.target.value.trim();
+                  let input = e.target.value;
+                  if (row.method !== 'account') {
+                    input = input.replace(/-/g, '');
+                  }
+                  setAmountDrafts((d) => ({ ...d, [row.method]: input }));
+                  const raw = input.trim();
                   if (!raw || raw === '-') {
                     updateRow(index, { amount: 0 });
                     return;
@@ -123,6 +157,7 @@ export default function ServicePaymentSplitsEditor({
                   const n = Math.max(0, Math.round(Number(raw.replace(',', '.')) || 0));
                   updateRow(index, { amount: n });
                 }}
+                onBlur={() => clearAmountDraft(row.method)}
                 onWheel={(e) => e.currentTarget.blur()}
                 placeholder={row.method === 'account' ? '0 o -5000' : '0'}
                 className={

@@ -85,6 +85,7 @@ import {
   initialSplitsFromAppointment,
 } from '../utils/servicePaymentMethod';
 import { formatAppointmentProductsSummary, sumAppointmentProducts } from '../utils/appointmentProducts';
+import { appointmentModifyBlockedReason } from '../utils/appointmentModifyPermission';
 function normalizePhoneDigits(phone: string): string {
   return phone.replace(/\D/g, '');
 }
@@ -350,6 +351,7 @@ export default function Dashboard() {
     tipAmount: '',
   });
   const [paymentSplitsModalApp, setPaymentSplitsModalApp] = useState<Appointment | null>(null);
+  const [closedDateSet, setClosedDateSet] = useState<Set<string>>(() => new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   /** Solo admin — modal nueva cita: '' | 'new' | id de cliente */
@@ -713,6 +715,8 @@ export default function Dashboard() {
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 });
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  const weekFromYmd = format(weekStart, 'yyyy-MM-dd');
+  const weekToYmd = format(weekEnd, 'yyyy-MM-dd');
   const selectedDayHours = shopWeekdayHours[getIsoWeekday(selectedDate)] ?? { openTime: '10:00', closeTime: shopCloseTime };
   const agendaTimeSlots = useMemo(
     () => buildTimeSlotsInRange(selectedDayHours.openTime, selectedDayHours.closeTime),
@@ -767,6 +771,23 @@ export default function Dashboard() {
       if (!opts?.silent) setLoading(false);
     }
   }, [dateStr, selectedBarberId, isWeekView, profile?.role, profile?.barberId, notifyBarberForPaidAppointments]);
+
+  useEffect(() => {
+    const from = isWeekView ? weekFromYmd : dateStr;
+    const to = isWeekView ? weekToYmd : dateStr;
+    let cancelled = false;
+    api
+      .getDailyCashCloses(from, to)
+      .then((r) => {
+        if (!cancelled) setClosedDateSet(new Set(r.closes.map((c) => c.date)));
+      })
+      .catch(() => {
+        if (!cancelled) setClosedDateSet(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dateStr, isWeekView, weekFromYmd, weekToYmd]);
 
   useEffect(() => {
     loadData();
@@ -1130,6 +1151,10 @@ export default function Dashboard() {
   );
 
   const openCreateModal = () => {
+    if (!isSuperAdmin && closedDateSet.has(dateStr)) {
+      showToast('Día cerrado: solo super admin puede cargar turnos.', 'error');
+      return;
+    }
     setEditingAppointment(null);
     setLinkedClientId(null);
     setNewClientEmail('');
@@ -1150,6 +1175,10 @@ export default function Dashboard() {
 
   /** Nuevo turno en fecha/hora concretas (clic en hueco libre del calendario). */
   const openCreateModalForSlot = (slotDateStr: string, slotTime: string, explicitBarberId?: string) => {
+    if (!isSuperAdmin && closedDateSet.has(slotDateStr)) {
+      showToast('Día cerrado: solo super admin puede cargar turnos.', 'error');
+      return;
+    }
     setEditingAppointment(null);
     setLinkedClientId(null);
     setNewClientEmail('');
@@ -1196,6 +1225,42 @@ export default function Dashboard() {
     setModalOpen(true);
   };
 
+  const getAppointmentModifyBlockedReason = useCallback(
+    (app: Appointment) =>
+      appointmentModifyBlockedReason(app, profile?.id, isSuperAdmin, closedDateSet),
+    [profile?.id, isSuperAdmin, closedDateSet]
+  );
+
+  const tryOpenEditModal = (app: Appointment) => {
+    const reason = getAppointmentModifyBlockedReason(app);
+    if (reason) {
+      showToast(reason, 'error');
+      return;
+    }
+    openEditModal(app);
+  };
+
+  const tryOpenPaymentSplits = (app: Appointment) => {
+    const reason = getAppointmentModifyBlockedReason(app);
+    if (reason) {
+      showToast(reason, 'error');
+      return;
+    }
+    setPaymentSplitsModalApp(app);
+  };
+
+  const tryDeleteAppointment = async (id: string) => {
+    const app = appointments.find((a) => a.id === id);
+    if (app) {
+      const reason = getAppointmentModifyBlockedReason(app);
+      if (reason) {
+        showToast(reason, 'error');
+        return;
+      }
+    }
+    await handleDelete(id);
+  };
+
   const patchAppointmentInState = useCallback((updated: Appointment) => {
     setAppointments((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
   }, []);
@@ -1216,12 +1281,13 @@ export default function Dashboard() {
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          setPaymentSplitsModalApp(app);
+          tryOpenPaymentSplits(app);
         }}
+        disabled={Boolean(getAppointmentModifyBlockedReason(app))}
         className={
           compact
-            ? 'mt-1.5 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-left hover:border-[#e5c185] hover:bg-amber-50/80'
-            : 'w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-left hover:border-[#e5c185] hover:bg-amber-50/80'
+            ? `mt-1.5 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-left hover:border-[#e5c185] hover:bg-amber-50/80 disabled:cursor-not-allowed disabled:opacity-50`
+            : `w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-left hover:border-[#e5c185] hover:bg-amber-50/80 disabled:cursor-not-allowed disabled:opacity-50`
         }
         title={label}
       >
@@ -1271,6 +1337,12 @@ export default function Dashboard() {
     const barber = barbers.find((b) => b.id === effectiveBarberId);
     try {
       if (editingAppointment) {
+        const blocked = getAppointmentModifyBlockedReason(editingAppointment);
+        if (blocked) {
+          setError(blocked);
+          setSaving(false);
+          return;
+        }
         const tipRaw = form.tipAmount.trim().replace(',', '.');
         let tipAmount = 0;
         if (tipRaw !== '') {
@@ -1301,6 +1373,11 @@ export default function Dashboard() {
 
         if (!nameForApp) {
           setError('El nombre es obligatorio.');
+          setSaving(false);
+          return;
+        }
+        if (!isSuperAdmin && closedDateSet.has(form.date)) {
+          setError('Día cerrado: solo super admin puede cargar turnos.');
           setSaving(false);
           return;
         }
@@ -1389,8 +1466,8 @@ export default function Dashboard() {
     try {
       await api.deleteAppointment(id);
       loadData();
-    } catch {
-      setError('Error al eliminar');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Error al eliminar');
     }
   };
 
@@ -1914,6 +1991,23 @@ export default function Dashboard() {
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{serviceError}</div>
         )}
 
+        {view === 'agenda' && !isWeekView && closedDateSet.has(dateStr) && (
+          <div className="mb-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <p className="font-bold">Caja cerrada para este día</p>
+            <p className="mt-1 text-emerald-800/90">
+              {isSuperAdmin
+                ? 'Podés seguir modificando turnos. El resto del equipo no puede editar cobros ni turnos de esta fecha.'
+                : 'No podés editar turnos ni cobros de este día. Contactá a un super administrador si hace falta un cambio.'}
+            </p>
+          </div>
+        )}
+
+        {view === 'agenda' && isWeekView && closedDateSet.size > 0 && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Hay {closedDateSet.size} día(s) cerrados en esta semana. Los turnos de esas fechas solo los modifica un super admin.
+          </div>
+        )}
+
         {view === 'agenda' && (
         <>
         {!isSingleBarberDayView && (
@@ -2121,7 +2215,7 @@ export default function Dashboard() {
                                     })()}
                                     <button
                                       type="button"
-                                      onClick={() => openEditModal(app)}
+                                      onClick={() => tryOpenEditModal(app)}
                                       className="p-1.5 text-zinc-500 hover:text-amber-700 hover:bg-amber-100 rounded-lg transition-colors"
                                       title="Editar"
                                     >
@@ -2129,7 +2223,7 @@ export default function Dashboard() {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => handleDelete(app.id)}
+                                      onClick={() => void tryDeleteAppointment(app.id)}
                                       className="p-1.5 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                       title="Eliminar"
                                     >
@@ -2300,7 +2394,7 @@ export default function Dashboard() {
                                     })()}
                                     <button
                                       type="button"
-                                      onClick={() => openEditModal(app)}
+                                      onClick={() => tryOpenEditModal(app)}
                                       className="p-2 text-zinc-500 hover:text-amber-800 hover:bg-amber-100 rounded-lg transition-colors"
                                       title="Editar"
                                     >
@@ -2308,7 +2402,7 @@ export default function Dashboard() {
                                     </button>
                                     <button
                                       type="button"
-                                      onClick={() => handleDelete(app.id)}
+                                      onClick={() => void tryDeleteAppointment(app.id)}
                                       className="p-2 text-zinc-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                       title="Eliminar"
                                     >
@@ -2428,7 +2522,7 @@ export default function Dashboard() {
                                   })()}
                                   <button
                                     type="button"
-                                    onClick={() => openEditModal(app)}
+                                    onClick={() => tryOpenEditModal(app)}
                                     className="p-1.5 text-zinc-400 hover:text-[#e5c185] hover:bg-amber-50 rounded-lg transition-colors"
                                     title="Editar"
                                   >
@@ -2436,7 +2530,7 @@ export default function Dashboard() {
                                   </button>
                                   <button
                                     type="button"
-                                    onClick={() => handleDelete(app.id)}
+                                    onClick={() => void tryDeleteAppointment(app.id)}
                                     className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                     title="Eliminar"
                                   >
@@ -2578,7 +2672,7 @@ export default function Dashboard() {
                       ) : null}
                       <button
                         type="button"
-                        onClick={() => openEditModal(app)}
+                        onClick={() => tryOpenEditModal(app)}
                         className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-amber-800 hover:bg-amber-50"
                         title="Editar"
                       >
@@ -2586,7 +2680,7 @@ export default function Dashboard() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(app.id)}
+                        onClick={() => void tryDeleteAppointment(app.id)}
                         className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-red-600 hover:bg-red-50"
                         title="Eliminar"
                       >
@@ -2705,7 +2799,7 @@ export default function Dashboard() {
                       )}
                       <button
                         type="button"
-                        onClick={() => openEditModal(app)}
+                        onClick={() => tryOpenEditModal(app)}
                         title="Editar turno"
                         className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-amber-800 hover:bg-amber-50 transition-colors"
                       >
@@ -2713,7 +2807,7 @@ export default function Dashboard() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(app.id)}
+                        onClick={() => void tryDeleteAppointment(app.id)}
                         title="Eliminar turno"
                         className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
                       >

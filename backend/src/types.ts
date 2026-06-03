@@ -64,6 +64,17 @@ export interface Appointment {
   subscriptionCutApplied?: boolean;
   /** Propina en ARS; no se incluye en factura AFIP. */
   tipAmount?: number;
+  /** Usuario del panel que cargó el turno (staff/admin). */
+  createdByUserId?: number;
+  /** Último usuario del panel que modificó el turno. */
+  updatedByUserId?: number;
+}
+
+export interface DailyCashClose {
+  date: string;
+  closedAt: string;
+  closedByUserId: number;
+  closedByName?: string;
 }
 
 export interface SubscriptionPlan {

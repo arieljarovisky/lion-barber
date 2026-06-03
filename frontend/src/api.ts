@@ -130,6 +130,17 @@ export interface Appointment {
   products?: AppointmentProductLine[] | null;
   /** Propina en ARS; no se factura con AFIP. */
   tipAmount?: number;
+  /** Usuario del panel que cargó el turno. */
+  createdByUserId?: number;
+  /** Último usuario del panel que modificó el turno. */
+  updatedByUserId?: number;
+}
+
+export interface DailyCashClose {
+  date: string;
+  closedAt: string;
+  closedByUserId: number;
+  closedByName?: string;
 }
 
 export interface AfipInvoiceDetail {
@@ -744,6 +755,20 @@ export const api = {
 
   deleteCashExpense: (id: number) =>
     fetchApi<void>(`/api/expenses/cash/${id}`, { method: 'DELETE' }),
+
+  getDailyCashCloses: (fromYmd: string, toYmd: string) =>
+    fetchApi<{ closes: DailyCashClose[] }>(
+      `/api/cash-close/daily?from=${encodeURIComponent(fromYmd)}&to=${encodeURIComponent(toYmd)}`
+    ),
+
+  closeDailyCash: (date: string) =>
+    fetchApi<{ close: DailyCashClose }>('/api/cash-close/daily', {
+      method: 'POST',
+      body: JSON.stringify({ date }),
+    }),
+
+  reopenDailyCash: (date: string) =>
+    fetchApi<void>(`/api/cash-close/daily/${encodeURIComponent(date)}`, { method: 'DELETE' }),
 
   getSubscriptionPlans: () =>
     fetchApi<{ plans: SubscriptionPlan[] }>('/api/subscription-plans'),

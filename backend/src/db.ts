@@ -186,6 +186,24 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN created_by_user_id INT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN updated_by_user_id INT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS daily_cash_closes (
+      close_date DATE NOT NULL PRIMARY KEY,
+      closed_by_user_id INT NOT NULL,
+      closed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_daily_cash_close_user (closed_by_user_id)
+    )
+  `);
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS subscription_plans (
       id VARCHAR(50) PRIMARY KEY,
