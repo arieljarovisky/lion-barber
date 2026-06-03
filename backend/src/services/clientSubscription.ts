@@ -1,5 +1,6 @@
 import pool, { query } from '../db.js';
 import type { DbUser } from '../repositories/users.js';
+import type { Appointment, ServicePaymentSplit } from '../types.js';
 import {
   getSubscriptionPlanById,
   type SubscriptionPlan,
@@ -197,24 +198,52 @@ export async function assertClientCanBookWithSubscription(userId: number): Promi
   }
 }
 
-/** Al confirmar un turno (scheduled), descuenta un corte del abono si corresponde. */
-export async function onAppointmentConfirmed(appointment: {
+function splitsUseSubscription(splits: ServicePaymentSplit[] | null | undefined): boolean {
+  return Boolean(splits?.some((s) => s.method === 'subscription' && s.amount > 0));
+}
+
+/**
+ * Descuenta o devuelve un corte del abono según si el cobro usa método «Abono».
+ * Debe ejecutarse antes de persistir servicePaymentSplits.
+ */
+export async function syncSubscriptionCutWithPayment(
+  appointment: Appointment,
+  newSplits: ServicePaymentSplit[] | null | undefined
+): Promise<void> {
+  const wasApplied = Boolean(appointment.subscriptionCutApplied);
+  const usesNow = splitsUseSubscription(newSplits);
+
+  if (usesNow && !wasApplied) {
+    const uid = appointment.userId;
+    if (uid == null || !Number.isFinite(Number(uid))) {
+      throw new Error('Vinculá el turno al cliente para cobrar con abono.');
+    }
+    const consumed = await tryConsumeSubscriptionCut(Number(uid));
+    if (!consumed) {
+      throw new Error('El abono no tiene cortes disponibles este mes.');
+    }
+    await query('UPDATE appointments SET subscription_cut_applied = 1 WHERE id = ?', [
+      appointment.id,
+    ]);
+  } else if (!usesNow && wasApplied) {
+    const uid = appointment.userId;
+    if (uid != null && Number.isFinite(Number(uid))) {
+      await restoreSubscriptionCut(Number(uid));
+    }
+    await query('UPDATE appointments SET subscription_cut_applied = 0 WHERE id = ?', [
+      appointment.id,
+    ]);
+  }
+}
+
+/** Reservado para efectos al confirmar; el corte se descuenta al cobrar con método Abono. */
+export async function onAppointmentConfirmed(_appointment: {
   id: string;
   userId?: number;
   status?: string;
   subscriptionCutApplied?: boolean;
 }): Promise<void> {
-  const uid = appointment.userId;
-  if (uid == null || !Number.isFinite(Number(uid))) return;
-  if ((appointment.status ?? 'scheduled') !== 'scheduled') return;
-  if (appointment.subscriptionCutApplied) return;
-
-  const consumed = await tryConsumeSubscriptionCut(Number(uid));
-  if (consumed) {
-    await query('UPDATE appointments SET subscription_cut_applied = 1 WHERE id = ?', [
-      appointment.id,
-    ]);
-  }
+  /* sin consumo automático */
 }
 
 /** Al cancelar un turno que había consumido un corte, lo devuelve al cupo mensual. */

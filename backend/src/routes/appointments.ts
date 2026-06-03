@@ -28,6 +28,7 @@ import { getShopProductById } from '../repositories/shopProducts.js';
 import { parseArsAmount } from '../arsAmount.js';
 import { assertCanModifyAppointment, isSuperAdminUser } from '../services/appointmentModifyPermission.js';
 import { isDailyCashCloseDate } from '../repositories/dailyCashClose.js';
+import { syncSubscriptionCutWithPayment } from '../services/clientSubscription.js';
 
 function parseSplitsBodyField(raw: unknown): ServicePaymentSplit[] | null | undefined {
   if (raw === undefined) return undefined;
@@ -379,6 +380,12 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
         if (body.servicePaymentSplits != null && parsed === null && !Array.isArray(body.servicePaymentSplits)) {
           return res.status(400).json({ error: 'Cobros por método no válidos' });
         }
+        try {
+          await syncSubscriptionCutWithPayment(existing, parsed ?? null);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'No se pudo aplicar el abono';
+          return res.status(400).json({ error: msg });
+        }
         payload.servicePaymentSplits = parsed ?? null;
       }
       if ('servicePaymentMethod' in body) {
@@ -424,6 +431,12 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
         ) {
           return res.status(400).json({ error: 'Cobros por método no válidos' });
         }
+        try {
+          await syncSubscriptionCutWithPayment(existing, parsed ?? null);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'No se pudo aplicar el abono';
+          return res.status(400).json({ error: msg });
+        }
         payload.servicePaymentSplits = parsed ?? null;
       }
       if ('servicePaymentMethod' in body) {
@@ -451,7 +464,9 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
       updatedByUserId: authReq.user!.id,
     });
     if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
-    res.json(updated);
+    const refreshed =
+      'servicePaymentSplits' in body ? await repo.getAppointmentById(req.params.id) : null;
+    res.json(refreshed ?? updated);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Error al actualizar';
     const code = /ocupado|solapa/i.test(msg) ? 409 : 500;

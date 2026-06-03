@@ -22,7 +22,6 @@ import {
 import { findUserById } from '../repositories/users.js';
 import { DEPOSIT_PERCENT } from '../constants/deposit.js';
 import {
-  assertClientCanBookWithSubscription,
   isClientDepositExempt,
 } from '../services/clientSubscription.js';
 import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
@@ -389,13 +388,6 @@ router.post('/sena', async (req, res) => {
     return res.status(409).json({ error: msg });
   }
 
-  try {
-    await assertClientCanBookWithSubscription(uid);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'No podés reservar con el abono actual';
-    return res.status(400).json({ error: msg });
-  }
-
   /** Atajo: si el cliente está exento de seña (manual o abono), confirmamos sin Mercado Pago. */
   const requesterUser = await findUserById(uid);
   if (requesterUser && (await isClientDepositExempt(uid))) {
@@ -544,13 +536,6 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
 
     const durationMinutes =
       app.durationMinutes ?? (await repo.resolveDurationMinutes(app.serviceId, app.service));
-
-    try {
-      await assertClientCanBookWithSubscription(authReq.user!.id);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'No podés reservar con el abono actual';
-      return res.status(400).json({ error: msg });
-    }
 
     /** Atajo: si el cliente está exento de seña (manual o abono), confirmamos sin Mercado Pago. */
     const requesterUser = await findUserById(authReq.user!.id);

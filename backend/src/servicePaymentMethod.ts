@@ -1,5 +1,5 @@
 /** Cómo se cobró el servicio (saldo en local o total si no hubo seña). */
-export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card';
+export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card' | 'subscription';
 
 export interface ServicePaymentSplit {
   method: ServicePaymentMethod;
@@ -12,6 +12,7 @@ export const SERVICE_PAYMENT_METHODS: ServicePaymentMethod[] = [
   'mercadopago',
   'cash',
   'card',
+  'subscription',
 ];
 
 export const MAX_SERVICE_PAYMENT_SPLITS = 8;
@@ -62,4 +63,5 @@ export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string>
   mercadopago: 'Mercado Pago',
   cash: 'Efectivo',
   card: 'Tarjeta',
+  subscription: 'Abono',
 };

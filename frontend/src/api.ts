@@ -73,7 +73,7 @@ export const ANY_BARBER_ID = '__any__';
 
 export type AppointmentStatus = 'scheduled' | 'pending_payment' | 'cancelled';
 
-export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card';
+export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card' | 'subscription';
 
 export interface ServicePaymentSplit {
   method: ServicePaymentMethod;
@@ -134,6 +134,8 @@ export interface Appointment {
   createdByUserId?: number;
   /** Último usuario del panel que modificó el turno. */
   updatedByUserId?: number;
+  /** Si se descontó un corte del abono mensual al cobrar con método Abono. */
+  subscriptionCutApplied?: boolean;
 }
 
 export interface DailyCashClose {

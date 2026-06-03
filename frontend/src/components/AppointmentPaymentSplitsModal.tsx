@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { api, ApiError } from '../api';
-import type { Appointment, AppointmentProductLine, Service, ServicePaymentSplit, ShopProduct } from '../api';
+import type { Appointment, AppointmentProductLine, ClientSubscriptionInfo, Service, ServicePaymentSplit, ShopProduct } from '../api';
 import ServicePaymentSplitsEditor from './ServicePaymentSplitsEditor';
 import {
   appointmentDepositAmountArs,
+  appointmentLocalPendingArs,
   appointmentSplitsTargetArs,
+  buildSubscriptionPrefillSplits,
   cleanServicePaymentSplits,
   formatAppointmentPaymentDisplay,
   initialSplitsFromAppointment,
@@ -58,8 +60,28 @@ export default function AppointmentPaymentSplitsModal({
   const [pickProductId, setPickProductId] = useState('');
   const [pickQty, setPickQty] = useState('1');
   const [productsError, setProductsError] = useState('');
+  const [clientSubscription, setClientSubscription] = useState<ClientSubscriptionInfo | null>(null);
   /** Subtotal vigente de productos: lo usamos para repartir el delta (agregar/quitar) entre los cobros. */
   const productsSubtotalRef = useRef(0);
+
+  useEffect(() => {
+    if (!app?.userId) {
+      setClientSubscription(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getAdminClient(app.userId)
+      .then((r) => {
+        if (!cancelled) setClientSubscription(r.client.subscription ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setClientSubscription(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [app?.userId]);
 
   useEffect(() => {
     if (!app) return;
@@ -68,11 +90,19 @@ export default function AppointmentPaymentSplitsModal({
     const productsTotal = sumAppointmentProducts(initialProducts);
     setProductLines(initialProducts);
     productsSubtotalRef.current = productsTotal;
-    setSplits(initialSplitsFromAppointment(app, services, depositPercent, productsTotal));
+    setSplits(
+      initialSplitsFromAppointment(
+        app,
+        services,
+        depositPercent,
+        productsTotal,
+        clientSubscription
+      )
+    );
     setPickProductId('');
     setPickQty('1');
     setProductsError('');
-  }, [app, services, depositPercent]);
+  }, [app, services, depositPercent, clientSubscription]);
 
   /**
    * Al cambiar productos, ajustamos el primer cobro para que el total cobrado refleje
@@ -89,11 +119,29 @@ export default function AppointmentPaymentSplitsModal({
       const target = appointmentSplitsTargetArs(app, services, depositPercent, newSubtotal);
       if (prev.length === 0) {
         if (target <= 0) return prev;
+        if (clientSubscription && clientSubscription.cutsRemaining > 0 && app.userId != null) {
+          return buildSubscriptionPrefillSplits(app, services, depositPercent, newSubtotal);
+        }
         const method =
           app.servicePaymentMethod && app.servicePaymentMethod !== 'mercadopago'
             ? app.servicePaymentMethod
             : 'cash';
         return [{ method, amount: target }];
+      }
+      const hasSubscription = prev.some((s) => s.method === 'subscription');
+      if (hasSubscription) {
+        const productMethod = prev.find((s) => s.method !== 'subscription')?.method ?? 'cash';
+        const servicePart = appointmentLocalPendingArs(app, services, depositPercent);
+        const next: ServicePaymentSplit[] = [];
+        if (servicePart > 0) next.push({ method: 'subscription', amount: servicePart });
+        if (newSubtotal > 0) next.push({ method: productMethod, amount: newSubtotal });
+        return normalizeAppointmentPaymentSplits(
+          next,
+          app,
+          services,
+          depositPercent,
+          newSubtotal
+        );
       }
       const next = prev.map((s, i) => {
         if (i !== 0) return s;
@@ -110,7 +158,7 @@ export default function AppointmentPaymentSplitsModal({
         newSubtotal
       );
     });
-  }, [productLines, app, services, depositPercent]);
+  }, [productLines, app, services, depositPercent, clientSubscription]);
 
   useEffect(() => {
     if (!app) return;
@@ -279,6 +327,37 @@ export default function AppointmentPaymentSplitsModal({
                 </p>
               </div>
             )}
+            {clientSubscription && (
+              <div
+                className={`mb-3 rounded-xl border px-3 py-2.5 ${
+                  clientSubscription.cutsRemaining > 0
+                    ? 'border-amber-200 bg-amber-50'
+                    : 'border-red-200 bg-red-50'
+                }`}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-700">
+                  Abono · {clientSubscription.planName}
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-zinc-900">
+                  {clientSubscription.cutsRemaining > 0
+                    ? `${clientSubscription.cutsRemaining} corte${clientSubscription.cutsRemaining === 1 ? '' : 's'} disponible${clientSubscription.cutsRemaining === 1 ? '' : 's'} este mes`
+                    : 'Sin cortes disponibles este mes'}
+                  <span className="ml-1 text-xs font-normal text-zinc-500">
+                    ({clientSubscription.cutsUsed}/{clientSubscription.cutsPerMonth} usados)
+                  </span>
+                </p>
+                {clientSubscription.cutsRemaining > 0 && (
+                  <p className="mt-1 text-[11px] text-zinc-600">
+                    Al guardar con forma de pago «Abono» se descuenta un corte del cupo mensual.
+                  </p>
+                )}
+              </div>
+            )}
+            {!app.userId && (
+              <p className="mb-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Vinculá este turno a un cliente registrado para poder cobrar con abono.
+              </p>
+            )}
             <ServicePaymentSplitsEditor
               splits={splits}
               onChange={setSplits}
@@ -287,8 +366,8 @@ export default function AppointmentPaymentSplitsModal({
             />
             <p className="text-xs text-zinc-500 mt-1">
               {depositAmount > 0
-                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago u otro método. En cuenta corriente podés usar un monto negativo si debe.'
-                : 'Podés combinar métodos. En cuenta corriente, un monto negativo registra deuda del cliente.'}
+                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago, abono u otro método. En cuenta corriente podés usar un monto negativo si debe.'
+                : 'Podés combinar métodos (incluido Abono si el cliente tiene cupo). En cuenta corriente, un monto negativo registra deuda del cliente.'}
             </p>
           </div>
 

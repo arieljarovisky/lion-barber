@@ -1,4 +1,4 @@
-import type { Appointment, Service, ServicePaymentMethod, ServicePaymentSplit } from '../api';
+import type { Appointment, ClientSubscriptionInfo, Service, ServicePaymentMethod, ServicePaymentSplit } from '../api';
 import {
   resolveAppointmentDepositAmountArs,
   resolveAppointmentServiceAmountArs,
@@ -11,6 +11,7 @@ export const SERVICE_PAYMENT_METHODS: ServicePaymentMethod[] = [
   'mercadopago',
   'cash',
   'card',
+  'subscription',
 ];
 
 export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string> = {
@@ -18,6 +19,7 @@ export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string>
   mercadopago: 'Mercado Pago',
   cash: 'Efectivo',
   card: 'Tarjeta',
+  subscription: 'Abono',
 };
 
 export function formatServicePaymentMethod(
@@ -137,11 +139,26 @@ export function normalizeAppointmentPaymentSplits(
   return out.filter((s) => isValidSplitAmount(s.method, s.amount));
 }
 
+/** Prefill de cobro con abono: servicio en Abono, productos aparte. */
+export function buildSubscriptionPrefillSplits(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number,
+  productsSubtotal: number
+): ServicePaymentSplit[] {
+  const servicePart = appointmentLocalPendingArs(app, services, depositPercent);
+  const splits: ServicePaymentSplit[] = [];
+  if (servicePart > 0) splits.push({ method: 'subscription', amount: servicePart });
+  if (productsSubtotal > 0) splits.push({ method: 'cash', amount: productsSubtotal });
+  return splits;
+}
+
 export function initialSplitsFromAppointment(
   app: Appointment,
   services: Service[],
   depositPercent: number,
-  productsSubtotal = 0
+  productsSubtotal = 0,
+  clientSubscription?: ClientSubscriptionInfo | null
 ): ServicePaymentSplit[] {
   if (app.servicePaymentSplits?.length) {
     return normalizeAppointmentPaymentSplits(
@@ -153,6 +170,17 @@ export function initialSplitsFromAppointment(
     );
   }
   const target = appointmentSplitsTargetArs(app, services, depositPercent, productsSubtotal);
+  if (app.subscriptionCutApplied && target > 0) {
+    return buildSubscriptionPrefillSplits(app, services, depositPercent, productsSubtotal);
+  }
+  if (
+    clientSubscription &&
+    clientSubscription.cutsRemaining > 0 &&
+    app.userId != null &&
+    target > 0
+  ) {
+    return buildSubscriptionPrefillSplits(app, services, depositPercent, productsSubtotal);
+  }
   if (
     app.servicePaymentMethod &&
     app.servicePaymentMethod !== 'mercadopago' &&
@@ -191,8 +219,10 @@ export function formatAppointmentPaymentDisplay(
         continue;
       }
       if (s.amount > 0) {
+        const suffix =
+          s.method === 'subscription' && app.subscriptionCutApplied ? ' (1 corte)' : '';
         parts.push(
-          `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}`
+          `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}${suffix}`
         );
       }
     }
