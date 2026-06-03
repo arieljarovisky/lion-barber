@@ -27,9 +27,24 @@ export function formatServicePaymentMethod(
   return SERVICE_PAYMENT_METHOD_LABELS[method] ?? method;
 }
 
+/** Monto que cuenta para cubrir el saldo del turno (deuda en CC = valor absoluto). */
+export function effectiveSplitAmountArs(split: ServicePaymentSplit): number {
+  if (split.method === 'account' && split.amount < 0) {
+    return Math.round(Math.abs(split.amount));
+  }
+  if (split.amount > 0) return split.amount;
+  return 0;
+}
+
+export function isValidSplitAmount(method: ServicePaymentMethod, amount: number): boolean {
+  if (amount === 0) return false;
+  if (amount < 0) return method === 'account';
+  return true;
+}
+
 export function sumServicePaymentSplits(splits: ServicePaymentSplit[] | null | undefined): number {
   if (!splits?.length) return 0;
-  return splits.reduce((acc, s) => acc + (s.amount > 0 ? s.amount : 0), 0);
+  return splits.reduce((acc, s) => acc + effectiveSplitAmountArs(s), 0);
 }
 
 /** Texto corto para agenda / cierre de caja. */
@@ -40,7 +55,13 @@ export function formatServicePaymentSplits(
 ): string {
   if (splits?.length) {
     return splits
-      .map((s) => `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}`)
+      .map((s) => {
+        const label = SERVICE_PAYMENT_METHOD_LABELS[s.method];
+        if (s.method === 'account' && s.amount < 0) {
+          return `${label} −$${Math.abs(s.amount).toLocaleString('es-AR')} (debe)`;
+        }
+        return `${label} $${s.amount.toLocaleString('es-AR')}`;
+      })
       .join(' + ');
   }
   if (legacyMethod && fallbackAmount != null && fallbackAmount > 0) {
@@ -95,24 +116,25 @@ export function normalizeAppointmentPaymentSplits(
   if (target <= 0) return [];
 
   const cleaned = splits
-    .filter((s) => s.amount > 0)
-    .map((s) => ({ ...s }));
+    .filter((s) => isValidSplitAmount(s.method, Math.round(s.amount)))
+    .map((s) => ({ ...s, amount: Math.round(s.amount) }));
 
   const sum = sumServicePaymentSplits(cleaned);
   if (sum <= target) return cleaned;
 
-  if (cleaned.length === 1) {
+  if (cleaned.length === 1 && cleaned[0].amount > 0) {
     return [{ ...cleaned[0], amount: target }];
   }
 
   let excess = sum - target;
   const out = cleaned.map((s) => ({ ...s }));
   for (let i = out.length - 1; i >= 0 && excess > 0; i--) {
+    if (out[i].amount <= 0) continue;
     const deduct = Math.min(out[i].amount, excess);
     out[i] = { ...out[i], amount: out[i].amount - deduct };
     excess -= deduct;
   }
-  return out.filter((s) => s.amount > 0);
+  return out.filter((s) => isValidSplitAmount(s.method, s.amount));
 }
 
 export function initialSplitsFromAppointment(
@@ -161,6 +183,13 @@ export function formatAppointmentPaymentDisplay(
 
   if (splits?.length) {
     for (const s of splits) {
+      if (!isValidSplitAmount(s.method, s.amount)) continue;
+      if (s.method === 'account' && s.amount < 0) {
+        parts.push(
+          `${SERVICE_PAYMENT_METHOD_LABELS.account} −$${Math.abs(s.amount).toLocaleString('es-AR')} (debe)`
+        );
+        continue;
+      }
       if (s.amount > 0) {
         parts.push(
           `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}`
@@ -182,7 +211,7 @@ export function formatAppointmentPaymentDisplay(
 }
 
 export function cleanServicePaymentSplits(splits: ServicePaymentSplit[]): ServicePaymentSplit[] | null {
-  const cleaned = splits.filter((s) => s.amount > 0);
+  const cleaned = splits.filter((s) => isValidSplitAmount(s.method, Math.round(s.amount)));
   return cleaned.length > 0 ? cleaned : null;
 }
 
@@ -200,6 +229,8 @@ export function applySplitsToMethodTotals(
       if (s.amount > 0 && SERVICE_PAYMENT_METHODS.includes(s.method)) {
         totals[s.method] += s.amount;
         assigned += s.amount;
+      } else if (s.method === 'account' && s.amount < 0) {
+        assigned += Math.abs(s.amount);
       }
     }
     const remainder = localPending - assigned;

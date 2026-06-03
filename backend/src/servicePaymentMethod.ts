@@ -3,7 +3,7 @@ export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card';
 
 export interface ServicePaymentSplit {
   method: ServicePaymentMethod;
-  /** Monto en pesos (entero). */
+  /** Monto en pesos. En cuenta corriente puede ser negativo (= el cliente debe). */
   amount: number;
 }
 
@@ -45,7 +45,10 @@ export function parseServicePaymentSplits(raw: unknown): ServicePaymentSplit[] |
     if (!item || typeof item !== 'object') continue;
     const method = parseServicePaymentMethod((item as { method?: unknown }).method);
     const amount = Math.round(Number((item as { amount?: unknown }).amount));
-    if (!method || amount <= 0) continue;
+    if (!method || amount === 0) continue;
+    if (amount < 0 && method !== 'account') continue;
+    if (amount > 0 && amount > 999_999_999) continue;
+    if (amount < 0 && amount < -999_999_999) continue;
     if (used.has(method)) continue;
     used.add(method);
     out.push({ method, amount });

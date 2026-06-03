@@ -3984,7 +3984,7 @@ export default function Dashboard() {
                     />
                     <p className="mt-1 text-xs text-zinc-500">
                       Combiná métodos y montos hasta cubrir el saldo del turno. La seña por Mercado Pago no se incluye
-                      acá; el resto sí puede cargarse como Mercado Pago.
+                      acá. En cuenta corriente podés cargar un monto negativo si el cliente debe.
                     </p>
                   </div>
                     <div>

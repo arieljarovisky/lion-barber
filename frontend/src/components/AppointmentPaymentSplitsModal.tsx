@@ -95,9 +95,13 @@ export default function AppointmentPaymentSplitsModal({
             : 'cash';
         return [{ method, amount: target }];
       }
-      const next = prev.map((s, i) =>
-        i === 0 ? { ...s, amount: Math.max(0, Math.round(s.amount + delta)) } : s
-      );
+      const next = prev.map((s, i) => {
+        if (i !== 0) return s;
+        if (s.method === 'account' && s.amount < 0) {
+          return { ...s, amount: Math.round(s.amount - delta) };
+        }
+        return { ...s, amount: Math.max(0, Math.round(s.amount + delta)) };
+      });
       return normalizeAppointmentPaymentSplits(
         next,
         app,
@@ -283,8 +287,8 @@ export default function AppointmentPaymentSplitsModal({
             />
             <p className="text-xs text-zinc-500 mt-1">
               {depositAmount > 0
-                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago u otro método.'
-                : 'Podés combinar métodos (ej. parte en efectivo y parte con tarjeta). Cada método solo aparece una vez.'}
+                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago u otro método. En cuenta corriente podés usar un monto negativo si debe.'
+                : 'Podés combinar métodos. En cuenta corriente, un monto negativo registra deuda del cliente.'}
             </p>
           </div>
 

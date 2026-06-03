@@ -5,7 +5,7 @@ import {
   SERVICE_PAYMENT_METHOD_LABELS,
   sumServicePaymentSplits,
 } from '../utils/servicePaymentMethod';
-import { formatArs } from '../utils/money';
+import { formatArs, parseSignedArsInput } from '../utils/money';
 
 type Props = {
   splits: ServicePaymentSplit[];
@@ -78,9 +78,12 @@ export default function ServicePaymentSplitsEditor({
               <select
               value={row.method}
               disabled={disabled}
-              onChange={(e) =>
-                updateRow(index, { method: e.target.value as ServicePaymentMethod })
-              }
+              onChange={(e) => {
+                const method = e.target.value as ServicePaymentMethod;
+                const amount =
+                  method !== 'account' && row.amount < 0 ? 0 : row.amount;
+                updateRow(index, { method, amount });
+              }}
               className={
                 compact
                   ? 'min-w-[6.5rem] flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold'
@@ -101,21 +104,39 @@ export default function ServicePaymentSplitsEditor({
             <div className="flex items-center gap-1">
               <span className="text-xs text-zinc-400">$</span>
               <input
-                type="number"
-                min={0}
-                step={100}
+                type="text"
+                inputMode="decimal"
                 disabled={disabled}
-                value={row.amount > 0 ? row.amount : ''}
+                value={row.amount !== 0 ? String(row.amount) : ''}
                 onChange={(e) => {
-                  const n = Math.max(0, Math.round(Number(e.target.value) || 0));
+                  const raw = e.target.value.trim();
+                  if (!raw || raw === '-') {
+                    updateRow(index, { amount: 0 });
+                    return;
+                  }
+                  if (row.method === 'account') {
+                    const parsed = parseSignedArsInput(raw);
+                    if (parsed === 'invalid') return;
+                    updateRow(index, { amount: Math.round(parsed) });
+                    return;
+                  }
+                  const n = Math.max(0, Math.round(Number(raw.replace(',', '.')) || 0));
                   updateRow(index, { amount: n });
                 }}
                 onWheel={(e) => e.currentTarget.blur()}
-                placeholder="0"
+                placeholder={row.method === 'account' ? '0 o -5000' : '0'}
                 className={
                   compact
-                    ? 'no-number-spin w-20 rounded-lg border border-zinc-200 px-2 py-1 text-[11px] tabular-nums'
-                    : 'no-number-spin w-28 rounded-xl border border-zinc-200 px-3 py-2 text-sm tabular-nums'
+                    ? `no-number-spin w-24 rounded-lg border px-2 py-1 text-[11px] tabular-nums ${
+                        row.method === 'account' && row.amount < 0
+                          ? 'border-amber-300 bg-amber-50 text-amber-950'
+                          : 'border-zinc-200'
+                      }`
+                    : `no-number-spin w-28 rounded-xl border px-3 py-2 text-sm tabular-nums ${
+                        row.method === 'account' && row.amount < 0
+                          ? 'border-amber-300 bg-amber-50 text-amber-950'
+                          : 'border-zinc-200'
+                      }`
                 }
               />
             </div>
@@ -155,6 +176,11 @@ export default function ServicePaymentSplitsEditor({
           </p>
         )}
       </div>
+      {splits.some((s) => s.method === 'account' && s.amount < 0) && (
+        <p className={`text-amber-800/90 ${compact ? 'text-[10px]' : 'text-xs'}`}>
+          Monto negativo en cuenta corriente = el cliente debe esa plata (no ingresa en caja).
+        </p>
+      )}
     </div>
   );
 }
