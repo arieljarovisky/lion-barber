@@ -30,6 +30,68 @@ import { assertCanModifyAppointment, isSuperAdminUser } from '../services/appoin
 import { isDailyCashCloseDate } from '../repositories/dailyCashClose.js';
 import { syncSubscriptionCutWithPayment } from '../services/clientSubscription.js';
 
+const PAYMENT_PATCH_KEYS = new Set([
+  'servicePaymentSplits',
+  'servicePaymentMethod',
+  'tipAmount',
+  'products',
+]);
+
+function isPaymentOnlyPatch(body: Record<string, unknown>): boolean {
+  const keys = Object.keys(body).filter((k) => body[k] !== undefined);
+  return keys.length > 0 && keys.every((k) => PAYMENT_PATCH_KEYS.has(k));
+}
+
+async function buildPaymentFieldsPatch(
+  existing: Appointment,
+  body: Record<string, unknown>
+): Promise<{ payload: Partial<Appointment> } | { error: string; status: number }> {
+  const payload: Partial<Appointment> = {};
+  if ('tipAmount' in body) {
+    try {
+      payload.tipAmount = parseTipAmountBody(body.tipAmount);
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'Propina inválida', status: 400 };
+    }
+  }
+  if ('servicePaymentSplits' in body) {
+    const parsed = parseSplitsBodyField(body.servicePaymentSplits);
+    if (
+      body.servicePaymentSplits != null &&
+      parsed === null &&
+      !(Array.isArray(body.servicePaymentSplits) && body.servicePaymentSplits.length === 0)
+    ) {
+      return { error: 'Cobros por método no válidos', status: 400 };
+    }
+    try {
+      await syncSubscriptionCutWithPayment(existing, parsed ?? null);
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'No se pudo aplicar el abono', status: 400 };
+    }
+    payload.servicePaymentSplits = parsed ?? null;
+  }
+  if ('servicePaymentMethod' in body) {
+    const raw = body.servicePaymentMethod;
+    if (raw === null || raw === '') {
+      payload.servicePaymentMethod = null;
+    } else {
+      const parsed = parseServicePaymentMethod(raw);
+      if (!parsed) {
+        return { error: 'Método de pago no válido', status: 400 };
+      }
+      payload.servicePaymentMethod = parsed;
+    }
+  }
+  if ('products' in body) {
+    try {
+      payload.products = (await resolveProductsBodyField(body.products)) ?? null;
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : 'Productos no válidos', status: 400 };
+    }
+  }
+  return { payload };
+}
+
 function parseSplitsBodyField(raw: unknown): ServicePaymentSplit[] | null | undefined {
   if (raw === undefined) return undefined;
   if (raw === null) return null;
@@ -352,59 +414,37 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   try {
     const existing = await repo.getAppointmentById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
-    if (authReq.user!.role === 'staff') {
-      const bid = authReq.user!.barberId;
-      if (!bid || existing.barberId !== bid) {
-        return res.status(403).json({ error: 'No autorizado' });
-      }
-    }
-    try {
-      await assertCanModifyAppointment(authReq.user!, existing);
-    } catch (e) {
-      return res.status(403).json({ error: e instanceof Error ? e.message : 'No autorizado' });
-    }
     const body = req.body as Record<string, unknown>;
+    const paymentOnly = isPaymentOnlyPatch(body);
+
+    if (paymentOnly) {
+      if ((existing.status ?? 'scheduled') !== 'scheduled') {
+        return res.status(400).json({ error: 'Solo se pueden cargar cobros en turnos confirmados.' });
+      }
+    } else {
+      if (authReq.user!.role === 'staff') {
+        const bid = authReq.user!.barberId;
+        if (!bid || existing.barberId !== bid) {
+          return res.status(403).json({ error: 'No autorizado' });
+        }
+      }
+      try {
+        await assertCanModifyAppointment(authReq.user!, existing);
+      } catch (e) {
+        return res.status(403).json({ error: e instanceof Error ? e.message : 'No autorizado' });
+      }
+    }
+
     let payload: Partial<Appointment>;
-    if (authReq.user!.role === 'staff') {
+    if (authReq.user!.role === 'staff' && paymentOnly) {
+      const built = await buildPaymentFieldsPatch(existing, body);
+      if ('error' in built) return res.status(built.status).json({ error: built.error });
+      payload = built.payload;
+    } else if (authReq.user!.role === 'staff') {
       payload = {};
-      if ('tipAmount' in body) {
-        try {
-          payload.tipAmount = parseTipAmountBody(body.tipAmount);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : 'Propina inválida';
-          return res.status(400).json({ error: msg });
-        }
-      }
-      if ('servicePaymentSplits' in body) {
-        const parsed = parseSplitsBodyField(body.servicePaymentSplits);
-        if (body.servicePaymentSplits != null && parsed === null && !Array.isArray(body.servicePaymentSplits)) {
-          return res.status(400).json({ error: 'Cobros por método no válidos' });
-        }
-        try {
-          await syncSubscriptionCutWithPayment(existing, parsed ?? null);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : 'No se pudo aplicar el abono';
-          return res.status(400).json({ error: msg });
-        }
-        payload.servicePaymentSplits = parsed ?? null;
-      }
-      if ('servicePaymentMethod' in body) {
-        const raw = body.servicePaymentMethod;
-        payload.servicePaymentMethod =
-          raw === null || raw === ''
-            ? null
-            : parseServicePaymentMethod(raw) ?? undefined;
-        if (raw != null && raw !== '' && payload.servicePaymentMethod === undefined) {
-          return res.status(400).json({ error: 'Método de pago no válido' });
-        }
-      }
-      if ('products' in body) {
-        try {
-          payload.products = (await resolveProductsBodyField(body.products)) ?? null;
-        } catch (e) {
-          return res.status(400).json({ error: e instanceof Error ? e.message : 'Productos no válidos' });
-        }
-      }
+      const built = await buildPaymentFieldsPatch(existing, body);
+      if ('error' in built) return res.status(built.status).json({ error: built.error });
+      Object.assign(payload, built.payload);
       const allowedStaff = ['name', 'phone', 'service', 'serviceId', 'date', 'time', 'durationMinutes'];
       for (const key of allowedStaff) {
         if (key in body) (payload as Record<string, unknown>)[key] = body[key];
@@ -414,50 +454,9 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
       delete (payload as Record<string, unknown>).servicePaymentSplits;
       delete (payload as Record<string, unknown>).servicePaymentMethod;
       delete (payload as Record<string, unknown>).products;
-      if ('tipAmount' in body) {
-        try {
-          payload.tipAmount = parseTipAmountBody(body.tipAmount);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : 'Propina inválida';
-          return res.status(400).json({ error: msg });
-        }
-      }
-      if ('servicePaymentSplits' in body) {
-        const parsed = parseSplitsBodyField(body.servicePaymentSplits);
-        if (
-          body.servicePaymentSplits != null &&
-          parsed === null &&
-          !(Array.isArray(body.servicePaymentSplits) && body.servicePaymentSplits.length === 0)
-        ) {
-          return res.status(400).json({ error: 'Cobros por método no válidos' });
-        }
-        try {
-          await syncSubscriptionCutWithPayment(existing, parsed ?? null);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : 'No se pudo aplicar el abono';
-          return res.status(400).json({ error: msg });
-        }
-        payload.servicePaymentSplits = parsed ?? null;
-      }
-      if ('servicePaymentMethod' in body) {
-        const raw = body.servicePaymentMethod;
-        if (raw === null || raw === '') {
-          payload.servicePaymentMethod = null;
-        } else {
-          const parsed = parseServicePaymentMethod(raw);
-          if (!parsed) {
-            return res.status(400).json({ error: 'Método de pago no válido' });
-          }
-          payload.servicePaymentMethod = parsed;
-        }
-      }
-      if ('products' in body) {
-        try {
-          payload.products = (await resolveProductsBodyField(body.products)) ?? null;
-        } catch (e) {
-          return res.status(400).json({ error: e instanceof Error ? e.message : 'Productos no válidos' });
-        }
-      }
+      const built = await buildPaymentFieldsPatch(existing, body);
+      if ('error' in built) return res.status(built.status).json({ error: built.error });
+      Object.assign(payload, built.payload);
     }
     const updated = await repo.updateAppointment(req.params.id, {
       ...payload,

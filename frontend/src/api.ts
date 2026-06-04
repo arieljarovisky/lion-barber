@@ -145,6 +145,19 @@ export interface DailyCashClose {
   closedByName?: string;
 }
 
+/** Cobros congelados al cerrar caja (no cambian si después editan el turno). */
+export interface AppointmentCashClosePaymentSnapshot {
+  appointmentId: string;
+  closeDate: string;
+  servicePaymentSplits?: ServicePaymentSplit[] | null;
+  servicePaymentMethod?: ServicePaymentMethod | null;
+  tipAmount?: number;
+  depositPaid?: boolean;
+  depositAmountArs?: number;
+  subscriptionCutApplied?: boolean;
+  products?: AppointmentProductLine[] | null;
+}
+
 export interface AfipInvoiceDetail {
   serviceAmount: number;
   serviceLabel: string;
@@ -761,6 +774,11 @@ export const api = {
   getDailyCashCloses: (fromYmd: string, toYmd: string) =>
     fetchApi<{ closes: DailyCashClose[] }>(
       `/api/cash-close/daily?from=${encodeURIComponent(fromYmd)}&to=${encodeURIComponent(toYmd)}`
+    ),
+
+  getCashClosePaymentSnapshots: (fromYmd: string, toYmd: string) =>
+    fetchApi<{ snapshots: AppointmentCashClosePaymentSnapshot[] }>(
+      `/api/cash-close/payment-snapshots?from=${encodeURIComponent(fromYmd)}&to=${encodeURIComponent(toYmd)}`
     ),
 
   closeDailyCash: (date: string) =>

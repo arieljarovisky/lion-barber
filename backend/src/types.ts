@@ -77,6 +77,19 @@ export interface DailyCashClose {
   closedByName?: string;
 }
 
+/** Cobros congelados al cerrar caja diaria (no cambian si después editan el turno). */
+export interface AppointmentCashClosePaymentSnapshot {
+  appointmentId: string;
+  closeDate: string;
+  servicePaymentSplits?: ServicePaymentSplit[] | null;
+  servicePaymentMethod?: ServicePaymentMethod | null;
+  tipAmount?: number;
+  depositPaid?: boolean;
+  depositAmountArs?: number;
+  subscriptionCutApplied?: boolean;
+  products?: AppointmentProductLine[] | null;
+}
+
 export interface SubscriptionPlan {
   id: string;
   name: string;

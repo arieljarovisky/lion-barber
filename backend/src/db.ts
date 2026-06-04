@@ -205,6 +205,21 @@ export async function initDb(): Promise<void> {
     )
   `);
   await pool.execute(`
+    CREATE TABLE IF NOT EXISTS daily_cash_close_payment_snapshots (
+      close_date DATE NOT NULL,
+      appointment_id VARCHAR(32) NOT NULL,
+      service_payment_splits JSON NULL,
+      service_payment_method VARCHAR(32) NULL,
+      tip_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+      deposit_paid TINYINT(1) NOT NULL DEFAULT 0,
+      deposit_amount_ars DECIMAL(12,2) NULL,
+      subscription_cut_applied TINYINT(1) NOT NULL DEFAULT 0,
+      products JSON NULL,
+      PRIMARY KEY (close_date, appointment_id),
+      KEY idx_cash_close_snap_appointment (appointment_id)
+    )
+  `);
+  await pool.execute(`
     CREATE TABLE IF NOT EXISTS subscription_plans (
       id VARCHAR(50) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,

@@ -86,7 +86,7 @@ import {
   initialSplitsFromAppointment,
 } from '../utils/servicePaymentMethod';
 import { formatAppointmentProductsSummary, sumAppointmentProducts } from '../utils/appointmentProducts';
-import { appointmentModifyBlockedReason } from '../utils/appointmentModifyPermission';
+import { appointmentModifyBlockedReason, canUpdateAppointmentPayments } from '../utils/appointmentModifyPermission';
 import {
   adminClientMatchesPhoneDigits,
   adminClientPrimaryPhone,
@@ -1220,9 +1220,8 @@ export default function Dashboard() {
   };
 
   const tryOpenPaymentSplits = (app: Appointment) => {
-    const reason = getAppointmentModifyBlockedReason(app);
-    if (reason) {
-      showToast(reason, 'error');
+    if (!canUpdateAppointmentPayments(app)) {
+      showToast('Solo se pueden cargar cobros en turnos confirmados.', 'error');
       return;
     }
     setPaymentSplitsModalApp(app);
@@ -1262,7 +1261,7 @@ export default function Dashboard() {
           e.stopPropagation();
           tryOpenPaymentSplits(app);
         }}
-        disabled={Boolean(getAppointmentModifyBlockedReason(app))}
+        disabled={!canUpdateAppointmentPayments(app)}
         className={
           compact
             ? `mt-1.5 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-left hover:border-[#e5c185] hover:bg-amber-50/80 disabled:cursor-not-allowed disabled:opacity-50`
@@ -1983,7 +1982,7 @@ export default function Dashboard() {
 
         {view === 'agenda' && isWeekView && closedDateSet.size > 0 && (
           <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Hay {closedDateSet.size} día(s) cerrados en esta semana. Los turnos de esas fechas solo los modifica un super admin.
+            Hay {closedDateSet.size} día(s) cerrados en esta semana. Los cobros de la agenda se pueden seguir editando; el cierre de caja usa los montos del momento del cierre.
           </div>
         )}
 

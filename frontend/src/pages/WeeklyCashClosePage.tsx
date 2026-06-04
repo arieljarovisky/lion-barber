@@ -29,7 +29,8 @@ import {
 } from '../utils/weeklyCashCloseExport';
 import CashCloseExpensesSection from '../components/CashCloseExpensesSection';
 import { prorateFixedMonthlyExpenses, sumCashExpenses } from '../utils/expenseProration';
-import type { CashExpense, FixedMonthlyExpense } from '../api';
+import { appointmentsWithCashCloseSnapshots } from '../utils/cashCloseSnapshot';
+import type { CashExpense, FixedMonthlyExpense, AppointmentCashClosePaymentSnapshot } from '../api';
 
 export default function WeeklyCashClosePage() {
   const navigate = useNavigate();
@@ -48,6 +49,7 @@ export default function WeeklyCashClosePage() {
   const [closingDay, setClosingDay] = useState(false);
   const [closeActionError, setCloseActionError] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
+  const [paymentSnapshots, setPaymentSnapshots] = useState<AppointmentCashClosePaymentSnapshot[]>([]);
 
   const { start, end, fromYmd, toYmd } = useMemo(
     () => periodBoundsFromAnchor(periodAnchor, periodMode),
@@ -95,8 +97,9 @@ export default function WeeklyCashClosePage() {
       api.getFixedMonthlyExpenses(),
       api.getCashExpenses(fromYmd, toYmd),
       api.getAdminClientsWithHistory(),
+      api.getCashClosePaymentSnapshots(fromYmd, toYmd),
     ])
-      .then(([apps, barberList, serviceList, fixedRes, cashRes, clientsRes]) => {
+      .then(([apps, barberList, serviceList, fixedRes, cashRes, clientsRes, snapshotsRes]) => {
         if (cancelled) return;
         setAppointments(apps);
         setBarbers(barberList);
@@ -104,6 +107,7 @@ export default function WeeklyCashClosePage() {
         setFixedExpenses(fixedRes.items);
         setCashExpenses(cashRes.items);
         setAdminClients(clientsRes.clients);
+        setPaymentSnapshots(snapshotsRes.snapshots);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -137,7 +141,11 @@ export default function WeeklyCashClosePage() {
   }, [periodMode, fromYmd]);
 
   const handleCloseDay = async () => {
-    if (!window.confirm(`¿Cerrar la caja del ${periodLabel}?\n\nDespués del cierre, solo super administradores podrán modificar turnos de ese día.`)) {
+    if (
+      !window.confirm(
+        `¿Cerrar la caja del ${periodLabel}?\n\nSe congelan los cobros de ese día para el cierre. Después podés seguir editando pagos en la agenda sin que cambien estos números.`
+      )
+    ) {
       return;
     }
     setCloseActionError('');
@@ -145,6 +153,8 @@ export default function WeeklyCashClosePage() {
     try {
       const { close } = await api.closeDailyCash(fromYmd);
       setDailyClose(close);
+      const snapshotsRes = await api.getCashClosePaymentSnapshots(fromYmd, toYmd);
+      setPaymentSnapshots(snapshotsRes.snapshots);
     } catch (e) {
       setCloseActionError(e instanceof ApiError ? e.message : 'No se pudo cerrar el día');
     } finally {
@@ -159,6 +169,8 @@ export default function WeeklyCashClosePage() {
     try {
       await api.reopenDailyCash(fromYmd);
       setDailyClose(null);
+      const snapshotsRes = await api.getCashClosePaymentSnapshots(fromYmd, toYmd);
+      setPaymentSnapshots(snapshotsRes.snapshots);
     } catch (e) {
       setCloseActionError(e instanceof ApiError ? e.message : 'No se pudo reabrir el día');
     } finally {
@@ -166,9 +178,14 @@ export default function WeeklyCashClosePage() {
     }
   };
 
+  const appointmentsForClose = useMemo(
+    () => appointmentsWithCashCloseSnapshots(appointments, paymentSnapshots),
+    [appointments, paymentSnapshots]
+  );
+
   const { rows, byBarber, summary } = useMemo(
-    () => buildWeeklyCashClose(appointments, services, barbers, DEPOSIT_PERCENT, start, end),
-    [appointments, services, barbers, start, end]
+    () => buildWeeklyCashClose(appointmentsForClose, services, barbers, DEPOSIT_PERCENT, start, end),
+    [appointmentsForClose, services, barbers, start, end]
   );
 
   const { lines: proratedFixed, total: proratedFixedTotal } = useMemo(
@@ -428,14 +445,15 @@ export default function WeeklyCashClosePage() {
                 Caja cerrada para este día
               </p>
               <p className="mt-1 text-emerald-800/90">
-                Cerrado por {dailyClose.closedByName ?? `usuario #${dailyClose.closedByUserId}`}. Solo super
-                administradores pueden modificar turnos o reabrir el día.
+                Cerrado por {dailyClose.closedByName ?? `usuario #${dailyClose.closedByUserId}`}. Los cobros
+                congelados de este cierre no cambian aunque edites pagos en la agenda. Solo super admin puede
+                reabrir el día o modificar turnos.
               </p>
             </div>
           )}
           {periodMode === 'day' && !dailyClose && isSuperAdmin && (
             <div className="mb-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-              Día abierto: podés revisar los cobros y usar <strong>Cerrar caja del día</strong> cuando termines.
+              Día abierto: podés revisar los cobros y usar <strong>Cerrar caja del día</strong> cuando termines. Al cerrar, los montos quedan fijos aunque después cambien los cobros en la agenda.
               Después del cierre, el resto del equipo no podrá editar turnos de esta fecha.
             </div>
           )}
