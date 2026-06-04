@@ -245,6 +245,7 @@ export function cleanServicePaymentSplits(splits: ServicePaymentSplit[]): Servic
   return cleaned.length > 0 ? cleaned : null;
 }
 
+/** Reparte montos al cierre semanal (saldo en local, sin la seña). Excluye abono (no es efectivo en caja). */
 export function applySplitsToMethodTotals(
   totals: Record<ServicePaymentMethod, number> & { unregistered: number },
   splits: ServicePaymentSplit[] | null | undefined,
@@ -256,6 +257,7 @@ export function applySplitsToMethodTotals(
   if (splits?.length) {
     let assigned = 0;
     for (const s of splits) {
+      if (s.method === 'subscription') continue;
       if (s.amount > 0 && SERVICE_PAYMENT_METHODS.includes(s.method)) {
         totals[s.method] += s.amount;
         assigned += s.amount;
@@ -268,6 +270,53 @@ export function applySplitsToMethodTotals(
     return;
   }
 
+  if (legacyMethod === 'subscription') return;
+
   const bucket = legacyMethod ?? 'unregistered';
   totals[bucket] += localPending;
+}
+
+/** Monto del saldo local cubierto con corte de abono (no ingresa a caja en el turno). */
+export function appointmentSubscriptionLocalAmountArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number
+): number {
+  const localTarget = appointmentLocalPendingArs(app, services, depositPercent);
+  if (localTarget <= 0) return 0;
+
+  const fromSplits =
+    app.servicePaymentSplits?.reduce(
+      (acc, s) => (s.method === 'subscription' && s.amount > 0 ? acc + s.amount : acc),
+      0
+    ) ?? 0;
+  if (fromSplits > 0) return Math.min(localTarget, fromSplits);
+
+  if (app.subscriptionCutApplied) return localTarget;
+  if (app.servicePaymentMethod === 'subscription') return localTarget;
+  return 0;
+}
+
+/** Saldo en local que entra a caja (efectivo, tarjeta, cuenta corriente, etc.), sin abono. */
+export function appointmentCollectibleLocalArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number
+): number {
+  return Math.max(
+    0,
+    appointmentLocalPendingArs(app, services, depositPercent) -
+      appointmentSubscriptionLocalAmountArs(app, services, depositPercent)
+  );
+}
+
+/** @deprecated Usar serviceAmount completo: el barbero cobra comisión aunque el corte sea abono/canje. */
+export function appointmentCommissionableServiceAmountArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number
+): number {
+  const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
+  const subscriptionCoverage = appointmentSubscriptionLocalAmountArs(app, services, depositPercent);
+  return Math.max(0, serviceAmount - subscriptionCoverage);
 }

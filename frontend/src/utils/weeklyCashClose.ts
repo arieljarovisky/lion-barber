@@ -16,11 +16,14 @@ import {
   isWithinInterval,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import type { Appointment, Barber, Service, ServicePaymentMethod } from '../api';
+import type { Appointment, Barber, Service, ServicePaymentMethod, ServicePaymentSplit } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { resolveAppointmentDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
 import { SERVICE_PAYMENT_METHODS, applySplitsToMethodTotals } from './servicePaymentMethod';
-import type { ServicePaymentSplit } from '../api';
+import {
+  appointmentCollectibleLocalArs,
+  appointmentSubscriptionLocalAmountArs,
+} from './servicePaymentMethod';
 
 /** Semana de cierre: lunes a domingo (Argentina). */
 export const WEEK_OPTS = { weekStartsOn: 1 as const, locale: es };
@@ -105,6 +108,8 @@ export type WeeklyCashRow = {
   barberKey: string;
   barberName: string;
   serviceAmount: number;
+  /** Parte del saldo local cubierta con abono (corte gratis, no entra a caja). */
+  subscriptionAmount: number;
   depositAmount: number;
   depositPaid: boolean;
   localPending: number;
@@ -150,6 +155,8 @@ export type WeeklyCashSummary = {
   depositsMp: number;
   localPending: number;
   commissions: number;
+  /** Valor de servicios cubiertos con abono en el período (referencia, no ingreso en caja). */
+  subscriptionServiceTotal: number;
   shopNetEstimate: number;
   afipInvoicedTotal: number;
   afipInvoicedCount: number;
@@ -171,7 +178,7 @@ function resolveBarber(
     return {
       key: id,
       name: b?.name ?? app.barber ?? 'Sin barbero',
-      commissionPercent: BARBER_COMMISSION_PERCENT,
+      commissionPercent: b?.commissionPercent ?? BARBER_COMMISSION_PERCENT,
     };
   }
   const name = app.barber ?? 'Sin barbero';
@@ -253,12 +260,13 @@ export function buildWeeklyCashClose(
     if (app.status === 'pending_payment') continue;
 
     const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
+    const subscriptionAmount = appointmentSubscriptionLocalAmountArs(app, services, depositPercent);
+    const collectibleLocal = appointmentCollectibleLocalArs(app, services, depositPercent);
     const { key, name, commissionPercent } = resolveBarber(app, barbers);
     const depositAmount =
       app.depositPaid && serviceAmount > 0
         ? resolveAppointmentDepositAmountArs(app, services, depositPercent)
         : 0;
-    const localPending = Math.max(0, serviceAmount - depositAmount);
     const commissions = barberCommissionsForAppointment(app, serviceAmount, commissionPercent);
     const afipTotal = afipAmountForAppointment(app, serviceAmount);
     const tipAmount =
@@ -276,9 +284,10 @@ export function buildWeeklyCashClose(
       barberKey: key,
       barberName: name,
       serviceAmount,
+      subscriptionAmount,
       depositAmount,
       depositPaid: Boolean(app.depositPaid),
-      localPending,
+      localPending: collectibleLocal,
       commissionPercent,
       serviceCommissionAmount: commissions.serviceCommissionAmount,
       productCommissionAmount: commissions.productCommissionAmount,
@@ -313,7 +322,7 @@ export function buildWeeklyCashClose(
       byBarberMap.set(r.barberKey, b);
     }
     b.appointments += 1;
-    b.serviceGross += r.serviceAmount;
+    b.serviceGross += r.depositAmount + r.localPending;
     b.depositsMp += r.depositAmount;
     b.localPending += r.localPending;
     b.commission += r.commissionAmount;
@@ -328,10 +337,11 @@ export function buildWeeklyCashClose(
   const summary: WeeklyCashSummary = rows.reduce(
     (acc, r) => {
       acc.appointments += 1;
-      acc.serviceGross += r.serviceAmount;
+      acc.serviceGross += r.depositAmount + r.localPending;
       acc.depositsMp += r.depositAmount;
       acc.localPending += r.localPending;
       acc.commissions += r.commissionAmount;
+      acc.subscriptionServiceTotal += r.subscriptionAmount;
       if (r.depositAmount > 0) {
         acc.depositsMpByMethod.mercadopago += r.depositAmount;
       }
@@ -358,6 +368,7 @@ export function buildWeeklyCashClose(
       depositsMp: 0,
       localPending: 0,
       commissions: 0,
+      subscriptionServiceTotal: 0,
       shopNetEstimate: 0,
       afipInvoicedTotal: 0,
       afipInvoicedCount: 0,

@@ -452,9 +452,9 @@ export default function WeeklyCashClosePage() {
               <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <SummaryCard label="Turnos confirmados" value={String(summary.appointments)} />
                 <SummaryCard
-                  label="Total servicios"
+                  label="Ingreso en caja (servicios)"
                   value={`$${formatArs(summary.serviceGross)}`}
-                  hint="Valor de catálogo"
+                  hint="Seña MP + cobrado en local (sin abono)"
                 />
                 <SummaryCard
                   label="Señas (Mercado Pago)"
@@ -463,23 +463,30 @@ export default function WeeklyCashClosePage() {
                   accent="emerald"
                 />
                 <SummaryCard
-                  label="Por cobrar en local (est.)"
+                  label="Cobrado en local"
                   value={`$${formatArs(summary.localPending)}`}
-                  hint="Servicio menos seña ya pagada"
+                  hint="Efectivo, tarjeta, cuenta, etc."
                   accent="amber"
                 />
+                {summary.subscriptionServiceTotal > 0 && (
+                  <SummaryCard
+                    label="Cortes con abono"
+                    value={`$${formatArs(summary.subscriptionServiceTotal)}`}
+                    hint="No entra plata en caja; sí genera comisión al barbero"
+                  />
+                )}
               </div>
 
               <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <SummaryCard
                   label="Comisiones barberos"
                   value={`$${formatArs(summary.commissions)}`}
-                  hint="Según % configurado"
+                  hint="Sobre valor del servicio (incluye abono y canje)"
                 />
                 <SummaryCard
-                  label="Neto local (est.)"
+                  label="Neto en caja (est.)"
                   value={`$${formatArs(summary.shopNetEstimate)}`}
-                  hint="Servicios − comisiones"
+                  hint="Ingreso en caja − comisiones a pagar"
                   accent="gold"
                 />
                 <SummaryCard
@@ -510,7 +517,7 @@ export default function WeeklyCashClosePage() {
                 <div className="border-b border-zinc-100 bg-zinc-50/80 px-4 py-3">
                   <h2 className="font-black text-zinc-900">Cobros en local por método</h2>
                   <p className="mt-0.5 text-xs text-zinc-500">
-                    Saldo estimado (servicio − seña) según el método registrado en cada turno.
+                    Saldo cobrado en el turno (sin abono). El abono mensual no suma acá.
                   </p>
                 </div>
                 <div className="cash-close-table-wrap overflow-x-auto p-4">
@@ -663,7 +670,13 @@ export default function WeeklyCashClosePage() {
                               )}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums text-amber-800">
-                              ${formatArs(r.localPending)}
+                              {r.subscriptionAmount > 0 && r.localPending <= 0 ? (
+                                <span className="text-violet-700" title="Corte de abono">
+                                  Abono
+                                </span>
+                              ) : (
+                                `$${formatArs(r.localPending)}`
+                              )}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums text-violet-700">
                               {r.tipAmount > 0 ? `$${formatArs(r.tipAmount)}` : '—'}
