@@ -100,6 +100,7 @@ export type WeeklyCashRow = {
   date: string;
   time: string;
   clientName: string;
+  clientUserId?: number;
   serviceName: string;
   barberKey: string;
   barberName: string;
@@ -270,6 +271,7 @@ export function buildWeeklyCashClose(
       date: d,
       time: app.time,
       clientName: app.name,
+      clientUserId: app.userId,
       serviceName: app.service,
       barberKey: key,
       barberName: name,

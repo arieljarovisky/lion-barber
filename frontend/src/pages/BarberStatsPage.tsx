@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api } from '../api';
-import type { Appointment, Barber, Service } from '../api';
+import type { Appointment, Barber, Service, AdminClientWithHistory } from '../api';
 import { resolveAppointmentServiceAmountArs } from '../utils/money';
+import ClientProfileLink from '../components/ClientProfileLink';
 
 const BARBER_SHARE = 0.5;
 
@@ -24,6 +25,7 @@ type BarberRow = {
   date: string;
   time: string;
   clientName: string;
+  clientUserId?: number;
   serviceName: string;
   amount: number;
   earning: number;
@@ -36,6 +38,7 @@ export default function BarberStatsPage() {
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [fromDate, setFromDate] = useState(monthStartYmd());
   const [toDate, setToDate] = useState(todayYmd());
   const [selectedBarberKey, setSelectedBarberKey] = useState('all');
@@ -65,12 +68,13 @@ export default function BarberStatsPage() {
     let cancelled = false;
     setLoading(true);
     setError('');
-    Promise.all([api.getBarbers(), api.getServices(), api.getAppointments()])
-      .then(([barberList, serviceList, apps]) => {
+    Promise.all([api.getBarbers(), api.getServices(), api.getAppointments(), api.getAdminClientsWithHistory()])
+      .then(([barberList, serviceList, apps, clientsRes]) => {
         if (cancelled) return;
         setBarbers(barberList);
         setServices(serviceList);
         setAppointments(apps);
+        setAdminClients(clientsRes.clients);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -108,6 +112,7 @@ export default function BarberStatsPage() {
         date: d,
         time: app.time,
         clientName: app.name,
+        clientUserId: app.userId,
         serviceName: app.service,
         amount,
         earning,
@@ -246,7 +251,14 @@ export default function BarberStatsPage() {
                       <td className="whitespace-nowrap px-4 py-3 text-zinc-700">{r.date}</td>
                       <td className="px-4 py-3 font-mono text-xs text-zinc-800">{r.time}</td>
                       <td className="max-w-[12rem] truncate px-4 py-3 font-semibold text-zinc-900">{r.barberName}</td>
-                      <td className="max-w-[16rem] truncate px-4 py-3 font-medium text-zinc-900">{r.clientName}</td>
+                      <td className="max-w-[16rem] truncate px-4 py-3 font-medium text-zinc-900">
+                        <ClientProfileLink
+                          userId={r.clientUserId}
+                          name={r.clientName}
+                          adminClients={adminClients}
+                          className="font-medium hover:text-[#b39055]"
+                        />
+                      </td>
                       <td className="max-w-[18rem] truncate px-4 py-3 text-zinc-700">{r.serviceName}</td>
                       <td className="px-4 py-3 text-right text-zinc-700">${r.amount.toLocaleString('es-AR')}</td>
                       <td className="px-4 py-3 text-right font-bold text-emerald-700">${r.earning.toLocaleString('es-AR')}</td>

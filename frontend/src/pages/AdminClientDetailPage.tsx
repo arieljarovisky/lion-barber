@@ -288,12 +288,36 @@ export default function AdminClientDetailPage() {
                       </p>
                     </div>
                   </div>
-                  <div className="flex shrink-0 flex-col items-start gap-1 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 sm:items-end">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Puntos</span>
-                    <span className="text-2xl font-black text-[#b39055]">{client.points}</span>
+                  <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                    <div className="flex shrink-0 flex-col items-start gap-1 rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3 sm:items-end">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Puntos</span>
+                      <span className="text-2xl font-black text-[#b39055]">{client.points}</span>
+                    </div>
+                    {clientAccountBalanceOwedArs(client.accountBalanceArs) > 0 && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-right">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                          Deuda cuenta corriente
+                        </span>
+                        <p className="text-2xl font-black tabular-nums text-amber-900">
+                          ${formatArs(clientAccountBalanceOwedArs(client.accountBalanceArs))}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+
+              {clientAccountBalanceOwedArs(client.accountBalanceArs) > 0 && (
+                <div className="border-t border-amber-200 bg-amber-50 px-5 py-4 sm:px-8">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Este cliente debe{' '}
+                    <span className="tabular-nums">
+                      ${formatArs(clientAccountBalanceOwedArs(client.accountBalanceArs))}
+                    </span>{' '}
+                    en cuenta corriente.
+                  </p>
+                </div>
+              )}
 
               {client.adminNotes?.trim() && (
                 <div className="border-t border-amber-100 bg-amber-50/80 px-5 py-4 sm:px-8">

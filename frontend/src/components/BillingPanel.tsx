@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, FileDown, Loader2, Receipt, Search, SlidersHorizontal } from 'lucide-react';
-import type { Appointment, Barber, Service } from '../api';
+import type { Appointment, Barber, Service, AdminClientWithHistory } from '../api';
 import { canInvoiceAppointmentAfip, resolveBarberForAppointment } from '../utils/barberAfip';
 import { formatArs, resolveAppointmentServiceAmountArs } from '../utils/money';
 import { printLionBarberInvoice } from '../utils/invoicePrint';
 import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
+import ClientProfileLink from './ClientProfileLink';
 import type { BarberInvoicingUsage } from '../api';
 
 const WINDOW_DAYS = 120;
@@ -28,6 +29,7 @@ type BillingPanelProps = {
   bulkInvoicing?: boolean;
   onInvoiceClick: (app: Appointment) => void;
   onBulkInvoice: (appointmentIds: string[]) => void;
+  adminClients?: AdminClientWithHistory[];
   barberInvoicing?: BarberInvoicingUsage[];
   barberInvoicingYear?: number;
   barberInvoicingMonth?: number;
@@ -47,6 +49,7 @@ export default function BillingPanel({
   bulkInvoicing = false,
   onInvoiceClick,
   onBulkInvoice,
+  adminClients = [],
   barberInvoicing = [],
   barberInvoicingYear = new Date().getFullYear(),
   barberInvoicingMonth = new Date().getMonth() + 1,
@@ -388,7 +391,15 @@ export default function BillingPanel({
                       <td className="whitespace-nowrap px-4 py-3 text-zinc-800">
                         {format(new Date(app.date + 'T12:00:00'), 'd MMM yyyy', { locale: es })} · {app.time}
                       </td>
-                      <td className="max-w-[10rem] truncate px-4 py-3 font-medium text-zinc-900">{app.name}</td>
+                      <td className="max-w-[10rem] truncate px-4 py-3 font-medium text-zinc-900">
+                        <ClientProfileLink
+                          userId={app.userId}
+                          name={app.name}
+                          phone={app.phone}
+                          adminClients={adminClients}
+                          className="font-medium hover:text-[#b39055]"
+                        />
+                      </td>
                       <td className="max-w-[12rem] truncate px-4 py-3 text-zinc-700">{app.service}</td>
                       <td className="hidden max-w-[8rem] truncate px-4 py-3 text-zinc-600 sm:table-cell">
                         {app.barber ?? '—'}

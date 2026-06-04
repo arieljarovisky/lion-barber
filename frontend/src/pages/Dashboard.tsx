@@ -51,6 +51,7 @@ import BillingPanel from '../components/BillingPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplitsModal';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
+import ClientProfileLink from '../components/ClientProfileLink';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError, downloadDatabaseBackup } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
@@ -86,49 +87,12 @@ import {
 } from '../utils/servicePaymentMethod';
 import { formatAppointmentProductsSummary, sumAppointmentProducts } from '../utils/appointmentProducts';
 import { appointmentModifyBlockedReason } from '../utils/appointmentModifyPermission';
-function normalizePhoneDigits(phone: string): string {
-  return phone.replace(/\D/g, '');
-}
-
-function adminClientMatchesPhoneDigits(c: AdminClientWithHistory, phoneDigits: string): boolean {
-  if (phoneDigits.length < 6) return false;
-  const phonesOnFile = Array.isArray(c.phones) && c.phones.length > 0 ? c.phones : c.phone ? [c.phone] : [];
-  if (phonesOnFile.some((p) => normalizePhoneDigits(p) === phoneDigits)) return true;
-  return c.appointments.some((a) => normalizePhoneDigits(a.phone || '') === phoneDigits);
-}
-
-function adminClientPrimaryPhone(c: AdminClientWithHistory): string {
-  const byFile = Array.isArray(c.phones) ? c.phones.find((p) => p.trim().length > 0) : null;
-  if (byFile) return byFile.trim();
-  if (c.phone?.trim()) return c.phone.trim();
-  const byHistory = c.appointments
-    .map((a) => (a.phone ?? '').trim())
-    .find((p) => p.length > 0);
-  return byHistory ?? '';
-}
-
-function resolveClientForNewAppointment(
-  adminClients: AdminClientWithHistory[],
-  linkedClientId: number | null,
-  name: string,
-  phone: string
-): AdminClientWithHistory | null {
-  if (linkedClientId != null) {
-    const byId = adminClients.find((c) => c.id === linkedClientId);
-    if (byId) return byId;
-  }
-  const nameNorm = name.trim().toLowerCase();
-  if (nameNorm) {
-    const byName = adminClients.filter((c) => c.name.trim().toLowerCase() === nameNorm);
-    if (byName.length === 1) return byName[0];
-  }
-  const phoneDigits = normalizePhoneDigits(phone);
-  if (phoneDigits.length >= 8) {
-    const byPhone = adminClients.filter((c) => adminClientMatchesPhoneDigits(c, phoneDigits));
-    if (byPhone.length === 1) return byPhone[0];
-  }
-  return null;
-}
+import {
+  adminClientMatchesPhoneDigits,
+  adminClientPrimaryPhone,
+  normalizePhoneDigits,
+  resolveClientForNewAppointment,
+} from '../utils/adminClientLookup';
 
 const TIME_SLOTS = [
   '10:00', '10:20', '10:40',
@@ -508,25 +472,27 @@ export default function Dashboard() {
     [profile?.role, showToast]
   );
 
+  const loadAdminClients = useCallback(async () => {
+    if (!canAccessDashboard) return;
+    setAdminClientsLoading(true);
+    try {
+      const r = await api.getAdminClientsWithHistory();
+      setAdminClients(r.clients);
+    } catch {
+      setAdminClients([]);
+    } finally {
+      setAdminClientsLoading(false);
+    }
+  }, [canAccessDashboard]);
+
+  useEffect(() => {
+    void loadAdminClients();
+  }, [loadAdminClients]);
+
   useEffect(() => {
     if (!modalOpen || !canAccessDashboard || editingAppointment) return;
-    let cancelled = false;
-    setAdminClientsLoading(true);
-    api
-      .getAdminClientsWithHistory()
-      .then((r) => {
-        if (!cancelled) setAdminClients(r.clients);
-      })
-      .catch(() => {
-        if (!cancelled) setAdminClients([]);
-      })
-      .finally(() => {
-        if (!cancelled) setAdminClientsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [modalOpen, canAccessDashboard, editingAppointment]);
+    void loadAdminClients();
+  }, [modalOpen, canAccessDashboard, editingAppointment, loadAdminClients]);
 
   const clientNameSuggestions = useMemo(() => {
     if (!canAccessDashboard || editingAppointment || !modalOpen) return [];
@@ -544,6 +510,19 @@ export default function Dashboard() {
       .sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }))
       .slice(0, 8);
   }, [canAccessDashboard, editingAppointment, modalOpen, form.name, form.phone, adminClients]);
+
+  const formMatchedClient = useMemo(() => {
+    if (!canAccessDashboard || editingAppointment || !modalOpen) return null;
+    return resolveClientForNewAppointment(adminClients, linkedClientId, form.name, form.phone);
+  }, [
+    canAccessDashboard,
+    editingAppointment,
+    modalOpen,
+    adminClients,
+    linkedClientId,
+    form.name,
+    form.phone,
+  ]);
 
   useEffect(() => {
     if (!nameSuggestionsOpen) return;
@@ -2168,9 +2147,13 @@ export default function Dashboard() {
                                   className="bg-amber-50 border border-amber-200/80 rounded-xl p-3 text-sm shadow-sm hover:shadow transition-shadow flex flex-col"
                                   style={{ minHeight: `${col.rowspan * TIMELINE_ROW_UNIT_REM}rem` }}
                                 >
-                                  <p className="font-bold text-zinc-900 truncate" title={app.name}>
-                                    {app.name}
-                                  </p>
+                                  <ClientProfileLink
+                                    userId={app.userId}
+                                    name={app.name}
+                                    phone={app.phone}
+                                    adminClients={adminClients}
+                                    className="font-bold text-zinc-900 truncate hover:text-[#b39055]"
+                                  />
                                   <AppointmentPaymentBadge app={app} className="mt-1" />
                                   {renderPaymentSplitsTrigger(app, true)}
                                   {(app.tipAmount ?? 0) > 0 && (
@@ -2355,7 +2338,13 @@ export default function Dashboard() {
                               <div className="rounded-xl border border-amber-200/80 bg-white p-3 sm:p-4 shadow-sm flex-1 flex flex-col min-h-0">
                                 <div className="flex flex-wrap items-start justify-between gap-3 flex-1">
                                   <div className="min-w-0">
-                                    <p className="font-bold text-zinc-900 text-base leading-tight">{app.name}</p>
+                                    <ClientProfileLink
+                                      userId={app.userId}
+                                      name={app.name}
+                                      phone={app.phone}
+                                      adminClients={adminClients}
+                                      className="font-bold text-zinc-900 text-base leading-tight hover:text-[#b39055]"
+                                    />
                                     <p className="text-sm text-zinc-600 mt-1">{app.service}</p>
                                     {(() => {
                                       const summary = formatAppointmentProductsSummary(app.products);
@@ -2500,7 +2489,14 @@ export default function Dashboard() {
                               </span>
                               <div className="flex-1 min-w-0 flex items-center justify-between gap-2 border border-amber-200/80 bg-amber-50/50 rounded-lg px-2 py-1.5">
                                 <div className="min-w-0">
-                                  <span className="font-medium text-zinc-800 truncate block">{app.name}</span>
+                                  <ClientProfileLink
+                                    userId={app.userId}
+                                    name={app.name}
+                                    phone={app.phone}
+                                    adminClients={adminClients}
+                                    className="font-medium text-zinc-800 truncate block hover:text-[#b39055]"
+                                    stopPropagation
+                                  />
                                   <span className="text-[10px] text-zinc-500">{dm} min</span>
                                   <AppointmentPaymentBadge app={app} className="mt-1" />
                                 </div>
@@ -2630,7 +2626,13 @@ export default function Dashboard() {
                         {initials}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-sm text-zinc-900 truncate leading-tight">{app.name}</p>
+                        <ClientProfileLink
+                          userId={app.userId}
+                          name={app.name}
+                          phone={app.phone}
+                          adminClients={adminClients}
+                          className="font-semibold text-sm text-zinc-900 truncate leading-tight hover:text-[#b39055]"
+                        />
                         {phoneHref ? (
                           <a
                             href={phoneHref}
@@ -3178,6 +3180,7 @@ export default function Dashboard() {
             bulkInvoicing={afipInvoiceBusy && !afipInvoiceApp}
             onInvoiceClick={openAfipInvoiceModal}
             onBulkInvoice={handleBulkAfipInvoice}
+            adminClients={adminClients}
             barberInvoicing={barberInvoicing}
             barberInvoicingYear={barberInvoicingYear}
             barberInvoicingMonth={barberInvoicingMonth}
@@ -3789,6 +3792,7 @@ export default function Dashboard() {
           services={services}
           shopProducts={shopProducts}
           barbers={barbers}
+          adminClients={adminClients}
           invoiceScopeBarberId={invoiceScopeBarberId}
           invoiceScopeBarberName={invoiceScopeBarberName}
           showToast={showToast}
@@ -3802,6 +3806,7 @@ export default function Dashboard() {
         app={paymentSplitsModalApp}
         services={services}
         depositPercent={DEPOSIT_PERCENT}
+        adminClients={adminClients}
         onClose={() => setPaymentSplitsModalApp(null)}
         onSaved={(updated) => {
           patchAppointmentInState(updated);
@@ -3927,6 +3932,11 @@ export default function Dashboard() {
                             }}
                           >
                             <span className="font-medium">{c.name}</span>
+                            {clientAccountBalanceOwedArs(c.accountBalanceArs) > 0 && (
+                              <span className="ml-2 text-xs font-bold text-amber-700 tabular-nums">
+                                Debe ${formatArs(clientAccountBalanceOwedArs(c.accountBalanceArs))}
+                              </span>
+                            )}
                             <span className="block text-xs text-zinc-500 truncate">{displayClientEmail(c.email)}</span>
                             <span className="block text-[11px] text-zinc-400 truncate">
                               {(() => {
@@ -3940,21 +3950,22 @@ export default function Dashboard() {
                     </ul>
                   )}
                 </div>
-                {canAccessDashboard && !editingAppointment && linkedClientId != null && (
+                {canAccessDashboard && !editingAppointment && formMatchedClient && (
                   <p className="mt-1 text-xs text-zinc-500">
                     Vinculado a ficha:{' '}
-                    <span className="font-medium text-zinc-700">
-                      {displayClientEmail(adminClients.find((x) => x.id === linkedClientId)?.email ?? '')}
-                    </span>
+                    <ClientProfileLink
+                      userId={formMatchedClient.id}
+                      name={formMatchedClient.name}
+                      className="font-medium text-[#b39055] hover:underline"
+                    />
                   </p>
                 )}
-                {canAccessDashboard && !editingAppointment && linkedClientId != null && (() => {
-                  const linked = adminClients.find((x) => x.id === linkedClientId);
-                  const owed = clientAccountBalanceOwedArs(linked?.accountBalanceArs);
+                {canAccessDashboard && !editingAppointment && formMatchedClient && (() => {
+                  const owed = clientAccountBalanceOwedArs(formMatchedClient.accountBalanceArs);
                   if (owed <= 0) return null;
                   return (
                     <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                      Este cliente debe{' '}
+                      <strong>{formMatchedClient.name}</strong> debe{' '}
                       <strong className="tabular-nums">${formatArs(owed)}</strong> en cuenta corriente.
                     </div>
                   );

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Lock, Printer, Unlock, Wallet } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api, ApiError } from '../api';
-import type { Appointment, Barber, DailyCashClose, Service } from '../api';
+import type { Appointment, Barber, DailyCashClose, Service, AdminClientWithHistory } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
@@ -21,6 +21,7 @@ import {
   formatServicePaymentSplits,
 } from '../utils/servicePaymentMethod';
 import ServicePaymentMethodLabel from '../components/ServicePaymentMethodLabel';
+import ClientProfileLink from '../components/ClientProfileLink';
 import {
   exportWeeklyCashCloseExcel,
   exportWeeklyCashClosePdf,
@@ -46,6 +47,7 @@ export default function WeeklyCashClosePage() {
   const [dailyClose, setDailyClose] = useState<DailyCashClose | null>(null);
   const [closingDay, setClosingDay] = useState(false);
   const [closeActionError, setCloseActionError] = useState('');
+  const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
 
   const { start, end, fromYmd, toYmd } = useMemo(
     () => periodBoundsFromAnchor(periodAnchor, periodMode),
@@ -92,14 +94,16 @@ export default function WeeklyCashClosePage() {
       api.getServices(),
       api.getFixedMonthlyExpenses(),
       api.getCashExpenses(fromYmd, toYmd),
+      api.getAdminClientsWithHistory(),
     ])
-      .then(([apps, barberList, serviceList, fixedRes, cashRes]) => {
+      .then(([apps, barberList, serviceList, fixedRes, cashRes, clientsRes]) => {
         if (cancelled) return;
         setAppointments(apps);
         setBarbers(barberList);
         setServices(serviceList);
         setFixedExpenses(fixedRes.items);
         setCashExpenses(cashRes.items);
+        setAdminClients(clientsRes.clients);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -640,7 +644,14 @@ export default function WeeklyCashClosePage() {
                           <tr key={r.appointmentId} className="hover:bg-zinc-50/70">
                             <td className="whitespace-nowrap px-3 py-2 tabular-nums text-zinc-700">{r.date}</td>
                             <td className="px-3 py-2 font-mono text-xs">{r.time}</td>
-                            <td className="max-w-[10rem] truncate px-3 py-2 font-medium">{r.clientName}</td>
+                            <td className="max-w-[10rem] truncate px-3 py-2 font-medium">
+                              <ClientProfileLink
+                                userId={r.clientUserId}
+                                name={r.clientName}
+                                adminClients={adminClients}
+                                className="font-medium hover:text-[#b39055]"
+                              />
+                            </td>
                             <td className="max-w-[12rem] truncate px-3 py-2 text-zinc-700">{r.serviceName}</td>
                             <td className="max-w-[8rem] truncate px-3 py-2">{r.barberName}</td>
                             <td className="px-3 py-2 text-right tabular-nums">${formatArs(r.serviceAmount)}</td>

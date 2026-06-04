@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { api, ApiError } from '../api';
-import type { Appointment, AppointmentProductLine, ClientSubscriptionInfo, Service, ServicePaymentSplit, ShopProduct } from '../api';
+import type { Appointment, AppointmentProductLine, ClientSubscriptionInfo, Service, ServicePaymentSplit, ShopProduct, AdminClientWithHistory } from '../api';
 import ServicePaymentSplitsEditor from './ServicePaymentSplitsEditor';
+import ClientProfileLink from './ClientProfileLink';
 import {
   appointmentDepositAmountArs,
   appointmentLocalPendingArs,
@@ -25,6 +26,7 @@ type Props = {
   app: Appointment | null;
   services: Service[];
   depositPercent: number;
+  adminClients?: AdminClientWithHistory[];
   onClose: () => void;
   onSaved: (updated: Appointment) => void;
   onError: (message: string) => void;
@@ -47,6 +49,7 @@ export default function AppointmentPaymentSplitsModal({
   app,
   services,
   depositPercent,
+  adminClients = [],
   onClose,
   onSaved,
   onError,
@@ -280,7 +283,13 @@ export default function AppointmentPaymentSplitsModal({
         <div className="p-5 border-b border-zinc-100 flex justify-between items-start gap-3">
           <div>
             <h3 className="text-lg font-black text-zinc-900">Cobros y productos</h3>
-            <p className="text-sm text-zinc-600 mt-0.5">{app.name}</p>
+            <ClientProfileLink
+              userId={app.userId}
+              name={app.name}
+              phone={app.phone}
+              adminClients={adminClients}
+              className="text-sm text-zinc-600 hover:text-[#b39055]"
+            />
             <p className="text-xs text-zinc-500 mt-1">
               Total del turno: <span className="font-bold text-zinc-800">${formatArs(serviceAmount)}</span>
               {depositAmount > 0 && (

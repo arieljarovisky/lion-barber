@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Receipt, X } from 'lucide-react';
-import type { Appointment, Barber, BarberInvoicingUsage, Service, ShopProduct } from '../api';
+import type { Appointment, Barber, BarberInvoicingUsage, Service, ShopProduct, AdminClientWithHistory } from '../api';
 import { api, ApiError } from '../api';
 import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
+import ClientProfileLink from './ClientProfileLink';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import {
   appointmentMatchesInvoiceScope,
@@ -18,6 +19,7 @@ type AfipInvoiceModalProps = {
   services: Service[];
   shopProducts: ShopProduct[];
   barbers: Barber[];
+  adminClients?: AdminClientWithHistory[];
   invoiceScopeBarberId?: string | null;
   invoiceScopeBarberName?: string | null;
   onClose: () => void;
@@ -32,6 +34,7 @@ export default function AfipInvoiceModal({
   services,
   shopProducts,
   barbers,
+  adminClients = [],
   invoiceScopeBarberId = null,
   invoiceScopeBarberName = null,
   onClose,
@@ -231,7 +234,14 @@ export default function AfipInvoiceModal({
                   Facturar AFIP
                 </h2>
                 <p className="truncate text-xs text-zinc-500">
-                  {appointment.name} · {appointment.date} {appointment.time}
+                  <ClientProfileLink
+                    userId={appointment.userId}
+                    name={appointment.name}
+                    phone={appointment.phone}
+                    adminClients={adminClients}
+                    className="text-zinc-600 hover:text-[#b39055]"
+                  />{' '}
+                  · {appointment.date} {appointment.time}
                 </p>
               </div>
             </div>
