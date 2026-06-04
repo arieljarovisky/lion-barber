@@ -21,6 +21,7 @@ import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '..
 import { resolveAppointmentDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
 import { SERVICE_PAYMENT_METHODS, applySplitsToMethodTotals } from './servicePaymentMethod';
 import {
+  appointmentCanjeLocalAmountArs,
   appointmentCollectibleLocalArs,
   appointmentSubscriptionLocalAmountArs,
 } from './servicePaymentMethod';
@@ -110,6 +111,8 @@ export type WeeklyCashRow = {
   serviceAmount: number;
   /** Parte del saldo local cubierta con abono (corte gratis, no entra a caja). */
   subscriptionAmount: number;
+  /** Parte del saldo local cubierta con canje de puntos. */
+  canjeAmount: number;
   depositAmount: number;
   depositPaid: boolean;
   localPending: number;
@@ -155,8 +158,8 @@ export type WeeklyCashSummary = {
   depositsMp: number;
   localPending: number;
   commissions: number;
-  /** Valor de servicios cubiertos con abono en el período (referencia, no ingreso en caja). */
-  subscriptionServiceTotal: number;
+  /** Valor de servicios cubiertos con abono o canje en el período (referencia, no ingreso en caja). */
+  nonCashServiceTotal: number;
   shopNetEstimate: number;
   afipInvoicedTotal: number;
   afipInvoicedCount: number;
@@ -261,6 +264,7 @@ export function buildWeeklyCashClose(
 
     const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
     const subscriptionAmount = appointmentSubscriptionLocalAmountArs(app, services, depositPercent);
+    const canjeAmount = appointmentCanjeLocalAmountArs(app, services, depositPercent);
     const collectibleLocal = appointmentCollectibleLocalArs(app, services, depositPercent);
     const { key, name, commissionPercent } = resolveBarber(app, barbers);
     const depositAmount =
@@ -285,6 +289,7 @@ export function buildWeeklyCashClose(
       barberName: name,
       serviceAmount,
       subscriptionAmount,
+      canjeAmount,
       depositAmount,
       depositPaid: Boolean(app.depositPaid),
       localPending: collectibleLocal,
@@ -341,7 +346,7 @@ export function buildWeeklyCashClose(
       acc.depositsMp += r.depositAmount;
       acc.localPending += r.localPending;
       acc.commissions += r.commissionAmount;
-      acc.subscriptionServiceTotal += r.subscriptionAmount;
+      acc.nonCashServiceTotal += r.subscriptionAmount + r.canjeAmount;
       if (r.depositAmount > 0) {
         acc.depositsMpByMethod.mercadopago += r.depositAmount;
       }
@@ -368,7 +373,7 @@ export function buildWeeklyCashClose(
       depositsMp: 0,
       localPending: 0,
       commissions: 0,
-      subscriptionServiceTotal: 0,
+      nonCashServiceTotal: 0,
       shopNetEstimate: 0,
       afipInvoicedTotal: 0,
       afipInvoicedCount: 0,

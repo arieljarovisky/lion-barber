@@ -468,10 +468,10 @@ export default function WeeklyCashClosePage() {
                   hint="Efectivo, tarjeta, cuenta, etc."
                   accent="amber"
                 />
-                {summary.subscriptionServiceTotal > 0 && (
+                {summary.nonCashServiceTotal > 0 && (
                   <SummaryCard
-                    label="Cortes con abono"
-                    value={`$${formatArs(summary.subscriptionServiceTotal)}`}
+                    label="Abono y canje"
+                    value={`$${formatArs(summary.nonCashServiceTotal)}`}
                     hint="No entra plata en caja; sí genera comisión al barbero"
                   />
                 )}
@@ -670,9 +670,13 @@ export default function WeeklyCashClosePage() {
                               )}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums text-amber-800">
-                              {r.subscriptionAmount > 0 && r.localPending <= 0 ? (
-                                <span className="text-violet-700" title="Corte de abono">
-                                  Abono
+                              {r.localPending <= 0 && r.subscriptionAmount + r.canjeAmount > 0 ? (
+                                <span className="text-violet-700" title="Abono o canje de puntos">
+                                  {r.canjeAmount > 0 && r.subscriptionAmount <= 0
+                                    ? 'Canje'
+                                    : r.subscriptionAmount > 0 && r.canjeAmount <= 0
+                                      ? 'Abono'
+                                      : 'Abono/Canje'}
                                 </span>
                               ) : (
                                 `$${formatArs(r.localPending)}`

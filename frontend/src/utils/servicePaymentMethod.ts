@@ -12,6 +12,7 @@ export const SERVICE_PAYMENT_METHODS: ServicePaymentMethod[] = [
   'cash',
   'card',
   'subscription',
+  'canje',
 ];
 
 export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string> = {
@@ -20,7 +21,15 @@ export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string>
   cash: 'Efectivo',
   card: 'Tarjeta',
   subscription: 'Abono',
+  canje: 'Canje',
 };
+
+/** Abono y canje de puntos: no ingresan efectivo en caja en el turno. */
+export const NON_CASH_LOCAL_PAYMENT_METHODS: ServicePaymentMethod[] = ['subscription', 'canje'];
+
+export function isNonCashLocalPaymentMethod(method: ServicePaymentMethod): boolean {
+  return NON_CASH_LOCAL_PAYMENT_METHODS.includes(method);
+}
 
 export function formatServicePaymentMethod(
   method: ServicePaymentMethod | null | undefined
@@ -220,7 +229,11 @@ export function formatAppointmentPaymentDisplay(
       }
       if (s.amount > 0) {
         const suffix =
-          s.method === 'subscription' && app.subscriptionCutApplied ? ' (1 corte)' : '';
+          s.method === 'subscription' && app.subscriptionCutApplied
+            ? ' (1 corte)'
+            : s.method === 'canje'
+              ? ' (puntos)'
+              : '';
         parts.push(
           `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}${suffix}`
         );
@@ -245,7 +258,7 @@ export function cleanServicePaymentSplits(splits: ServicePaymentSplit[]): Servic
   return cleaned.length > 0 ? cleaned : null;
 }
 
-/** Reparte montos al cierre semanal (saldo en local, sin la seña). Excluye abono (no es efectivo en caja). */
+/** Reparte montos al cierre semanal (saldo en local, sin la seña). Excluye abono y canje. */
 export function applySplitsToMethodTotals(
   totals: Record<ServicePaymentMethod, number> & { unregistered: number },
   splits: ServicePaymentSplit[] | null | undefined,
@@ -257,7 +270,7 @@ export function applySplitsToMethodTotals(
   if (splits?.length) {
     let assigned = 0;
     for (const s of splits) {
-      if (s.method === 'subscription') continue;
+      if (isNonCashLocalPaymentMethod(s.method)) continue;
       if (s.amount > 0 && SERVICE_PAYMENT_METHODS.includes(s.method)) {
         totals[s.method] += s.amount;
         assigned += s.amount;
@@ -270,13 +283,24 @@ export function applySplitsToMethodTotals(
     return;
   }
 
-  if (legacyMethod === 'subscription') return;
+  if (legacyMethod && isNonCashLocalPaymentMethod(legacyMethod)) return;
 
   const bucket = legacyMethod ?? 'unregistered';
   totals[bucket] += localPending;
 }
 
-/** Monto del saldo local cubierto con corte de abono (no ingresa a caja en el turno). */
+function nonCashSplitAmountArs(
+  splits: ServicePaymentSplit[] | null | undefined,
+  method: ServicePaymentMethod
+): number {
+  if (!splits?.length) return 0;
+  return splits.reduce(
+    (acc, s) => (s.method === method && s.amount > 0 ? acc + s.amount : acc),
+    0
+  );
+}
+
+/** Monto del saldo local cubierto con abono (no ingresa a caja en el turno). */
 export function appointmentSubscriptionLocalAmountArs(
   app: Appointment,
   services: Service[],
@@ -285,16 +309,42 @@ export function appointmentSubscriptionLocalAmountArs(
   const localTarget = appointmentLocalPendingArs(app, services, depositPercent);
   if (localTarget <= 0) return 0;
 
-  const fromSplits =
-    app.servicePaymentSplits?.reduce(
-      (acc, s) => (s.method === 'subscription' && s.amount > 0 ? acc + s.amount : acc),
-      0
-    ) ?? 0;
+  const fromSplits = nonCashSplitAmountArs(app.servicePaymentSplits, 'subscription');
   if (fromSplits > 0) return Math.min(localTarget, fromSplits);
 
   if (app.subscriptionCutApplied) return localTarget;
   if (app.servicePaymentMethod === 'subscription') return localTarget;
   return 0;
+}
+
+/** Monto del saldo local cubierto con canje de puntos (no ingresa a caja en el turno). */
+export function appointmentCanjeLocalAmountArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number
+): number {
+  const localTarget = appointmentLocalPendingArs(app, services, depositPercent);
+  if (localTarget <= 0) return 0;
+
+  const fromSplits = nonCashSplitAmountArs(app.servicePaymentSplits, 'canje');
+  if (fromSplits > 0) return Math.min(localTarget, fromSplits);
+
+  if (app.servicePaymentMethod === 'canje') return localTarget;
+  return 0;
+}
+
+/** Abono + canje: parte del servicio sin ingreso en caja al momento del turno. */
+export function appointmentNonCashLocalAmountArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number
+): number {
+  const localTarget = appointmentLocalPendingArs(app, services, depositPercent);
+  if (localTarget <= 0) return 0;
+
+  const subscription = appointmentSubscriptionLocalAmountArs(app, services, depositPercent);
+  const canje = appointmentCanjeLocalAmountArs(app, services, depositPercent);
+  return Math.min(localTarget, subscription + canje);
 }
 
 /** Saldo en local que entra a caja (efectivo, tarjeta, cuenta corriente, etc.), sin abono. */
@@ -306,7 +356,7 @@ export function appointmentCollectibleLocalArs(
   return Math.max(
     0,
     appointmentLocalPendingArs(app, services, depositPercent) -
-      appointmentSubscriptionLocalAmountArs(app, services, depositPercent)
+      appointmentNonCashLocalAmountArs(app, services, depositPercent)
   );
 }
 
@@ -317,6 +367,6 @@ export function appointmentCommissionableServiceAmountArs(
   depositPercent: number
 ): number {
   const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
-  const subscriptionCoverage = appointmentSubscriptionLocalAmountArs(app, services, depositPercent);
+  const subscriptionCoverage = appointmentNonCashLocalAmountArs(app, services, depositPercent);
   return Math.max(0, serviceAmount - subscriptionCoverage);
 }

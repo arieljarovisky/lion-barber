@@ -57,7 +57,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
     ['Total ingreso servicios en caja (ARS)', data.summary.serviceGross],
     ['Señas Mercado Pago (ARS)', data.summary.depositsMp],
     ['Cobrado en local (ARS)', data.summary.localPending],
-    ['Cortes con abono — referencia (ARS)', data.summary.subscriptionServiceTotal],
+    ['Abono y canje — referencia (ARS)', data.summary.nonCashServiceTotal],
     ['Comisiones barberos (ARS)', data.summary.commissions],
     ['Propinas (ARS)', data.summary.tipsTotal],
     ['Neto local estimado (ARS)', data.summary.shopNetEstimate],
