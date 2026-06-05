@@ -1264,7 +1264,7 @@ export default function Dashboard() {
         disabled={!canUpdateAppointmentPayments(app)}
         className={
           compact
-            ? `mt-1.5 w-full rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-left hover:border-[#e5c185] hover:bg-amber-50/80 disabled:cursor-not-allowed disabled:opacity-50`
+            ? `w-full rounded-xl border border-zinc-200 bg-white px-2.5 py-2 text-left hover:border-[#e5c185] hover:bg-amber-50/80 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99] transition-transform`
             : `w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-left hover:border-[#e5c185] hover:bg-amber-50/80 disabled:cursor-not-allowed disabled:opacity-50`
         }
         title={label}
@@ -2551,9 +2551,9 @@ export default function Dashboard() {
             isSingleBarberDayView ? 'border-zinc-200/80 border-dashed' : 'border-zinc-200'
           }`}
         >
-          <div className="px-4 py-3 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center gap-3">
-            <div>
-              <h3 className="font-semibold text-sm sm:text-base text-zinc-800">
+          <div className="px-4 py-3.5 border-b border-zinc-100 bg-zinc-50/50 flex justify-between items-center gap-3 lg:px-4">
+            <div className="min-w-0">
+              <h3 className="font-bold text-base sm:text-base text-zinc-900 lg:font-semibold lg:text-zinc-800">
                 {isSingleBarberDayView ? 'Mismo día · vista lista' : 'Listado de turnos'}
               </h3>
               {isSingleBarberDayView && (
@@ -2593,7 +2593,7 @@ export default function Dashboard() {
               </button>
             </div>
           ) : (
-            <ul className="divide-y divide-zinc-100 min-w-0">
+            <ul className="flex flex-col gap-3 p-3 min-w-0 lg:gap-0 lg:p-0 lg:divide-y lg:divide-zinc-100">
               {dayAppointments.map((app) => {
                 const dm = app.durationMinutes ?? 30;
                 const endClock = addMinutesToClock(app.time, dm);
@@ -2607,95 +2607,54 @@ export default function Dashboard() {
                 return (
                   <li
                     key={app.id}
-                    className="relative px-3 py-3 sm:px-4 sm:py-3.5 hover:bg-zinc-50/60 transition-colors group"
+                    className="relative rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow lg:rounded-none lg:border-0 lg:border-b lg:border-zinc-100 lg:shadow-none lg:p-0 lg:px-4 lg:py-3.5 lg:hover:bg-zinc-50/60 lg:hover:shadow-none group"
                   >
                     <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[4.5rem_minmax(8rem,1fr)_minmax(6.5rem,0.85fr)_minmax(5.5rem,0.7fr)_minmax(12rem,1.5fr)_auto] lg:items-center lg:gap-x-3 lg:gap-y-2">
-                    {/* Fila superior en pantallas chicas: hora + cliente + acciones */}
-                    <div className="flex items-center gap-3 min-w-0 lg:contents">
-                    <div className="flex sm:flex-col items-center justify-center gap-2 sm:gap-0.5 bg-zinc-950 text-white rounded-lg px-3 py-2 sm:min-w-[4.25rem] flex-shrink-0 xl:row-span-1">
-                      <span className="font-bold text-base sm:text-[15px] tabular-nums leading-none">{app.time}</span>
-                      <span className="hidden sm:block text-[10px] text-zinc-400 tabular-nums mt-1 leading-none">
-                        hasta {endClock}
+                    {/* Hora + cliente (sin acciones en la misma fila en móvil) */}
+                    <div className="flex items-start gap-3 min-w-0 lg:contents">
+                    <div className="flex flex-col items-center justify-center gap-0.5 bg-zinc-950 text-white rounded-xl px-3 py-2.5 min-w-[4.25rem] flex-shrink-0 xl:row-span-1">
+                      <span className="font-bold text-[17px] tabular-nums leading-none lg:text-[15px]">{app.time}</span>
+                      <span className="text-[10px] text-zinc-400 tabular-nums leading-none lg:mt-1">
+                        <span className="lg:hidden">{dm} min</span>
+                        <span className="hidden lg:inline">hasta {endClock}</span>
                       </span>
-                      <span className="sm:hidden text-xs text-zinc-400 tabular-nums">· {dm} min</span>
                     </div>
 
-                    <div className="flex items-center gap-3 min-w-0 flex-1 xl:min-w-0">
-                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#e5c185] to-[#b39055] text-zinc-900 flex items-center justify-center text-xs font-black tracking-tight flex-shrink-0">
+                    <div className="flex items-start gap-3 min-w-0 flex-1 xl:min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#e5c185] to-[#b39055] text-zinc-900 flex items-center justify-center text-xs font-black tracking-tight flex-shrink-0 lg:w-9 lg:h-9">
                         {initials}
                       </div>
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0 flex-1 pt-0.5">
                         <ClientProfileLink
                           userId={app.userId}
                           name={app.name}
                           phone={app.phone}
                           adminClients={adminClients}
-                          className="font-semibold text-sm text-zinc-900 truncate leading-tight hover:text-[#b39055]"
+                          className="font-bold text-[15px] text-zinc-900 leading-snug hover:text-[#b39055] line-clamp-2 lg:font-semibold lg:text-sm lg:truncate lg:leading-tight"
                         />
                         {phoneHref ? (
                           <a
                             href={phoneHref}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-emerald-700 transition-colors truncate max-w-full"
+                            className="mt-1 inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-emerald-700 transition-colors"
                           >
-                            <Phone size={10} className="shrink-0" />
-                            <span className="truncate">{app.phone}</span>
+                            <Phone size={12} className="shrink-0" />
+                            <span className="break-all">{app.phone}</span>
                           </a>
                         ) : (
-                          <span className="text-[11px] text-zinc-400 italic">Sin teléfono</span>
+                          <span className="mt-1 block text-xs text-zinc-400 italic">Sin teléfono</span>
                         )}
                       </div>
                     </div>
-
-                    <div className="flex items-center justify-end gap-1 flex-shrink-0 lg:hidden">
-                      {showAfipBlock && !app.afipCae ? (
-                        <button
-                          type="button"
-                          onClick={() => openAfipInvoiceModal(app)}
-                          disabled={(afipInvoiceBusy && afipInvoiceApp?.id === app.id) || !canAfipInvoice}
-                          className="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
-                          title="Facturar AFIP"
-                        >
-                          <Receipt size={16} />
-                        </button>
-                      ) : null}
-                      {waUrl ? (
-                        <a
-                          href={waUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-emerald-700 hover:bg-emerald-50"
-                          title="WhatsApp"
-                        >
-                          <MessageCircle size={16} />
-                        </a>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => tryOpenEditModal(app)}
-                        className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-amber-800 hover:bg-amber-50"
-                        title="Editar"
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void tryDeleteAppointment(app.id)}
-                        className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-red-600 hover:bg-red-50"
-                        title="Eliminar"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
                     </div>
 
-                    {/* Servicio + barbero (móvil en fila; desktop en columnas) */}
-                    <div className="grid grid-cols-2 gap-3 sm:gap-4 min-w-0 lg:contents">
+                    {/* Servicio + barbero */}
+                    <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 px-3 py-2.5 flex flex-col gap-2.5 sm:grid sm:grid-cols-2 sm:gap-3 min-w-0 lg:bg-transparent lg:border-0 lg:rounded-none lg:p-0 lg:contents lg:gap-0">
                     <div className="min-w-0">
-                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Servicio</p>
-                      <p className="text-sm font-medium text-zinc-800 flex items-start gap-1.5 min-w-0">
-                        <Scissors size={12} className="text-zinc-400 shrink-0 mt-0.5 lg:hidden" />
+                      <p className="hidden lg:block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Servicio</p>
+                      <p className="text-sm font-medium text-zinc-800 flex items-start gap-2 min-w-0">
+                        <Scissors size={14} className="text-[#b39055] shrink-0 mt-0.5 lg:hidden" />
                         <span className="break-words leading-snug">{app.service}</span>
                       </p>
                       {(() => {
@@ -2703,7 +2662,7 @@ export default function Dashboard() {
                         if (!summary) return null;
                         return (
                           <p
-                            className="text-[11px] font-semibold text-amber-800 mt-0.5 break-words"
+                            className="text-[11px] font-semibold text-amber-800 mt-1 break-words lg:mt-0.5"
                             title={(app.products ?? [])
                               .map((l) => `${l.quantity}× ${l.name} · $${formatArs(l.subtotal)}`)
                               .join('\n')}
@@ -2712,33 +2671,33 @@ export default function Dashboard() {
                           </p>
                         );
                       })()}
-                      <p className="text-[11px] text-zinc-500 tabular-nums mt-0.5">{dm} min</p>
+                      <p className="hidden lg:block text-[11px] text-zinc-500 tabular-nums mt-0.5">{dm} min</p>
                     </div>
 
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Barbero</p>
+                    <div className="min-w-0 sm:border-l sm:border-zinc-200/80 sm:pl-3 lg:border-0 lg:pl-0">
+                      <p className="hidden lg:block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Barbero</p>
                       <div className="flex items-center gap-2 min-w-0">
                         {barberInfo?.photo ? (
                           <img
                             src={barberInfo.photo}
                             alt={barberInfo.name}
-                            className="w-6 h-6 rounded-full object-cover ring-1 ring-zinc-200 flex-shrink-0"
+                            className="w-7 h-7 rounded-full object-cover ring-1 ring-zinc-200 flex-shrink-0 lg:w-6 lg:h-6"
                             referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <div className="w-6 h-6 rounded-full bg-zinc-200 flex items-center justify-center text-[10px] font-bold text-zinc-600 flex-shrink-0">
+                          <div className="w-7 h-7 rounded-full bg-zinc-200 flex items-center justify-center text-[10px] font-bold text-zinc-600 flex-shrink-0 lg:w-6 lg:h-6">
                             {(app.barber ?? '?').slice(0, 1).toUpperCase()}
                           </div>
                         )}
-                        <span className="text-sm font-medium text-zinc-700 break-words leading-snug">{app.barber ?? '—'}</span>
+                        <span className="text-sm font-semibold text-zinc-700 break-words leading-snug lg:font-medium">{app.barber ?? '—'}</span>
                       </div>
                     </div>
                     </div>
 
-                    {/* Cobros: ancho completo en móvil/tablet */}
+                    {/* Cobros */}
                     <div className="min-w-0 w-full lg:min-w-[12rem]">
-                      <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">Cobros</p>
-                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                      <p className="hidden lg:block text-[10px] font-semibold text-zinc-400 uppercase tracking-wider mb-1">Cobros</p>
+                      <div className="flex flex-wrap items-center gap-2 mb-2 lg:gap-1.5 lg:mb-1.5">
                         <AppointmentPaymentBadge app={app} className="whitespace-nowrap" />
                         {showAfipBlock && app.afipCae && (
                           <span
@@ -2750,12 +2709,59 @@ export default function Dashboard() {
                           </span>
                         )}
                       </div>
-                      {renderPaymentSplitsTrigger(app)}
+                      <div className="lg:hidden">{renderPaymentSplitsTrigger(app, true)}</div>
+                      <div className="hidden lg:block">{renderPaymentSplitsTrigger(app)}</div>
                       {(app.tipAmount ?? 0) > 0 && (
                         <p className="text-[11px] font-semibold text-violet-700 mt-1.5">
                           Propina ${formatArs(app.tipAmount!)}
                         </p>
                       )}
+                    </div>
+
+                    {/* Acciones móvil: barra inferior con targets amplios */}
+                    <div className="flex items-stretch gap-2 pt-3 border-t border-zinc-100 lg:hidden">
+                      {showAfipBlock && !app.afipCae ? (
+                        <button
+                          type="button"
+                          onClick={() => openAfipInvoiceModal(app)}
+                          disabled={(afipInvoiceBusy && afipInvoiceApp?.id === app.id) || !canAfipInvoice}
+                          className="inline-flex flex-1 flex-col items-center justify-center gap-0.5 min-h-[44px] rounded-xl bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-50"
+                          title="Facturar AFIP"
+                        >
+                          <Receipt size={18} />
+                          <span className="text-[9px] font-bold uppercase tracking-wide">AFIP</span>
+                        </button>
+                      ) : null}
+                      {waUrl ? (
+                        <a
+                          href={waUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex flex-1 flex-col items-center justify-center gap-0.5 min-h-[44px] rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
+                          title="WhatsApp"
+                        >
+                          <MessageCircle size={18} />
+                          <span className="text-[9px] font-bold uppercase tracking-wide">WA</span>
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => tryOpenEditModal(app)}
+                        className="inline-flex flex-1 flex-col items-center justify-center gap-0.5 min-h-[44px] rounded-xl text-amber-900 bg-amber-50 hover:bg-amber-100"
+                        title="Editar"
+                      >
+                        <Pencil size={18} />
+                        <span className="text-[9px] font-bold uppercase tracking-wide">Editar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void tryDeleteAppointment(app.id)}
+                        className="inline-flex flex-1 flex-col items-center justify-center gap-0.5 min-h-[44px] rounded-xl text-red-700 bg-red-50 hover:bg-red-100"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={18} />
+                        <span className="text-[9px] font-bold uppercase tracking-wide">Borrar</span>
+                      </button>
                     </div>
 
                     {/* Acciones en desktop */}
