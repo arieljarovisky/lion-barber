@@ -1,6 +1,10 @@
 import pool, { query } from '../db.js';
 import { mysqlUtcNaiveToIsoInstant } from '../mysqlUtcDatetime.js';
 import type { DailyCashClose } from '../types.js';
+import {
+  deletePaymentSnapshotsForDate,
+  snapshotPaymentsForDailyClose,
+} from './dailyCashCloseSnapshots.js';
 
 interface DbDailyCashClose {
   close_date: string | Date;
@@ -81,6 +85,7 @@ export async function closeDailyCash(dateYmd: string, userId: number): Promise<D
     'INSERT INTO daily_cash_closes (close_date, closed_by_user_id) VALUES (?, ?)',
     [d, userId]
   );
+  await snapshotPaymentsForDailyClose(d);
   const created = await getDailyCashClose(d);
   if (!created) throw new Error('No se pudo registrar el cierre');
   return created;
@@ -88,6 +93,7 @@ export async function closeDailyCash(dateYmd: string, userId: number): Promise<D
 
 export async function reopenDailyCash(dateYmd: string): Promise<boolean> {
   const d = dateYmd.slice(0, 10);
+  await deletePaymentSnapshotsForDate(d);
   const [res] = await pool.execute('DELETE FROM daily_cash_closes WHERE close_date = ?', [d]);
   return ((res as { affectedRows?: number }).affectedRows ?? 0) > 0;
 }

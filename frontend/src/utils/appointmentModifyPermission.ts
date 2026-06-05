@@ -1,5 +1,9 @@
 import type { Appointment } from '../api';
 
+export function canUpdateAppointmentPayments(app: Appointment): boolean {
+  return (app.status ?? 'scheduled') === 'scheduled';
+}
+
 export function canModifyAppointment(
   app: Appointment,
   currentUserId: number | undefined,

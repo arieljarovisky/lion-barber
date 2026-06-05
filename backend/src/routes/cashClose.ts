@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireStaffOrAdmin, requireSuperAdmin, type AuthRequest } from '../middleware/auth.js';
 import * as dailyCashCloseRepo from '../repositories/dailyCashClose.js';
+import * as snapshotRepo from '../repositories/dailyCashCloseSnapshots.js';
 
 const router = Router();
 
@@ -16,6 +17,21 @@ router.get('/daily', requireAuth, requireStaffOrAdmin, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al listar cierres diarios' });
+  }
+});
+
+router.get('/payment-snapshots', requireAuth, requireStaffOrAdmin, async (req, res) => {
+  const from = typeof req.query.from === 'string' ? req.query.from.slice(0, 10) : '';
+  const to = typeof req.query.to === 'string' ? req.query.to.slice(0, 10) : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ error: 'Se requieren from y to (yyyy-MM-dd)' });
+  }
+  try {
+    const snapshots = await snapshotRepo.listPaymentSnapshotsInRange(from, to);
+    res.json({ snapshots });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Error al listar snapshots de cobros' });
   }
 });
 
