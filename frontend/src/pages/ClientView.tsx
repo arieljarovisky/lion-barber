@@ -10,7 +10,7 @@ import {
 import { SHOP_INSTAGRAM_URL } from '../constants/shopSocial';
 import { WhatsAppIcon, whatsAppLionButtonClassName } from '../components/WhatsAppIcon';
 import { InstagramIcon } from '../components/InstagramIcon';
-import ClientMobileNav from '../components/ClientMobileNav';
+import ClientMobileNavUserSection from '../components/ClientMobileNavUserSection';
 import { api } from '../store';
 import { ANY_BARBER_ID, ApiError } from '../api';
 import type { Service, Barber, SubscriptionPlan, SitePromotion } from '../api';
@@ -718,15 +718,10 @@ export default function ClientView() {
             </a>
             <button
               type="button"
-              className={`flex h-10 w-10 items-center justify-center rounded-xl border transition-colors ${
-                isMobileMenuOpen
-                  ? 'border-[#e5c185]/40 bg-[#e5c185]/10 text-[#e5c185]'
-                  : 'border-transparent text-zinc-400 hover:border-zinc-800 hover:bg-zinc-900 hover:text-[#e5c185]'
-              }`}
+              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-[#e5c185]"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               aria-label={isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
               aria-expanded={isMobileMenuOpen}
-              aria-controls="client-mobile-nav"
             >
               {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
@@ -792,15 +787,37 @@ export default function ClientView() {
           </div>
         </div>
 
-        <ClientMobileNav
-          isOpen={isMobileMenuOpen}
-          onClose={() => setIsMobileMenuOpen(false)}
-          showAbonosSection={showAbonosSection}
-          profile={profile}
-          canAccessDashboard={canAccessDashboard}
-          onLogout={handleLogout}
-          onReserva={scrollToReserva}
-        />
+        {/* Menú móvil / tablet */}
+        {isMobileMenuOpen && (
+          <div className="absolute left-0 top-16 flex w-full flex-col gap-1 border-b border-zinc-800/50 bg-zinc-950 px-4 py-3 shadow-2xl sm:top-20 lg:hidden">
+            {(
+              [
+                { href: '#servicios', label: 'Servicios' },
+                { href: '#barberos', label: 'Barberos' },
+                ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
+                { href: '#contacto', label: 'Contacto' },
+              ] as const
+            ).map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-900 hover:text-[#e5c185]"
+              >
+                {item.label}
+              </a>
+            ))}
+
+            <div className="my-2 h-px bg-zinc-800/80" />
+
+            <ClientMobileNavUserSection
+              profile={profile}
+              canAccessDashboard={canAccessDashboard}
+              onClose={() => setIsMobileMenuOpen(false)}
+              onLogout={handleLogout}
+            />
+          </div>
+        )}
       </nav>
 
       {/* Hero Section */}
