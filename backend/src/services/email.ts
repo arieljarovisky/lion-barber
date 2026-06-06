@@ -121,6 +121,47 @@ function buildSubscriptionDetailRows(status: ClientSubscriptionStatus): Array<[s
   ];
 }
 
+/** Proyección al reservar: no descuenta el corte, solo informa cuál será y cuántos quedarán. */
+function buildSubscriptionAppointmentProjection(status: ClientSubscriptionStatus): {
+  detailRows: Array<[string, string]>;
+  noticeHtml: string;
+  noticeText: string;
+} {
+  const cutNumber = status.cutsUsed + 1;
+  const cutsAfter = Math.max(0, status.cutsRemaining - 1);
+  const periodEnd = fmtDate(status.periodEnd);
+
+  if (status.cutsRemaining <= 0) {
+    const noticeHtml = `Tu abono «${escapeHtml(status.planName)}» no tiene cortes disponibles este mes (${status.cutsUsed}/${status.cutsPerMonth} usados).`;
+    const noticeText = `Tu abono «${status.planName}» no tiene cortes disponibles este mes (${status.cutsUsed}/${status.cutsPerMonth} usados).`;
+    return { detailRows: buildSubscriptionDetailRows(status), noticeHtml, noticeText };
+  }
+
+  const detailRows: Array<[string, string]> = [
+    ['Abono', status.planName],
+    ['Este turno será', `Corte ${cutNumber} de ${status.cutsPerMonth}`],
+    [
+      'Después de este turno',
+      cutsAfter === 0
+        ? 'Sin cortes disponibles hasta el próximo mes'
+        : `${cutsAfter} corte${cutsAfter === 1 ? '' : 's'} disponible${cutsAfter === 1 ? '' : 's'}`,
+    ],
+    ['Vigencia del abono', `${fmtDate(status.periodStart)} – ${periodEnd}`],
+  ];
+
+  const noticeHtml =
+    cutsAfter === 0
+      ? `Este turno será tu <strong>corte ${cutNumber} de ${status.cutsPerMonth}</strong> del mes con tu abono «${escapeHtml(status.planName)}». Cuando te atiendan, <strong>no te quedarán cortes disponibles</strong> hasta el ${escapeHtml(periodEnd)}.`
+      : `Este turno será tu <strong>corte ${cutNumber} de ${status.cutsPerMonth}</strong> del mes con tu abono «${escapeHtml(status.planName)}». Cuando te atiendan, te quedarán <strong>${cutsAfter}</strong> corte${cutsAfter === 1 ? '' : 's'} disponible${cutsAfter === 1 ? '' : 's'} (hasta el ${escapeHtml(periodEnd)}).`;
+
+  const noticeText =
+    cutsAfter === 0
+      ? `Este turno será tu corte ${cutNumber} de ${status.cutsPerMonth} del mes con tu abono «${status.planName}». Cuando te atiendan, no te quedarán cortes disponibles hasta el ${periodEnd}.`
+      : `Este turno será tu corte ${cutNumber} de ${status.cutsPerMonth} del mes con tu abono «${status.planName}». Cuando te atiendan, te quedarán ${cutsAfter} corte${cutsAfter === 1 ? '' : 's'} disponible${cutsAfter === 1 ? '' : 's'} (hasta el ${periodEnd}).`;
+
+  return { detailRows, noticeHtml, noticeText };
+}
+
 function rowsToHtml(rows: Array<[string, string]>): string {
   return rows
     .map(
@@ -149,14 +190,10 @@ function mergeAppointmentAndSubscriptionDetails(
   if (!subscription) {
     return { text: apptText, html: apptHtml };
   }
-  const subRows = buildSubscriptionDetailRows(subscription);
-  const text = `${apptText}\n\nTu abono:\n${rowsToText(subRows)}`;
-  const html = `${apptHtml}${rowsToHtml(subRows)}`;
-  const subscriptionNoticeHtml =
-    subscription.cutsRemaining <= 0
-      ? `Tu abono «${escapeHtml(subscription.planName)}» no tiene cortes disponibles este mes (${subscription.cutsUsed}/${subscription.cutsPerMonth} usados).`
-      : `Con tu abono «${escapeHtml(subscription.planName)}» te quedan <strong>${subscription.cutsRemaining}</strong> corte${subscription.cutsRemaining === 1 ? '' : 's'} disponible${subscription.cutsRemaining === 1 ? '' : 's'} este mes (hasta el ${escapeHtml(fmtDate(subscription.periodEnd))}).`;
-  return { text, html, subscriptionNoticeHtml };
+  const { detailRows, noticeHtml, noticeText } = buildSubscriptionAppointmentProjection(subscription);
+  const text = `${apptText}\n\nTu abono:\n${rowsToText(detailRows)}\n\n${noticeText}`;
+  const html = `${apptHtml}${rowsToHtml(detailRows)}`;
+  return { text, html, subscriptionNoticeHtml: noticeHtml };
 }
 
 async function loadSubscriptionForAppointment(
