@@ -7,7 +7,9 @@ import {
   SHOP_MAPS_DIRECTIONS_URL,
   SHOP_MAPS_EMBED_URL,
 } from '../constants/shopLocation';
+import { SHOP_INSTAGRAM_URL } from '../constants/shopSocial';
 import { WhatsAppIcon, whatsAppLionButtonClassName } from '../components/WhatsAppIcon';
+import { InstagramIcon } from '../components/InstagramIcon';
 import { api } from '../store';
 import { ANY_BARBER_ID, ApiError } from '../api';
 import type { Service, Barber, SubscriptionPlan, SitePromotion } from '../api';
@@ -1518,6 +1520,15 @@ export default function ClientView() {
                   <WhatsAppIcon size={18} className="text-zinc-950" />
                   WhatsApp
                 </a>
+                <a
+                  href={SHOP_INSTAGRAM_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 px-5 py-3 text-xs font-bold uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#e5c185]/50 hover:text-[#e5c185]"
+                >
+                  <InstagramIcon size={18} className="text-[#e5c185]" />
+                  Instagram
+                </a>
               </div>
             </div>
 
@@ -1559,7 +1570,16 @@ export default function ClientView() {
             </p>
           </div>
 
-          <div className="flex justify-center md:justify-end gap-4">
+          <div className="flex justify-center gap-3 md:justify-end">
+            <a
+              href={SHOP_INSTAGRAM_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex flex-shrink-0 items-center justify-center transition-transform hover:scale-105"
+              aria-label="Instagram de Lion Barber"
+            >
+              <InstagramIcon size={44} variant="lion" />
+            </a>
             <a
               href={BOOKING_FALLBACK_WHATSAPP_URL}
               target="_blank"
