@@ -707,10 +707,9 @@ export default function ClientView() {
                 e.preventDefault();
                 scrollToReserva();
               }}
-              className="inline-flex shrink-0 items-center justify-center rounded-full border-2 border-black bg-[#e5c185] px-3 py-2 text-[10px] font-black uppercase tracking-wide text-zinc-950 shadow-md transition-all hover:scale-105 hover:bg-[#d4b074] sm:px-4 sm:py-2.5 sm:text-xs sm:tracking-wider"
+              className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border-2 border-black bg-[#e5c185] px-2.5 py-2 text-[9px] font-black uppercase leading-none tracking-wide text-zinc-950 shadow-md transition-all hover:scale-105 hover:bg-[#d4b074] sm:px-4 sm:py-2.5 sm:text-xs sm:leading-normal sm:tracking-wider"
             >
-              <span className="sm:hidden">Reservar</span>
-              <span className="hidden sm:inline">Reservar turno</span>
+              Reservar turno
             </a>
 
             <div className="hidden items-center gap-2 lg:flex xl:gap-3">
@@ -774,13 +773,6 @@ export default function ClientView() {
             {showAbonosSection && (
               <a href="#abonos" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Abonos</a>
             )}
-            <button
-              type="button"
-              onClick={() => scrollToReserva()}
-              className="w-full rounded-xl border-2 border-black bg-[#e5c185] px-4 py-3 text-xs font-black uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074]"
-            >
-              Reservar turno
-            </button>
             <a href="#contacto" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Contacto</a>
             <div className="h-px bg-zinc-800/50 my-2"></div>
             {profile ? (
