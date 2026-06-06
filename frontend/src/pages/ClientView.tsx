@@ -4,9 +4,11 @@ import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRi
 import { BOOKING_FALLBACK_WHATSAPP_URL, checkBackendHealth } from '../utils/backendHealth';
 import { WhatsAppIcon } from '../components/WhatsAppIcon';
 import { api } from '../store';
-import { ANY_BARBER_ID } from '../api';
-import type { Service, Barber } from '../api';
+import { ANY_BARBER_ID, ApiError } from '../api';
+import type { Service, Barber, SubscriptionPlan, SitePromotion } from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import SitePromotionBanner from '../components/SitePromotionBanner';
+import { SubscriptionPricingCards } from '../components/SubscriptionPricingCards';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
 import { calculateDepositAmountArs, parseArsAmount } from '../utils/money';
@@ -144,10 +146,27 @@ export default function ClientView() {
   const [shopCloseTime, setShopCloseTime] = useState('20:00');
   const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
   const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
+  const [publicPromotions, setPublicPromotions] = useState<SitePromotion[]>([]);
+  const [publicSubscriptionPlans, setPublicSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
+  const [publicCatalogLoading, setPublicCatalogLoading] = useState(true);
+  const [subscriptionCheckoutPlanId, setSubscriptionCheckoutPlanId] = useState<string | null>(null);
+  const [subscriptionCheckoutPreferenceId, setSubscriptionCheckoutPreferenceId] = useState<string | null>(null);
+  const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState(false);
+  const [subscriptionMessage, setSubscriptionMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const loadBookingCatalog = () => {
     api.getServices().then(setServices).catch(() => setServices([]));
     api.getBarbers().then(setBarbers).catch(() => setBarbers([]));
+    setPublicCatalogLoading(true);
+    Promise.all([
+      api.getPublicPromotions().catch(() => ({ promotions: [] as SitePromotion[] })),
+      api.getPublicSubscriptionPlans().catch(() => ({ plans: [] as SubscriptionPlan[] })),
+    ])
+      .then(([promos, plans]) => {
+        setPublicPromotions(promos.promotions);
+        setPublicSubscriptionPlans(plans.plans);
+      })
+      .finally(() => setPublicCatalogLoading(false));
     api
       .getShopSettings()
       .then((s) => {
@@ -353,6 +372,24 @@ export default function ClientView() {
     const checkout = searchParams.get('checkout');
     if (checkout === 'success') {
       setPendingCheckoutSuccess(true);
+      setSearchParams({}, { replace: true });
+    } else if (checkout === 'subscription_success') {
+      setSubscriptionMessage({
+        kind: 'ok',
+        text: '¡Pago recibido! Tu abono se activará en unos instantes. Revisá tu perfil para ver los cortes disponibles.',
+      });
+      setSearchParams({}, { replace: true });
+      window.requestAnimationFrame(() => {
+        document.getElementById('abonos')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } else if (checkout === 'subscription_failure') {
+      setSubscriptionMessage({ kind: 'err', text: 'El pago del abono fue rechazado o cancelado.' });
+      setSearchParams({}, { replace: true });
+    } else if (checkout === 'subscription_pending') {
+      setSubscriptionMessage({
+        kind: 'err',
+        text: 'Pago del abono pendiente. Cuando Mercado Pago lo acredite, tu plan se activará automáticamente.',
+      });
       setSearchParams({}, { replace: true });
     } else if (checkout === 'cancel' || checkout === 'failure') {
       setBookingError('Pago cancelado o rechazado. Podés intentar de nuevo desde la reserva.');
@@ -566,6 +603,37 @@ export default function ClientView() {
     navigate('/', { replace: true });
   };
 
+  const handleBuySubscription = async (planId: string) => {
+    setSubscriptionCheckoutLoading(true);
+    setSubscriptionCheckoutPlanId(planId);
+    setSubscriptionCheckoutPreferenceId(null);
+    setSubscriptionMessage(null);
+    try {
+      const result = await api.createCheckoutSubscription(planId);
+      if (result.url) {
+        window.location.href = result.url;
+        return;
+      }
+      setSubscriptionCheckoutPreferenceId(result.preferenceId);
+      window.requestAnimationFrame(() => {
+        document.getElementById('abonos')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } catch (e) {
+      setSubscriptionMessage({
+        kind: 'err',
+        text: e instanceof ApiError ? e.message : 'No se pudo iniciar el pago del abono',
+      });
+    } finally {
+      setSubscriptionCheckoutLoading(false);
+    }
+  };
+
+  const handleSubscriptionLoginRequired = () => {
+    navigate('/login', { state: { from: { pathname: '/', hash: '#abonos' } } });
+  };
+
+  const showAbonosSection = publicCatalogLoading || publicSubscriptionPlans.length > 0;
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
       {/* Navbar */}
@@ -582,6 +650,9 @@ export default function ClientView() {
           <div className="hidden md:flex items-center gap-4 lg:gap-8 text-sm font-sans font-medium text-zinc-400 flex-wrap justify-end">
             <a href="#servicios" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Servicios</a>
             <a href="#barberos" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Barberos</a>
+            {showAbonosSection && (
+              <a href="#abonos" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Abonos</a>
+            )}
             <a href="#reserva" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Reservar</a>
             <a href="#contacto" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Contacto</a>
             {profile ? (
@@ -629,6 +700,9 @@ export default function ClientView() {
           <div className="md:hidden absolute top-20 left-0 w-full bg-zinc-950 border-b border-zinc-800/50 flex flex-col py-4 px-6 gap-4 shadow-2xl">
             <a href="#servicios" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Servicios</a>
             <a href="#barberos" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Barberos</a>
+            {showAbonosSection && (
+              <a href="#abonos" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Abonos</a>
+            )}
             <a href="#reserva" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Reservar</a>
             <a href="#contacto" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Contacto</a>
             <div className="h-px bg-zinc-800/50 my-2"></div>
@@ -696,6 +770,8 @@ export default function ClientView() {
         </div>
 
       </section>
+
+      <SitePromotionBanner promotions={publicPromotions} />
 
       {/* Services Section */}
       <section id="servicios" className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 bg-zinc-950 border-y border-zinc-900">
@@ -768,6 +844,61 @@ export default function ClientView() {
           </div>
         </div>
       </section>
+
+      {showAbonosSection && (
+        <section id="abonos" className="border-y border-zinc-200 bg-zinc-100 py-12 sm:py-16 md:py-20 px-4 sm:px-6">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-10 text-center">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">Abonos mensuales</p>
+              <h2 className="mt-2 text-3xl font-black text-zinc-900 sm:text-4xl">Elegí tu plan</h2>
+              <p className="mx-auto mt-3 max-w-2xl text-sm text-zinc-600 sm:text-base">
+                Pagá online con Mercado Pago y reservá sin seña mientras tengas cortes disponibles en el mes.
+              </p>
+            </div>
+
+            {subscriptionMessage && (
+              <div
+                className={`mx-auto mb-8 max-w-2xl rounded-xl border px-4 py-3 text-sm ${
+                  subscriptionMessage.kind === 'ok'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                {subscriptionMessage.text}
+              </div>
+            )}
+
+            <SubscriptionPricingCards
+              plans={publicSubscriptionPlans}
+              loading={publicCatalogLoading}
+              checkoutPlanId={subscriptionCheckoutPlanId}
+              checkoutLoading={subscriptionCheckoutLoading}
+              onBuy={(planId) => void handleBuySubscription(planId)}
+              isLoggedIn={Boolean(profile)}
+              onLoginRequired={handleSubscriptionLoginRequired}
+            />
+
+            {subscriptionCheckoutPreferenceId && (
+              <div className="mx-auto mt-8 max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                <p className="mb-3 text-center text-xs text-zinc-500">
+                  Completá el pago con Mercado Pago para activar tu abono.
+                </p>
+                <Wallet
+                  initialization={{ preferenceId: subscriptionCheckoutPreferenceId, redirectMode: 'self' }}
+                  locale="es-AR"
+                  customization={{ theme: 'default' }}
+                  onError={(err) => {
+                    setSubscriptionMessage({
+                      kind: 'err',
+                      text: err.message || 'Error al cargar el botón de pago',
+                    });
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* Booking Section */}
       <section id="reserva" className="py-12 sm:py-20 md:py-24 px-3 sm:px-4 md:px-6 relative bg-zinc-900/30">

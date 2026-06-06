@@ -23,7 +23,13 @@ import { findUserById } from '../repositories/users.js';
 import { DEPOSIT_PERCENT } from '../constants/deposit.js';
 import {
   isClientDepositExempt,
+  assignSubscriptionPlanToClient,
 } from '../services/clientSubscription.js';
+import { getSubscriptionPlanById } from '../repositories/subscriptionPlans.js';
+import {
+  getSubscriptionPaymentByMpId,
+  recordSubscriptionPayment,
+} from '../repositories/promotions.js';
 import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
 import { parseMercadoPagoTransactionAmountArs } from '../mercadopagoAmount.js';
 
@@ -177,6 +183,85 @@ interface BookingRefV1 {
   t: string;
   m: number;
   u: string;
+}
+
+interface SubscriptionRefV2 {
+  v: 2;
+  k: 'subscription';
+  p: string;
+  u: string;
+}
+
+function buildSubscriptionRef(input: { planId: string; userId: number }): string {
+  const ref: SubscriptionRefV2 = {
+    v: 2,
+    k: 'subscription',
+    p: input.planId,
+    u: String(input.userId),
+  };
+  return JSON.stringify(ref);
+}
+
+function parseSubscriptionRef(
+  externalReference: string | undefined,
+  metadata: Record<string, unknown> | undefined
+): SubscriptionRefV2 | null {
+  if (externalReference) {
+    try {
+      const o = JSON.parse(externalReference) as SubscriptionRefV2;
+      if (o.v === 2 && o.k === 'subscription' && o.p && o.u) return o;
+    } catch {
+      /* otro formato */
+    }
+  }
+  if (metadata && typeof metadata === 'object') {
+    const m = metadata as Record<string, string>;
+    if (m.lb_kind === 'subscription' && m.lb_p && m.lb_u) {
+      return { v: 2, k: 'subscription', p: m.lb_p, u: m.lb_u };
+    }
+  }
+  return null;
+}
+
+async function createMercadoPagoSubscriptionPreference(
+  config: MercadoPagoConfig,
+  input: { planId: string; planName: string; amountArs: number; userId: number }
+): Promise<{ preferenceId: string; url?: string }> {
+  const externalReference = buildSubscriptionRef({ planId: input.planId, userId: input.userId });
+  const base = getFrontendUrl();
+  const apiPublic = getApiPublicUrl();
+  const preference = new Preference(config);
+  const body = {
+    items: [
+      {
+        id: `lion-abono-${input.planId}`,
+        title: `Abono mensual — ${input.planName}`,
+        quantity: 1,
+        unit_price: input.amountArs,
+        currency_id: 'ARS',
+      },
+    ],
+    external_reference: externalReference,
+    metadata: {
+      lb_kind: 'subscription',
+      lb_p: input.planId,
+      lb_u: String(input.userId),
+    },
+    back_urls: {
+      success: `${base}/?checkout=subscription_success`,
+      failure: `${base}/?checkout=subscription_failure`,
+      pending: `${base}/?checkout=subscription_pending`,
+    },
+    auto_return: 'approved' as const,
+    ...(apiPublic ? { notification_url: `${apiPublic}/api/webhooks/mercadopago` } : {}),
+  };
+  const result = await preference.create({ body });
+  const preferenceId = result.id != null ? String(result.id) : '';
+  if (!preferenceId) {
+    throw new Error('Mercado Pago no devolvió el id de preferencia');
+  }
+  const url = result.init_point ?? result.sandbox_init_point ?? undefined;
+  return { preferenceId, ...(url ? { url } : {}) };
 }
 
 function buildBookingRef(input: {
@@ -604,6 +689,52 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * Checkout de abono mensual (Checkout Pro). Al aprobar el pago, el webhook asigna el plan al cliente.
+ */
+router.post('/subscription', requireAuth, async (req, res) => {
+  const config = getMpConfig();
+  if (!config) {
+    return res
+      .status(503)
+      .json({ error: 'Mercado Pago no está configurado (MERCADOPAGO_ACCESS_TOKEN).' });
+  }
+
+  const authReq = req as AuthRequest;
+  const { planId } = req.body as { planId?: string };
+  if (!planId || typeof planId !== 'string' || !planId.trim()) {
+    return res.status(400).json({ error: 'Se requiere el plan de abono' });
+  }
+
+  const plan = await getSubscriptionPlanById(planId.trim());
+  if (!plan || !plan.active) {
+    return res.status(404).json({ error: 'Plan de abono no encontrado o inactivo' });
+  }
+
+  const amountArs = parseArsAmount(plan.monthlyPrice);
+  if (!amountArs) {
+    return res.status(400).json({ error: 'El precio del abono no es válido para cobrar online.' });
+  }
+
+  try {
+    const pref = await createMercadoPagoSubscriptionPreference(config, {
+      planId: plan.id,
+      planName: plan.name,
+      amountArs,
+      userId: authReq.user!.id,
+    });
+    res.json({
+      preferenceId: pref.preferenceId,
+      ...(pref.url ? { url: pref.url } : {}),
+      planId: plan.id,
+    });
+  } catch (e) {
+    console.error('Mercado Pago preference.create (subscription):', e);
+    const msg = e instanceof Error ? e.message : 'No se pudo iniciar el pago';
+    return res.status(502).json({ error: msg });
+  }
+});
+
 export default router;
 
 export async function mercadopagoWebhook(req: Request, res: Response): Promise<void> {
@@ -668,6 +799,39 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
   if (!payment) return;
 
   if (payment.status !== 'approved') return;
+
+  const existingSubPayment = await getSubscriptionPaymentByMpId(paymentId);
+  if (existingSubPayment) return;
+
+  const subRef = parseSubscriptionRef(
+    payment.external_reference,
+    payment.metadata as Record<string, unknown> | undefined
+  );
+  if (subRef) {
+    const userId = parseInt(subRef.u, 10);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      console.error('Webhook MP: abono sin userId válido', paymentId);
+      return;
+    }
+    const plan = await getSubscriptionPlanById(subRef.p);
+    if (!plan || !plan.active) {
+      console.error('Webhook MP: plan de abono inválido', subRef.p);
+      return;
+    }
+    const inserted = await recordSubscriptionPayment({
+      mercadopagoPaymentId: paymentId,
+      userId,
+      planId: subRef.p,
+    });
+    if (!inserted) return;
+    try {
+      await assignSubscriptionPlanToClient(userId, subRef.p);
+      console.log(`[Webhook MP] abono asignado user=${userId} plan=${subRef.p}`);
+    } catch (e) {
+      console.error('Webhook MP: no se pudo asignar abono', e);
+    }
+    return;
+  }
 
   const depositAmountArs = parseMercadoPagoTransactionAmountArs(payment);
 

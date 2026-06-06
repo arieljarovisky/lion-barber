@@ -8,6 +8,14 @@ export interface SubscriptionPlan {
   cutsPerMonth: number;
   active: boolean;
   sortOrder: number;
+  description: string;
+  category: string;
+  compareAtPrice: string;
+  discountLabel: string;
+  bonusText: string;
+  features: string[];
+  highlighted: boolean;
+  badgeText: string;
 }
 
 interface DbPlan {
@@ -17,16 +25,67 @@ interface DbPlan {
   cuts_per_month: number;
   active: number | boolean;
   sort_order: number;
+  description?: string | null;
+  category?: string | null;
+  compare_at_price?: string | null;
+  discount_label?: string | null;
+  bonus_text?: string | null;
+  features?: unknown;
+  highlighted?: number | boolean | null;
+  badge_text?: string | null;
+}
+
+function parseFeatures(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        return parsed.filter((x): x is string => typeof x === 'string' && x.trim().length > 0);
+      }
+    } catch {
+      return raw
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function defaultFeatures(cutsPerMonth: number): string[] {
+  return [
+    `${cutsPerMonth} corte${cutsPerMonth === 1 ? '' : 's'} incluido${cutsPerMonth === 1 ? '' : 's'} por mes`,
+    'Sin seña en cada reserva',
+    'Reservá online cuando quieras',
+  ];
+}
+
+export function resolvePlanFeatures(plan: Pick<SubscriptionPlan, 'features' | 'cutsPerMonth'>): string[] {
+  if (plan.features.length > 0) return plan.features;
+  return defaultFeatures(plan.cutsPerMonth);
 }
 
 function rowToPlan(r: DbPlan): SubscriptionPlan {
+  const cutsPerMonth = r.cuts_per_month;
+  const features = parseFeatures(r.features);
   return {
     id: r.id,
     name: r.name,
     monthlyPrice: r.monthly_price,
-    cutsPerMonth: r.cuts_per_month,
+    cutsPerMonth,
     active: Boolean(r.active),
     sortOrder: r.sort_order,
+    description: r.description ?? '',
+    category: r.category ?? 'Abono mensual',
+    compareAtPrice: r.compare_at_price ?? '',
+    discountLabel: r.discount_label ?? '',
+    bonusText: r.bonus_text ?? '',
+    features: features.length > 0 ? features : defaultFeatures(cutsPerMonth),
+    highlighted: Boolean(r.highlighted),
+    badgeText: r.badge_text ?? '',
   };
 }
 
@@ -40,6 +99,12 @@ function slugFromName(name: string): string {
       .replace(/[^a-z0-9_]/g, '')
       .slice(0, 40) || 'plan'
   );
+}
+
+function serializeFeatures(features: string[] | undefined): string | null {
+  if (!features || features.length === 0) return null;
+  const cleaned = features.map((f) => f.trim()).filter(Boolean);
+  return cleaned.length > 0 ? JSON.stringify(cleaned) : null;
 }
 
 export async function getAllSubscriptionPlans(): Promise<SubscriptionPlan[]> {
@@ -69,6 +134,14 @@ export async function createSubscriptionPlan(data: {
   monthlyPrice: string;
   cutsPerMonth: number;
   active?: boolean;
+  description?: string;
+  category?: string;
+  compareAtPrice?: string;
+  discountLabel?: string;
+  bonusText?: string;
+  features?: string[];
+  highlighted?: boolean;
+  badgeText?: string;
 }): Promise<SubscriptionPlan> {
   let id = slugFromName(data.name);
   const existing = await getSubscriptionPlanById(id);
@@ -81,8 +154,26 @@ export async function createSubscriptionPlan(data: {
   const nextOrder = Number(maxRows[0]?.maxOrder ?? 0) + 1;
   const cuts = Math.max(1, Math.min(99, Math.floor(data.cutsPerMonth)));
   await query(
-    'INSERT INTO subscription_plans (id, name, monthly_price, cuts_per_month, active, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, data.name.trim(), String(data.monthlyPrice).trim(), cuts, data.active !== false ? 1 : 0, nextOrder]
+    `INSERT INTO subscription_plans
+      (id, name, monthly_price, cuts_per_month, active, sort_order, description, category,
+       compare_at_price, discount_label, bonus_text, features, highlighted, badge_text)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      data.name.trim(),
+      String(data.monthlyPrice).trim(),
+      cuts,
+      data.active !== false ? 1 : 0,
+      nextOrder,
+      (data.description ?? '').trim() || null,
+      (data.category ?? 'Abono mensual').trim() || 'Abono mensual',
+      (data.compareAtPrice ?? '').trim() || null,
+      (data.discountLabel ?? '').trim() || null,
+      (data.bonusText ?? '').trim() || null,
+      serializeFeatures(data.features),
+      data.highlighted ? 1 : 0,
+      (data.badgeText ?? '').trim() || null,
+    ]
   );
   const created = await getSubscriptionPlanById(id);
   if (!created) throw new Error('Plan no creado');
@@ -91,19 +182,47 @@ export async function createSubscriptionPlan(data: {
 
 export async function updateSubscriptionPlan(
   id: string,
-  data: Partial<Pick<SubscriptionPlan, 'name' | 'monthlyPrice' | 'cutsPerMonth' | 'active'>>
+  data: Partial<
+    Pick<
+      SubscriptionPlan,
+      | 'name'
+      | 'monthlyPrice'
+      | 'cutsPerMonth'
+      | 'active'
+      | 'description'
+      | 'category'
+      | 'compareAtPrice'
+      | 'discountLabel'
+      | 'bonusText'
+      | 'features'
+      | 'highlighted'
+      | 'badgeText'
+      | 'sortOrder'
+    >
+  >
 ): Promise<SubscriptionPlan | null> {
   const current = await getSubscriptionPlanById(id);
   if (!current) return null;
   const updated = { ...current, ...data };
   const cuts = Math.max(1, Math.min(99, Math.floor(updated.cutsPerMonth)));
   await query(
-    'UPDATE subscription_plans SET name = ?, monthly_price = ?, cuts_per_month = ?, active = ? WHERE id = ?',
+    `UPDATE subscription_plans SET name = ?, monthly_price = ?, cuts_per_month = ?, active = ?,
+     description = ?, category = ?, compare_at_price = ?, discount_label = ?, bonus_text = ?,
+     features = ?, highlighted = ?, badge_text = ?, sort_order = ? WHERE id = ?`,
     [
       updated.name.trim(),
       String(updated.monthlyPrice).trim(),
       cuts,
       updated.active ? 1 : 0,
+      updated.description.trim() || null,
+      updated.category.trim() || 'Abono mensual',
+      updated.compareAtPrice.trim() || null,
+      updated.discountLabel.trim() || null,
+      updated.bonusText.trim() || null,
+      serializeFeatures(updated.features),
+      updated.highlighted ? 1 : 0,
+      updated.badgeText.trim() || null,
+      updated.sortOrder,
       id,
     ]
   );

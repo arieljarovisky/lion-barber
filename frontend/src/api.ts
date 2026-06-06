@@ -308,6 +308,25 @@ export interface SubscriptionPlan {
   cutsPerMonth: number;
   active: boolean;
   sortOrder?: number;
+  description?: string;
+  category?: string;
+  compareAtPrice?: string;
+  discountLabel?: string;
+  bonusText?: string;
+  features?: string[];
+  highlighted?: boolean;
+  badgeText?: string;
+}
+
+export interface SitePromotion {
+  id: string;
+  title: string;
+  description: string;
+  badgeText: string;
+  ctaLabel: string;
+  ctaHref: string;
+  active: boolean;
+  sortOrder?: number;
 }
 
 export interface ClientSubscriptionInfo {
@@ -468,6 +487,52 @@ export const api = {
       | { exempt: true; appointmentId: string }
       | { preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }
     >(`/api/checkout/sena/${encodeURIComponent(appointmentId)}`, { method: 'POST' }),
+
+  createCheckoutSubscription: (planId: string) =>
+    fetchApi<{ preferenceId: string; url?: string; planId: string }>('/api/checkout/subscription', {
+      method: 'POST',
+      body: JSON.stringify({ planId }),
+    }),
+
+  getPublicSubscriptionPlans: () =>
+    fetchApi<{ plans: SubscriptionPlan[] }>('/api/subscription-plans/public'),
+
+  getPublicPromotions: () => fetchApi<{ promotions: SitePromotion[] }>('/api/promotions/public'),
+
+  getPromotions: () => fetchApi<{ promotions: SitePromotion[] }>('/api/promotions'),
+
+  createPromotion: (data: {
+    title: string;
+    description?: string;
+    badgeText?: string;
+    ctaLabel?: string;
+    ctaHref?: string;
+    active?: boolean;
+  }) =>
+    fetchApi<SitePromotion>('/api/promotions', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updatePromotion: (
+    id: string,
+    data: Partial<{
+      title: string;
+      description: string;
+      badgeText: string;
+      ctaLabel: string;
+      ctaHref: string;
+      active: boolean;
+      sortOrder: number;
+    }>
+  ) =>
+    fetchApi<SitePromotion>(`/api/promotions/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deletePromotion: (id: string) =>
+    fetchApi<void>(`/api/promotions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   updateAppointment: (id: string, data: Partial<Appointment>) =>
     fetchApi<Appointment>(`/api/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -798,6 +863,14 @@ export const api = {
     monthlyPrice: string;
     cutsPerMonth: number;
     active?: boolean;
+    description?: string;
+    category?: string;
+    compareAtPrice?: string;
+    discountLabel?: string;
+    bonusText?: string;
+    features?: string[];
+    highlighted?: boolean;
+    badgeText?: string;
   }) =>
     fetchApi<SubscriptionPlan>('/api/subscription-plans', {
       method: 'POST',
@@ -806,7 +879,21 @@ export const api = {
 
   updateSubscriptionPlan: (
     id: string,
-    data: Partial<{ name: string; monthlyPrice: string; cutsPerMonth: number; active: boolean }>
+    data: Partial<{
+      name: string;
+      monthlyPrice: string;
+      cutsPerMonth: number;
+      active: boolean;
+      description: string;
+      category: string;
+      compareAtPrice: string;
+      discountLabel: string;
+      bonusText: string;
+      features: string[];
+      highlighted: boolean;
+      badgeText: string;
+      sortOrder: number;
+    }>
   ) =>
     fetchApi<SubscriptionPlan>(`/api/subscription-plans/${encodeURIComponent(id)}`, {
       method: 'PATCH',

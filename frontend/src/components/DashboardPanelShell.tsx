@@ -13,6 +13,7 @@ import {
   ShoppingBag,
   Receipt,
   Repeat,
+  Megaphone,
   LogOut,
   Menu,
   X,
@@ -26,6 +27,7 @@ export type DashboardPanelId =
   | 'puntos'
   | 'productos'
   | 'abonos'
+  | 'promociones'
   | 'facturacion'
   | 'estadisticas'
   | 'cierreCaja'
@@ -184,6 +186,20 @@ export default function DashboardPanelShell({
             >
               <Repeat size={18} className="flex-shrink-0" />
               Abonos
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => go('promociones')}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
+                activePanel === 'promociones'
+                  ? 'bg-[#e5c185] text-zinc-950'
+                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              <Megaphone size={18} className="flex-shrink-0" />
+              Promociones
             </button>
           )}
           {isSuperAdmin && (

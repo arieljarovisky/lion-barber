@@ -59,6 +59,24 @@ async function migrateServicePaymentMethodTransferToAccount(): Promise<void> {
 }
 
 /** monotributo_annual_limit → monotributo_monthly_limit (idempotente). */
+async function ensureSubscriptionPlanPresentationColumns(): Promise<void> {
+  const cols: [string, string][] = [
+    ['description', 'TEXT NULL'],
+    ['category', "VARCHAR(100) NULL DEFAULT 'Abono mensual'"],
+    ['compare_at_price', 'VARCHAR(50) NULL'],
+    ['discount_label', 'VARCHAR(80) NULL'],
+    ['bonus_text', 'VARCHAR(255) NULL'],
+    ['features', 'JSON NULL'],
+    ['highlighted', 'TINYINT(1) NOT NULL DEFAULT 0'],
+    ['badge_text', 'VARCHAR(80) NULL'],
+  ];
+  for (const [col, def] of cols) {
+    if (!(await tableHasColumn('subscription_plans', col))) {
+      await pool.execute(`ALTER TABLE subscription_plans ADD COLUMN ${col} ${def}`);
+    }
+  }
+}
+
 async function migrateMonotributoLimitColumns(): Promise<void> {
   const hasAnnual = await tableHasColumn('barbers', 'monotributo_annual_limit');
   const hasMonthly = await tableHasColumn('barbers', 'monotributo_monthly_limit');
@@ -227,6 +245,29 @@ export async function initDb(): Promise<void> {
       cuts_per_month INT NOT NULL,
       active TINYINT(1) NOT NULL DEFAULT 1,
       sort_order INT NOT NULL DEFAULT 0
+    )
+  `);
+  await ensureSubscriptionPlanPresentationColumns();
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS site_promotions (
+      id VARCHAR(50) PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      description TEXT NULL,
+      badge_text VARCHAR(100) NULL,
+      cta_label VARCHAR(100) NULL,
+      cta_href VARCHAR(500) NULL,
+      active TINYINT(1) NOT NULL DEFAULT 1,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS subscription_payment_events (
+      mercadopago_payment_id VARCHAR(64) PRIMARY KEY,
+      user_id INT NOT NULL,
+      plan_id VARCHAR(50) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_sub_pay_user (user_id)
     )
   `);
   await pool.execute(`

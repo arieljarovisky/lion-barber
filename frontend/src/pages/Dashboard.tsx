@@ -48,6 +48,7 @@ import PointsProgramPanel from '../components/PointsProgramPanel';
 import PointsRedemptionPanel from '../components/PointsRedemptionPanel';
 import ShopProductsPanel from '../components/ShopProductsPanel';
 import SubscriptionPlansPanel from '../components/SubscriptionPlansPanel';
+import PromotionsPanel from '../components/PromotionsPanel';
 import ProductPointsPanel from '../components/ProductPointsPanel';
 import BillingPanel from '../components/BillingPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
@@ -76,6 +77,7 @@ import type {
   StaffInviteRow,
   ShopProduct,
   SubscriptionPlan,
+  SitePromotion,
   AdminClientWithHistory,
   type PointsRedemptionOption,
   type ServicePaymentSplit,
@@ -230,6 +232,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     | 'puntos'
     | 'productos'
     | 'abonos'
+    | 'promociones'
     | 'facturacion'
     | 'configuracion'
   >('agenda');
@@ -287,6 +290,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const [shopProductsPanelLoading, setShopProductsPanelLoading] = useState(false);
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [subscriptionPlansLoading, setSubscriptionPlansLoading] = useState(false);
+  const [promotions, setPromotions] = useState<SitePromotion[]>([]);
+  const [promotionsLoading, setPromotionsLoading] = useState(false);
   const [redemptionOptions, setRedemptionOptions] = useState<PointsRedemptionOption[]>([]);
   const [redemptionOptionsLoading, setRedemptionOptionsLoading] = useState(false);
   const [afipConfigured, setAfipConfigured] = useState(false);
@@ -480,6 +485,18 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     }
   }, [showToast]);
 
+  const loadPromotionsPanel = useCallback(async () => {
+    setPromotionsLoading(true);
+    try {
+      const r = await api.getPromotions();
+      setPromotions(r.promotions);
+    } catch {
+      showToast('No se pudo cargar las promociones', 'err');
+    } finally {
+      setPromotionsLoading(false);
+    }
+  }, [showToast]);
+
   const loadRedemptionOptionsPanel = useCallback(async () => {
     setRedemptionOptionsLoading(true);
     try {
@@ -511,6 +528,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     if (view !== 'abonos') return;
     void loadSubscriptionPlansPanel();
   }, [view, loadSubscriptionPlansPanel]);
+
+  useEffect(() => {
+    if (view !== 'promociones') return;
+    void loadPromotionsPanel();
+  }, [view, loadPromotionsPanel]);
 
   const loadBarberInvoicing = useCallback(() => {
     setBarberInvoicingLoading(true);
@@ -736,7 +758,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   }, [view, scheduleBarberId, loadSchedule]);
 
   useEffect(() => {
-    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion' || view === 'abonos')) {
+    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion' || view === 'abonos' || view === 'promociones')) {
       setView('agenda');
     }
     if (!isSuperAdmin && view === 'facturacion') {
@@ -1830,8 +1852,13 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
               : view === 'abonos'
                 ? {
                     title: 'Abonos',
-                    subtitle: 'Planes mensuales con cortes incluidos. Asignalos desde la ficha de cada cliente.',
+                    subtitle: 'Planes mensuales con cortes incluidos. Se muestran en la web y podés asignarlos manualmente.',
                   }
+                : view === 'promociones'
+                  ? {
+                      title: 'Promociones',
+                      subtitle: 'Banners promocionales visibles en el sitio web cuando están activos.',
+                    }
               : view === 'facturacion'
                 ? {
                     title: 'Facturación',
@@ -3242,6 +3269,15 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
             plans={subscriptionPlans}
             loading={subscriptionPlansLoading}
             onRefresh={loadSubscriptionPlansPanel}
+            showToast={showToast}
+          />
+        )}
+
+        {view === 'promociones' && isAdmin && (
+          <PromotionsPanel
+            promotions={promotions}
+            loading={promotionsLoading}
+            onRefresh={loadPromotionsPanel}
             showToast={showToast}
           />
         )}
