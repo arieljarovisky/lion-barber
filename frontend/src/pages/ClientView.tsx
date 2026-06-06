@@ -7,7 +7,7 @@ import {
   SHOP_MAPS_DIRECTIONS_URL,
   SHOP_MAPS_EMBED_URL,
 } from '../constants/shopLocation';
-import { WhatsAppIcon } from '../components/WhatsAppIcon';
+import { WhatsAppIcon, whatsAppLionButtonClassName } from '../components/WhatsAppIcon';
 import { api } from '../store';
 import { ANY_BARBER_ID, ApiError } from '../api';
 import type { Service, Barber, SubscriptionPlan, SitePromotion } from '../api';
@@ -1074,9 +1074,9 @@ export default function ClientView() {
                     href={BOOKING_FALLBACK_WHATSAPP_URL}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center justify-center gap-3 mt-8 bg-[#25D366] hover:bg-[#1ebe5d] text-white font-sans font-black uppercase tracking-widest px-8 py-4 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-emerald-900/30"
+                    className={`inline-flex items-center justify-center gap-3 mt-8 rounded-xl px-8 py-4 font-sans text-sm font-black uppercase tracking-widest ${whatsAppLionButtonClassName}`}
                   >
-                    <WhatsAppIcon size={22} />
+                    <WhatsAppIcon size={22} className="text-zinc-950" />
                     Reservar por WhatsApp
                   </a>
                 </div>
@@ -1513,9 +1513,9 @@ export default function ClientView() {
                   href={BOOKING_FALLBACK_WHATSAPP_URL}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 px-5 py-3 text-xs font-bold uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#e5c185]/50 hover:text-[#e5c185]"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-zinc-950 bg-[#e5c185] px-5 py-3 text-xs font-black uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074]"
                 >
-                  <Phone size={16} />
+                  <WhatsAppIcon size={18} className="text-zinc-950" />
                   WhatsApp
                 </a>
               </div>
@@ -1560,8 +1560,14 @@ export default function ClientView() {
           </div>
 
           <div className="flex justify-center md:justify-end gap-4">
-            <a href={BOOKING_FALLBACK_WHATSAPP_URL} target="_blank" rel="noreferrer" className="w-10 h-10 sm:w-11 sm:h-11 bg-zinc-900 rounded-full flex items-center justify-center hover:bg-[#e5c185] hover:text-zinc-950 transition-colors flex-shrink-0" aria-label="WhatsApp">
-              <Phone size={18} />
+            <a
+              href={BOOKING_FALLBACK_WHATSAPP_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex flex-shrink-0 items-center justify-center transition-transform hover:scale-105"
+              aria-label="WhatsApp"
+            >
+              <WhatsAppIcon size={44} variant="lion" />
             </a>
           </div>
         </div>
