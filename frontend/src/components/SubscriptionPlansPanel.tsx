@@ -3,6 +3,7 @@ import { Loader2, Pencil, Repeat, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api';
 import { useConfirm } from '../contexts/ConfirmContext';
 import type { SubscriptionPlan } from '../api';
+import { formatCatalogPriceArs } from '../utils/money';
 
 type SubscriptionPlansPanelProps = {
   plans: SubscriptionPlan[];
@@ -378,7 +379,7 @@ export default function SubscriptionPlansPanel({
                     )}
                   </p>
                   <p className="mt-0.5 text-sm text-zinc-500">
-                    {p.monthlyPrice} · {p.cutsPerMonth} corte{p.cutsPerMonth === 1 ? '' : 's'}/mes
+                    {formatCatalogPriceArs(p.monthlyPrice)} · {p.cutsPerMonth} corte{p.cutsPerMonth === 1 ? '' : 's'}/mes
                   </p>
                   {p.description && <p className="mt-1 text-xs text-zinc-400">{p.description}</p>}
                 </div>

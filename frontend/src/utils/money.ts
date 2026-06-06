@@ -32,6 +32,18 @@ export function formatArs(n: number): string {
   return n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Precio de catálogo para mostrar en UI (ej. `$110.000`). */
+export function formatCatalogPriceArs(raw: string | undefined): string {
+  if (!raw?.trim()) return '';
+  const n = parseArsAmount(raw);
+  if (n == null) return raw.trim();
+  const whole = Math.abs(n - Math.round(n)) < 0.005;
+  const formatted = whole
+    ? Math.round(n).toLocaleString('es-AR', { maximumFractionDigits: 0, minimumFractionDigits: 0 })
+    : n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `$${formatted}`;
+}
+
 /** Parsea importe ARS con signo (negativo = debe plata). */
 export function parseSignedArsInput(raw: string): number | 'invalid' {
   let t = raw.trim().replace(/\s/g, '');

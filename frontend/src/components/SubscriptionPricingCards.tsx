@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check, Loader2, Star } from 'lucide-react';
+import { formatCatalogPriceArs } from '../utils/money';
 
 type SubscriptionPricingCardsProps = {
   plans: import('../api').SubscriptionPlan[];
@@ -69,7 +70,9 @@ export function SubscriptionPricingCards({
               {(plan.compareAtPrice || plan.discountLabel) && (
                 <div className="mb-1 flex flex-wrap items-center gap-2">
                   {plan.compareAtPrice && (
-                    <span className="text-sm text-zinc-500 line-through">{plan.compareAtPrice}</span>
+                    <span className="text-sm text-zinc-500 line-through">
+                      {formatCatalogPriceArs(plan.compareAtPrice)}
+                    </span>
                   )}
                   {plan.discountLabel && (
                     <span className="rounded-full border border-[#e5c185]/30 bg-[#e5c185]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#e5c185]">
@@ -79,7 +82,7 @@ export function SubscriptionPricingCards({
                 </div>
               )}
               <p className="font-sans text-3xl font-black text-[#e5c185] sm:text-4xl">
-                {plan.monthlyPrice}
+                {formatCatalogPriceArs(plan.monthlyPrice)}
                 <span className="text-base font-semibold text-zinc-500">/mes</span>
               </p>
               {plan.bonusText && (
