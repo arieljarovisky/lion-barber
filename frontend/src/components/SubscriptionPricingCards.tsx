@@ -33,7 +33,7 @@ export function SubscriptionPricingCards({
   if (plans.length === 0) return null;
 
   return (
-    <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 md:gap-8 lg:grid-cols-3">
+    <div className="mx-auto grid max-w-7xl grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4 lg:gap-4 xl:gap-5">
       {plans.map((plan) => {
         const highlighted = Boolean(plan.highlighted);
         const features = plan.features ?? [];
@@ -42,7 +42,7 @@ export function SubscriptionPricingCards({
         return (
           <article
             key={plan.id}
-            className={`group relative flex flex-col rounded-xl border p-5 transition-colors sm:rounded-2xl sm:p-6 md:p-8 ${
+            className={`group relative flex h-full flex-col rounded-xl border p-4 transition-colors sm:rounded-2xl sm:p-5 lg:p-4 xl:p-5 ${
               highlighted
                 ? 'border-[#e5c185]/60 bg-zinc-900/70 shadow-[0_0_40px_-12px_rgba(229,193,133,0.35)] hover:border-[#e5c185]'
                 : 'border-zinc-800 bg-zinc-900/50 hover:border-[#e5c185]/50'
@@ -57,7 +57,7 @@ export function SubscriptionPricingCards({
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
               {plan.category || 'Abono mensual'}
             </p>
-            <h3 className="mt-2 font-serif text-xl font-black uppercase tracking-tight text-white sm:text-2xl">
+            <h3 className="mt-2 font-serif text-lg font-black uppercase tracking-tight text-white sm:text-xl lg:text-base xl:text-lg">
               {plan.name}
             </h3>
             {plan.description && (
@@ -81,9 +81,9 @@ export function SubscriptionPricingCards({
                   )}
                 </div>
               )}
-              <p className="font-sans text-3xl font-black text-[#e5c185] sm:text-4xl">
+              <p className="font-sans text-2xl font-black text-[#e5c185] sm:text-3xl lg:text-xl xl:text-2xl">
                 {formatCatalogPriceArs(plan.monthlyPrice)}
-                <span className="text-base font-semibold text-zinc-500">/mes</span>
+                <span className="text-sm font-semibold text-zinc-500 lg:text-xs xl:text-sm">/mes</span>
               </p>
               {plan.bonusText && (
                 <p className="mt-1 text-xs font-medium text-[#e5c185]/80">{plan.bonusText}</p>
@@ -100,14 +100,14 @@ export function SubscriptionPricingCards({
                 }
                 onBuy(plan.id);
               }}
-              className="mt-5 w-full rounded-xl border-2 border-black bg-[#e5c185] py-3.5 font-sans text-sm font-black uppercase tracking-wider text-zinc-950 transition-all hover:bg-[#d4b074] hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100"
+              className="mt-5 w-full rounded-xl border-2 border-black bg-[#e5c185] py-3 font-sans text-xs font-black uppercase tracking-wider text-zinc-950 transition-all hover:bg-[#d4b074] hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100 lg:py-2.5 xl:py-3 xl:text-sm"
             >
               {isBuying ? 'Preparando pago…' : 'Continuar'}
             </button>
 
-            <ul className="mt-6 flex flex-1 flex-col gap-3 border-t border-zinc-800 pt-6">
+            <ul className="mt-5 flex flex-1 flex-col gap-2.5 border-t border-zinc-800 pt-5 lg:gap-2 lg:pt-4">
               {features.map((feature) => (
-                <li key={feature} className="flex items-start gap-2.5 text-sm text-zinc-300">
+                <li key={feature} className="flex items-start gap-2 text-sm text-zinc-300 lg:text-xs xl:text-sm">
                   <Check size={16} className="mt-0.5 shrink-0 text-[#e5c185]" aria-hidden />
                   <span className="font-sans font-light">{feature}</span>
                 </li>

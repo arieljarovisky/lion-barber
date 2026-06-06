@@ -875,7 +875,7 @@ export default function ClientView() {
 
       {showAbonosSection && (
         <section id="abonos" className="border-y border-zinc-900 bg-zinc-950 py-12 sm:py-16 md:py-20 px-4 sm:px-6">
-          <div className="mx-auto max-w-6xl">
+          <div className="mx-auto max-w-7xl">
             <div className="mb-10 text-center sm:mb-16">
               <h2 className="font-serif text-2xl font-black uppercase tracking-tight text-white sm:text-3xl md:text-4xl lg:text-5xl">
                 Elegí tu plan
