@@ -682,130 +682,178 @@ export default function ClientView() {
           </a>
 
           {/* Enlaces — centro en desktop grande */}
-          <div className="hidden min-w-0 flex-1 items-center justify-center gap-4 px-2 text-sm font-medium text-zinc-400 lg:flex xl:gap-6">
-            <a href="#servicios" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
-              Servicios
-            </a>
-            <a href="#barberos" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
-              Barberos
-            </a>
-            {showAbonosSection && (
-              <a href="#abonos" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
-                Abonos
+          <div className="hidden min-w-0 flex-1 items-center justify-center gap-1 px-2 lg:flex xl:gap-2">
+            {(
+              [
+                { href: '#servicios', label: 'Servicios' },
+                { href: '#barberos', label: 'Barberos' },
+                ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
+                { href: '#contacto', label: 'Contacto' },
+              ] as const
+            ).map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-900/80 hover:text-[#e5c185] xl:px-4"
+              >
+                {item.label}
               </a>
-            )}
-            <a href="#contacto" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
-              Contacto
-            </a>
+            ))}
           </div>
 
-          {/* CTA + usuario + menú móvil */}
-          <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
+          {/* Móvil / tablet: CTA + menú */}
+          <div className="flex flex-shrink-0 items-center gap-2 lg:hidden">
             <a
               href="#reserva"
               onClick={(e) => {
                 e.preventDefault();
                 scrollToReserva();
               }}
-              className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full border-2 border-black bg-[#e5c185] px-2.5 py-2 text-[9px] font-black uppercase leading-none tracking-wide text-zinc-950 shadow-md transition-all hover:scale-105 hover:bg-[#d4b074] sm:px-4 sm:py-2.5 sm:text-xs sm:leading-normal sm:tracking-wider"
+              className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#e5c185] px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-zinc-950 transition-colors hover:bg-[#d4b074] sm:px-4 sm:text-xs"
+            >
+              Reservar turno
+            </a>
+            <button
+              type="button"
+              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-[#e5c185]"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label={isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
+            >
+              {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
+          </div>
+
+          {/* Desktop: reservar + cuenta */}
+          <div className="hidden flex-shrink-0 items-center gap-3 lg:flex">
+            <a
+              href="#reserva"
+              onClick={(e) => {
+                e.preventDefault();
+                scrollToReserva();
+              }}
+              className="inline-flex items-center justify-center whitespace-nowrap rounded-lg bg-[#e5c185] px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-zinc-950 transition-colors hover:bg-[#d4b074]"
             >
               Reservar turno
             </a>
 
-            <div className="hidden items-center gap-2 lg:flex xl:gap-3">
-              {profile ? (
-                <>
-                  <span className="hidden text-xs uppercase tracking-wider text-zinc-500 xl:inline">
-                    Hola, {profile.name.split(' ')[0]}
+            {profile ? (
+              <div className="flex items-center overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
+                <Link
+                  to="/perfil"
+                  className="flex max-w-[140px] items-center gap-2 px-3 py-2 transition-colors hover:bg-zinc-800/60"
+                  title="Mi perfil"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e5c185]/15 text-xs font-black uppercase text-[#e5c185]">
+                    {profile.name.trim().charAt(0) || '?'}
                   </span>
-                  {canAccessDashboard && (
+                  <span className="truncate text-sm font-medium text-zinc-200">
+                    {profile.name.split(' ')[0]}
+                  </span>
+                </Link>
+                {canAccessDashboard && (
+                  <>
+                    <span className="h-8 w-px shrink-0 bg-zinc-800" aria-hidden />
                     <Link
                       to="/dashboard"
-                      className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-bold uppercase tracking-wider text-[#e5c185] transition-colors hover:text-[#d4b074]"
+                      className="flex shrink-0 items-center justify-center p-2.5 text-[#e5c185] transition-colors hover:bg-zinc-800/60"
                       title="Panel"
                     >
-                      <LayoutDashboard size={16} />
-                      <span className="hidden xl:inline">Panel</span>
+                      <LayoutDashboard size={18} />
                     </Link>
-                  )}
-                  <Link
-                    to="/perfil"
-                    className="whitespace-nowrap rounded-full border border-zinc-700 px-3 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#e5c185]/50 hover:text-[#e5c185] xl:px-4"
-                  >
-                    Mi perfil
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    title="Salir"
-                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 px-2.5 py-2 text-xs font-bold uppercase tracking-wider text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white xl:px-3"
-                  >
-                    <LogOut size={14} />
-                    <span className="hidden xl:inline">Salir</span>
-                  </button>
-                </>
-              ) : (
-                <Link
-                  to="/login"
-                  className="whitespace-nowrap rounded-full border border-zinc-700 px-3 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#e5c185]/50 hover:text-[#e5c185]"
+                  </>
+                )}
+                <span className="h-8 w-px shrink-0 bg-zinc-800" aria-hidden />
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="flex shrink-0 items-center justify-center p-2.5 text-zinc-500 transition-colors hover:bg-zinc-800/60 hover:text-white"
+                  title="Cerrar sesión"
                 >
-                  Iniciar sesión
-                </Link>
-              )}
-            </div>
-
-            <button
-              type="button"
-              className="p-2 text-zinc-400 transition-colors hover:text-[#e5c185] lg:hidden"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              aria-label={isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
-            >
-              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
+                  <LogOut size={18} />
+                </button>
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                className="rounded-lg border border-zinc-700 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-zinc-300 transition-colors hover:border-[#e5c185]/40 hover:text-[#e5c185]"
+              >
+                Iniciar sesión
+              </Link>
+            )}
           </div>
         </div>
 
         {/* Menú móvil / tablet */}
         {isMobileMenuOpen && (
-          <div className="absolute left-0 top-16 flex w-full flex-col gap-4 border-b border-zinc-800/50 bg-zinc-950 px-6 py-4 shadow-2xl sm:top-20 lg:hidden">
-            <a href="#servicios" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Servicios</a>
-            <a href="#barberos" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Barberos</a>
-            {showAbonosSection && (
-              <a href="#abonos" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Abonos</a>
-            )}
-            <a href="#contacto" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Contacto</a>
-            <div className="h-px bg-zinc-800/50 my-2"></div>
+          <div className="absolute left-0 top-16 flex w-full flex-col gap-1 border-b border-zinc-800/50 bg-zinc-950 px-4 py-3 shadow-2xl sm:top-20 lg:hidden">
+            {(
+              [
+                { href: '#servicios', label: 'Servicios' },
+                { href: '#barberos', label: 'Barberos' },
+                ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
+                { href: '#contacto', label: 'Contacto' },
+              ] as const
+            ).map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="rounded-lg px-3 py-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-900 hover:text-[#e5c185]"
+              >
+                {item.label}
+              </a>
+            ))}
+
+            <div className="my-2 h-px bg-zinc-800/80" />
+
             {profile ? (
-              <>
-                <p className="text-zinc-500 text-xs uppercase tracking-wider text-center">Hola, {profile.name.split(' ')[0]}</p>
+              <div className="space-y-1">
+                <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e5c185]/15 text-sm font-black uppercase text-[#e5c185]">
+                    {profile.name.trim().charAt(0) || '?'}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white">{profile.name.split(' ')[0]}</p>
+                    <p className="truncate text-xs text-zinc-500">{profile.email}</p>
+                  </div>
+                </div>
+                <Link
+                  to="/perfil"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-900 hover:text-white"
+                >
+                  <User size={18} />
+                  Mi perfil
+                </Link>
                 {canAccessDashboard && (
                   <Link
                     to="/dashboard"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="text-center text-xs font-bold text-[#e5c185] hover:text-[#d4b074] uppercase tracking-wider flex items-center justify-center gap-2 py-2"
+                    className="flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-[#e5c185] transition-colors hover:bg-zinc-900"
                   >
                     <LayoutDashboard size={18} />
                     Panel
                   </Link>
                 )}
-                <Link to="/perfil" onClick={() => setIsMobileMenuOpen(false)} className="text-center text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-3 rounded-xl transition-colors uppercase tracking-wider block">
-                  Mi perfil
-                </Link>
                 <button
                   type="button"
                   onClick={() => {
                     setIsMobileMenuOpen(false);
                     void handleLogout();
                   }}
-                  className="w-full text-center text-xs font-sans font-bold text-zinc-400 border border-zinc-700 px-4 py-3 rounded-xl uppercase tracking-wider inline-flex items-center justify-center gap-2"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-white"
                 >
                   <LogOut size={18} />
                   Cerrar sesión
                 </button>
-              </>
+              </div>
             ) : (
-              <Link to="/login" onClick={() => setIsMobileMenuOpen(false)} className="text-center text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-3 rounded-xl transition-colors uppercase tracking-wider block">
-                Iniciar Sesión
+              <Link
+                to="/login"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="block rounded-lg bg-[#e5c185] px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074]"
+              >
+                Iniciar sesión
               </Link>
             )}
           </div>
