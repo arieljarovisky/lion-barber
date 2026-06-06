@@ -37,9 +37,16 @@ type DashboardPanelShellProps = {
   activePanel: DashboardPanelId;
   onNavigate: (panel: DashboardPanelId) => void;
   children: React.ReactNode;
+  /** Sin menú lateral: vista dedicada (p. ej. agendas en pestaña). */
+  bare?: boolean;
 };
 
-export default function DashboardPanelShell({ activePanel, onNavigate, children }: DashboardPanelShellProps) {
+export default function DashboardPanelShell({
+  activePanel,
+  onNavigate,
+  children,
+  bare = false,
+}: DashboardPanelShellProps) {
   const { profile, logout, isAdmin, isSuperAdmin, canAccessDashboard } = useAuth();
   const navigate = useNavigate();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -53,6 +60,14 @@ export default function DashboardPanelShell({ activePanel, onNavigate, children 
     setMobileNavOpen(false);
     onNavigate(panel);
   };
+
+  if (bare) {
+    return (
+      <main className="flex h-screen w-full min-w-0 flex-col overflow-hidden p-3 sm:p-4">
+        {children}
+      </main>
+    );
+  }
 
   return (
     <>

@@ -37,11 +37,13 @@ import {
   Banknote,
   DatabaseBackup,
   Download,
+  ExternalLink,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
+import BarberDayCalendarsGrid from '../components/BarberDayCalendarsGrid';
 import PointsProgramPanel from '../components/PointsProgramPanel';
 import PointsRedemptionPanel from '../components/PointsRedemptionPanel';
 import ShopProductsPanel from '../components/ShopProductsPanel';
@@ -93,40 +95,19 @@ import {
   normalizePhoneDigits,
   resolveClientForNewAppointment,
 } from '../utils/adminClientLookup';
-
-const TIME_SLOTS = [
-  '10:00', '10:20', '10:40',
-  '11:00', '11:20', '11:40',
-  '12:00', '12:20', '12:40',
-  '13:00', '13:20', '13:40',
-  '14:00', '14:20', '14:40',
-  '15:00', '15:20', '15:40',
-  '16:00', '16:20', '16:40',
-  '17:00', '17:20', '17:40',
-  '18:00', '18:20', '18:40',
-  '19:00', '19:20', '19:40',
-];
-
-type DayHours = { openTime: string; closeTime: string };
-
-function timeToMinutes(hhmm: string): number {
-  const [hRaw, mRaw] = hhmm.split(':').map(Number);
-  if (!Number.isFinite(hRaw) || !Number.isFinite(mRaw)) return NaN;
-  return hRaw * 60 + mRaw;
-}
-
-function buildTimeSlotsInRange(openTime: string, closeTime: string): string[] {
-  const openMinutes = timeToMinutes(openTime);
-  const closeMinutes = timeToMinutes(closeTime);
-  const safeOpen = Number.isFinite(openMinutes) ? Math.max(0, Math.min(24 * 60 - SLOT_STEP_MINUTES, openMinutes)) : 10 * 60;
-  const safeClose = Number.isFinite(closeMinutes)
-    ? Math.max(safeOpen + SLOT_STEP_MINUTES, Math.min(24 * 60, closeMinutes))
-    : 20 * 60;
-  return TIME_SLOTS.filter((slot) => {
-    const start = timeToMinutes(slot);
-    return Number.isFinite(start) && start >= safeOpen && start + SLOT_STEP_MINUTES < safeClose;
-  });
-}
+import {
+  addMinutesToClock,
+  appointmentSlotSpan,
+  buildDayTimelineRows,
+  buildTimeSlotsInRange,
+  normalizeAppointmentTime,
+  TIMELINE_ROW_UNIT_REM,
+  timeToMinutes,
+} from '../utils/agendaTimeline';
+import {
+  appointmentNeedsManualContact,
+  buildAppointmentWhatsappUrl,
+} from '../utils/appointmentWhatsapp';
 
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
   const raw = (icon ?? '').trim();
@@ -136,61 +117,6 @@ function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; 
     return { kind: 'svg', value: raw };
   }
   return { kind: 'emoji', value: raw };
-}
-
-/** MySQL TIME puede devolver "10:30:00"; la grilla usa "10:30". */
-function normalizeAppointmentTime(t: string | undefined): string {
-  if (!t) return '';
-  const s = t.trim();
-  return s.length >= 5 ? s.slice(0, 5) : s;
-}
-
-/** Intervalo de la grilla (coincide con backend). */
-const SLOT_STEP_MINUTES = 20;
-/** Altura visual mínima por “franja” de 20 min en el timeline (rem). */
-const TIMELINE_ROW_UNIT_REM = 3.75;
-/** Ingreso estimado del barbero = comisión sobre el servicio. */
-const BARBER_ESTIMATED_SHARE = BARBER_COMMISSION_PERCENT / 100;
-
-function appointmentSlotSpan(app: Appointment): number {
-  const dm = app.durationMinutes ?? 30;
-  return Math.max(1, Math.ceil(dm / SLOT_STEP_MINUTES));
-}
-
-/** Una fila por bloque libre o turno que ocupa N franjas de 20 min. */
-function buildDayTimelineRows(
-  apps: Appointment[],
-  slots: string[],
-  blockedSlots?: Set<string>
-): Array<
-  { kind: 'free'; slot: string } | { kind: 'blocked'; slot: string } | { kind: 'appointment'; slot: string; app: Appointment; span: number }
-> {
-  const byStart = new Map<string, Appointment>();
-  for (const a of apps) {
-    const k = normalizeAppointmentTime(a.time);
-    if (k) byStart.set(k, a);
-  }
-  const rows: Array<
-    { kind: 'free'; slot: string } | { kind: 'blocked'; slot: string } | { kind: 'appointment'; slot: string; app: Appointment; span: number }
-  > = [];
-  let i = 0;
-  while (i < slots.length) {
-    const slot = slots[i];
-    const app = byStart.get(slot);
-    if (app) {
-      const rawSpan = appointmentSlotSpan(app);
-      const span = Math.min(rawSpan, slots.length - i);
-      rows.push({ kind: 'appointment', slot, app, span });
-      i += span;
-    } else if (blockedSlots?.has(slot)) {
-      rows.push({ kind: 'blocked', slot });
-      i += 1;
-    } else {
-      rows.push({ kind: 'free', slot });
-      i += 1;
-    }
-  }
-  return rows;
 }
 
 /** Para tabla semanal: por índice de franja, celda libre, inicio de turno (con rowspan) o skip por rowspan. */
@@ -215,44 +141,8 @@ function buildWeekColumnCells(
   return result;
 }
 
-function addMinutesToClock(hhmm: string, minutes: number): string {
-  const parts = hhmm.trim().slice(0, 5).split(':');
-  const h = parseInt(parts[0] ?? '0', 10);
-  const m = parseInt(parts[1] ?? '0', 10);
-  let total = h * 60 + m + minutes;
-  total = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
-  const H = Math.floor(total / 60);
-  const M = total % 60;
-  return `${String(H).padStart(2, '0')}:${String(M).padStart(2, '0')}`;
-}
-
-/** El botón de WhatsApp se ofrece para cualquier turno no cancelado con teléfono válido. */
-function appointmentNeedsManualContact(app: Appointment): boolean {
-  if (app.status === 'cancelled') return false;
-  return normalizePhoneDigits(app.phone ?? '').length >= 8;
-}
-
-/** Convierte el teléfono a E.164 argentino para wa.me (asume número AR sin código de país). */
-function buildWhatsappPhone(rawPhone: string): string | null {
-  const digits = normalizePhoneDigits(rawPhone);
-  if (digits.length < 8) return null;
-  if (digits.startsWith('54')) return digits;
-  if (digits.startsWith('15')) {
-    return `549${digits.slice(2)}`;
-  }
-  if (digits.length >= 10) {
-    return `549${digits}`;
-  }
-  return `549${digits}`;
-}
-
-function buildAppointmentWhatsappUrl(app: Appointment, messageTemplate: string | null): string | null {
-  const phone = buildWhatsappPhone(app.phone ?? '');
-  if (!phone) return null;
-  const body = applyWhatsappMessageTemplate(messageTemplate, app);
-  const text = encodeURIComponent(body);
-  return `https://wa.me/${phone}?text=${text}`;
-}
+/** Ingreso estimado del barbero = comisión sobre el servicio. */
+const BARBER_ESTIMATED_SHARE = BARBER_COMMISSION_PERCENT / 100;
 
 const WEEKDAY_SHORT: { value: number; label: string }[] = [
   { value: 1, label: 'Lun' },
@@ -263,6 +153,8 @@ const WEEKDAY_SHORT: { value: number; label: string }[] = [
   { value: 6, label: 'Sáb' },
   { value: 7, label: 'Dom' },
 ];
+
+type DayHours = { openTime: string; closeTime: string };
 
 const DEFAULT_WEEKDAY_HOURS: Record<number, DayHours> = {
   1: { openTime: '10:00', closeTime: '20:00' },
@@ -295,7 +187,7 @@ function normalizeWeekdayHours(input: Record<number, DayHours> | undefined, clos
   return out;
 }
 
-export default function Dashboard() {
+export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boolean } = {}) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedBarberId, setSelectedBarberId] = useState<string | 'all'>('all');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -1816,6 +1708,21 @@ export default function Dashboard() {
     navigate(location.pathname, { replace: true, state: {} });
   }, [location.state, location.pathname, navigate]);
 
+  useEffect(() => {
+    if (!agendasOnly) return;
+    setView('agenda');
+    setSelectedBarberId('all');
+    const fecha = new URLSearchParams(location.search).get('fecha');
+    if (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      setSelectedDate(parseISO(`${fecha}T12:00:00`));
+    }
+  }, [agendasOnly, location.search]);
+
+  const openAgendasInNewTab = useCallback(() => {
+    const url = `${window.location.origin}/dashboard/agendas?fecha=${dateStr}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [dateStr]);
+
   const handlePanelNavigate = useCallback((panel: DashboardPanelId) => {
     if (panel === 'clientes') {
       navigate('/dashboard/clientes');
@@ -1961,7 +1868,56 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      <DashboardPanelShell activePanel={view as DashboardPanelId} onNavigate={handlePanelNavigate}>
+      <DashboardPanelShell activePanel={view as DashboardPanelId} onNavigate={handlePanelNavigate} bare={agendasOnly}>
+        {agendasOnly && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-4 shrink-0">
+            <div className="min-w-0">
+              <h2 className="text-xl sm:text-2xl font-black text-zinc-900 tracking-tight">Agendas del día</h2>
+              <p className="text-sm text-zinc-500 capitalize mt-0.5">
+                {format(selectedDate, "EEEE d 'de' MMMM yyyy", { locale: es })}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="bg-white border border-zinc-200 shadow-sm rounded-xl p-1.5 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handlePrevDay}
+                  className="p-2 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
+                  aria-label="Día anterior"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <input
+                  type="date"
+                  value={format(selectedDate, 'yyyy-MM-dd')}
+                  onChange={(e) => handleJumpToDate(e.target.value)}
+                  className="rounded-lg border border-zinc-200 px-2 py-1.5 text-sm text-zinc-800 outline-none focus:border-[#b39055]"
+                />
+                <button
+                  type="button"
+                  onClick={handleNextDay}
+                  className="p-2 hover:bg-zinc-100 rounded-lg transition-colors text-zinc-600"
+                  aria-label="Día siguiente"
+                >
+                  <ChevronRight size={18} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleThisWeek}
+                  className="px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-lg text-xs font-bold transition-colors"
+                >
+                  Hoy
+                </button>
+              </div>
+              <a
+                href="/dashboard"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-50"
+              >
+                Panel completo
+              </a>
+            </div>
+          </div>
+        )}
         {profile?.role === 'staff' && !staffBarberId && (
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             Tu cuenta de empleado no está vinculada a un barbero. Pedile al administrador que te envíe una invitación
@@ -1970,11 +1926,15 @@ export default function Dashboard() {
         )}
         <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <h2 className="truncate text-2xl font-black tracking-tight sm:text-3xl">{viewHeading.title}</h2>
-            <p className="mt-1 text-sm text-zinc-500 sm:text-base">{viewHeading.subtitle}</p>
+            {!agendasOnly && (
+              <>
+                <h2 className="truncate text-2xl font-black tracking-tight sm:text-3xl">{viewHeading.title}</h2>
+                <p className="mt-1 text-sm text-zinc-500 sm:text-base">{viewHeading.subtitle}</p>
+              </>
+            )}
           </div>
 
-          {view === 'agenda' && (
+          {view === 'agenda' && !agendasOnly && (
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
               <div className="bg-white border border-zinc-200 shadow-sm rounded-xl sm:rounded-2xl p-1.5 sm:p-2 flex items-center gap-1 sm:gap-2 min-w-0 flex-1 sm:flex-initial">
                 <button
@@ -2106,7 +2066,7 @@ export default function Dashboard() {
 
         {view === 'agenda' && (
         <>
-        {!isSingleBarberDayView && (
+        {!isSingleBarberDayView && !agendasOnly && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 max-w-2xl">
             <div className="bg-white border border-zinc-200 p-5 sm:p-6 rounded-2xl shadow-sm relative overflow-hidden">
               <div className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-900 rounded-l-2xl" aria-hidden />
@@ -2122,7 +2082,7 @@ export default function Dashboard() {
             </div>
           </div>
         )}
-        {isSuperAdmin && !isSingleBarberDayView && barberStats.length > 0 && (
+        {isSuperAdmin && !isSingleBarberDayView && !agendasOnly && barberStats.length > 0 && (
           <div className="mb-8 rounded-2xl border border-zinc-200 bg-white p-4 sm:p-5 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="text-base font-black text-zinc-900">Estadísticas por barbero</h3>
@@ -2153,7 +2113,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {isSingleBarberDayView && barbers[0] && (
+        {isSingleBarberDayView && !agendasOnly && barbers[0] && (
           <div className="mb-8 rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-white shadow-xl overflow-hidden">
             <div className="p-6 sm:p-8">
               <div className="flex flex-col lg:flex-row lg:items-center gap-6 lg:gap-10">
@@ -2199,7 +2159,7 @@ export default function Dashboard() {
         )}
 
         {/* Vista semana: calendario del barbero seleccionado */}
-        {isWeekView && selectedBarber && (
+        {isWeekView && selectedBarber && !agendasOnly && (
           <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden mb-8">
             <div className="bg-gradient-to-r from-zinc-50 to-amber-50/30">
               <div className="px-6 pt-4 pb-0 flex flex-wrap items-center justify-between gap-4">
@@ -2377,18 +2337,24 @@ export default function Dashboard() {
 
         {/* Vista día: timeline (un barbero) o grilla (varios) */}
         {!isWeekView && (
-          <div className="mb-8">
+          <div className={agendasOnly ? 'flex-1 flex flex-col min-h-0 mb-0' : 'mb-8'}>
             {loading ? (
               <div className="py-16 text-center text-zinc-400 rounded-2xl border border-zinc-200 bg-white">
                 Cargando agenda…
               </div>
             ) : isSingleBarberDayView && appointmentsByBarber[0] ? (
-              <div className="hidden lg:block max-w-4xl mx-auto mb-8">
+              <div
+                className={`max-w-4xl mx-auto mb-8 ${agendasOnly ? '' : 'hidden lg:block'}`}
+              >
                 <div className="flex items-center justify-between gap-4 mb-4 px-1">
                   <h3 className="font-bold text-lg text-zinc-900">Horarios del día</h3>
                   <span className="text-xs text-zinc-500">Deslizá si hay muchos turnos</span>
                 </div>
-                <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
+                <div
+                  className={`rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden ${
+                    agendasOnly ? 'overflow-y-auto overscroll-contain max-h-[calc(100vh-140px)]' : ''
+                  }`}
+                >
                   <ul className="divide-y divide-zinc-100">
                       {buildDayTimelineRows(
                         appointmentsByBarber[0].appointments,
@@ -2520,16 +2486,50 @@ export default function Dashboard() {
                           </li>
                         );
                       })}
-                    </ul>
+                  </ul>
+                </div>
+              </div>
+            ) : agendasOnly ? (
+              <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden flex flex-col min-h-0 flex-1">
+                <div className="p-4 sm:p-5 min-h-0 flex-1 flex flex-col">
+                  <BarberDayCalendarsGrid
+                    columns={appointmentsByBarber}
+                    timeSlots={agendaTimeSlots}
+                    dateStr={dateStr}
+                    getBlockedSlotsForBarber={(barberId) =>
+                      getBlockedSlotsForBarberDate(barberId, dateStr)
+                    }
+                    adminClients={adminClients}
+                    shopWhatsappMessageTemplate={shopWhatsappMessageTemplate}
+                    onCreateSlot={openCreateModalForSlot}
+                    onEdit={tryOpenEditModal}
+                    onDelete={tryDeleteAppointment}
+                    scrollMaxHeight="calc(100vh - 140px)"
+                    scrollMinHeight="calc(100vh - 140px)"
+                    compact={false}
+                  />
                 </div>
               </div>
             ) : (
               <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden mb-8">
-                <div className="p-4 sm:p-6 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <h3 className="font-black text-lg text-zinc-900">Agendas del día</h3>
-                  <p className="text-xs text-zinc-500 capitalize">
-                    {format(selectedDate, "EEEE d 'de' MMMM yyyy", { locale: es })}
-                  </p>
+                <div className="p-4 sm:p-6 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <h3 className="font-black text-lg text-zinc-900">Agendas del día</h3>
+                    <p className="text-xs text-zinc-500 capitalize mt-0.5">
+                      {format(selectedDate, "EEEE d 'de' MMMM yyyy", { locale: es })}
+                    </p>
+                  </div>
+                  {barbers.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={openAgendasInNewTab}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs font-bold text-zinc-700 hover:bg-zinc-50 shrink-0"
+                      title="Abrir agendas en pantalla completa"
+                    >
+                      <ExternalLink size={14} />
+                      Ver en otra pestaña
+                    </button>
+                  )}
                 </div>
 
                 {/* Móvil: un barbero a la vez con pestañas */}
@@ -2610,7 +2610,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Listado de turnos */}
+        {!agendasOnly && (
         <div
           className={`bg-white border rounded-2xl shadow-sm overflow-hidden min-w-0 ${
             isSingleBarberDayView ? 'border-zinc-200/80 border-dashed' : 'border-zinc-200'
@@ -2893,6 +2893,7 @@ export default function Dashboard() {
             </ul>
           )}
         </div>
+        )}
         </>
         )}
 
