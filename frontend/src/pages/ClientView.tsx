@@ -638,66 +638,94 @@ export default function ClientView() {
     <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
       {/* Navbar */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50">
-        <div className="max-w-6xl mx-auto px-3 sm:px-4 md:px-6 h-16 sm:h-20 flex items-center justify-between gap-2 min-w-0">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-shrink-0">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-zinc-900 rounded-full flex items-center justify-center overflow-hidden border border-zinc-800 flex-shrink-0">
-              <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="w-full h-full object-cover" />
+        <div className="mx-auto flex h-16 min-w-0 max-w-6xl items-center justify-between gap-2 px-3 sm:h-20 sm:px-4 md:px-6">
+          <div className="flex min-w-0 flex-shrink-0 items-center gap-2 sm:gap-3">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-800 bg-zinc-900 sm:h-10 sm:w-10">
+              <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="h-full w-full object-cover" />
             </div>
-            <span className="font-serif font-black tracking-widest uppercase text-sm sm:text-base md:text-lg text-white truncate">Lion Barber</span>
+            <span className="truncate font-serif text-sm font-black uppercase tracking-widest text-white sm:text-base md:text-lg">
+              Lion Barber
+            </span>
           </div>
-          
-          {/* Desktop Menu */}
-          <div className="hidden md:flex items-center gap-4 lg:gap-8 text-sm font-sans font-medium text-zinc-400 flex-wrap justify-end">
-            <a href="#servicios" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Servicios</a>
-            <a href="#barberos" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Barberos</a>
+
+          {/* Enlaces — centro en desktop grande */}
+          <div className="hidden min-w-0 flex-1 items-center justify-center gap-4 px-2 text-sm font-medium text-zinc-400 lg:flex xl:gap-6">
+            <a href="#servicios" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
+              Servicios
+            </a>
+            <a href="#barberos" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
+              Barberos
+            </a>
             {showAbonosSection && (
-              <a href="#abonos" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Abonos</a>
+              <a href="#abonos" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
+                Abonos
+              </a>
             )}
-            <a href="#reserva" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Reservar</a>
-            <a href="#contacto" className="hover:text-[#e5c185] transition-colors whitespace-nowrap">Contacto</a>
+            <a href="#reserva" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
+              Reservar
+            </a>
+            <a href="#contacto" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
+              Contacto
+            </a>
+          </div>
+
+          {/* Acciones de usuario — derecha en desktop grande */}
+          <div className="hidden flex-shrink-0 items-center gap-2 lg:flex xl:gap-3">
             {profile ? (
               <>
-                <span className="text-zinc-500 text-xs uppercase tracking-wider hidden lg:inline">Hola, {profile.name.split(' ')[0]}</span>
+                <span className="hidden text-xs uppercase tracking-wider text-zinc-500 xl:inline">
+                  Hola, {profile.name.split(' ')[0]}
+                </span>
                 {canAccessDashboard && (
                   <Link
                     to="/dashboard"
-                    className="hidden lg:inline-flex items-center gap-1.5 text-xs font-bold text-[#e5c185] hover:text-[#d4b074] uppercase tracking-wider whitespace-nowrap"
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-bold uppercase tracking-wider text-[#e5c185] transition-colors hover:text-[#d4b074]"
+                    title="Panel"
                   >
                     <LayoutDashboard size={16} />
-                    Panel
+                    <span className="hidden xl:inline">Panel</span>
                   </Link>
                 )}
-                <Link to="/perfil" className="text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-2 rounded-full transition-colors uppercase tracking-wider whitespace-nowrap">
+                <Link
+                  to="/perfil"
+                  className="whitespace-nowrap rounded-full bg-[#e5c185] px-3 py-2 text-xs font-bold uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074] xl:px-4"
+                >
                   Mi perfil
                 </Link>
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="text-xs font-sans font-bold text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-2 rounded-full transition-colors uppercase tracking-wider whitespace-nowrap inline-flex items-center gap-1.5"
+                  title="Salir"
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 px-2.5 py-2 text-xs font-bold uppercase tracking-wider text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white xl:px-3"
                 >
                   <LogOut size={14} />
-                  Salir
+                  <span className="hidden xl:inline">Salir</span>
                 </button>
               </>
             ) : (
-              <Link to="/login" className="text-xs font-sans font-bold text-zinc-950 bg-[#e5c185] hover:bg-[#d4b074] px-4 py-2 rounded-full transition-colors uppercase tracking-wider whitespace-nowrap">
-                Iniciar Sesión
+              <Link
+                to="/login"
+                className="whitespace-nowrap rounded-full bg-[#e5c185] px-4 py-2 text-xs font-bold uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074]"
+              >
+                Iniciar sesión
               </Link>
             )}
           </div>
 
-          {/* Mobile Menu Toggle */}
-          <button 
-            className="md:hidden text-zinc-400 hover:text-[#e5c185] transition-colors p-2"
+          {/* Tablet y móvil: menú hamburguesa */}
+          <button
+            type="button"
+            className="p-2 text-zinc-400 transition-colors hover:text-[#e5c185] lg:hidden"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label={isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
           >
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
 
-        {/* Mobile Menu Dropdown */}
+        {/* Menú móvil / tablet */}
         {isMobileMenuOpen && (
-          <div className="md:hidden absolute top-20 left-0 w-full bg-zinc-950 border-b border-zinc-800/50 flex flex-col py-4 px-6 gap-4 shadow-2xl">
+          <div className="absolute left-0 top-16 flex w-full flex-col gap-4 border-b border-zinc-800/50 bg-zinc-950 px-6 py-4 shadow-2xl sm:top-20 lg:hidden">
             <a href="#servicios" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Servicios</a>
             <a href="#barberos" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Barberos</a>
             {showAbonosSection && (
@@ -846,12 +874,14 @@ export default function ClientView() {
       </section>
 
       {showAbonosSection && (
-        <section id="abonos" className="border-y border-zinc-200 bg-zinc-100 py-12 sm:py-16 md:py-20 px-4 sm:px-6">
+        <section id="abonos" className="border-y border-zinc-900 bg-zinc-950 py-12 sm:py-16 md:py-20 px-4 sm:px-6">
           <div className="mx-auto max-w-6xl">
-            <div className="mb-10 text-center">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-zinc-500">Abonos mensuales</p>
-              <h2 className="mt-2 text-3xl font-black text-zinc-900 sm:text-4xl">Elegí tu plan</h2>
-              <p className="mx-auto mt-3 max-w-2xl text-sm text-zinc-600 sm:text-base">
+            <div className="mb-10 text-center sm:mb-16">
+              <h2 className="font-serif text-2xl font-black uppercase tracking-tight text-white sm:text-3xl md:text-4xl lg:text-5xl">
+                Elegí tu plan
+              </h2>
+              <div className="mx-auto mt-3 h-1 w-20 rounded-full bg-[#e5c185] sm:w-24" />
+              <p className="mx-auto mt-4 max-w-2xl font-sans text-sm font-light text-zinc-400 sm:text-base">
                 Pagá online con Mercado Pago y reservá sin seña mientras tengas cortes disponibles en el mes.
               </p>
             </div>
@@ -860,8 +890,8 @@ export default function ClientView() {
               <div
                 className={`mx-auto mb-8 max-w-2xl rounded-xl border px-4 py-3 text-sm ${
                   subscriptionMessage.kind === 'ok'
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                    : 'border-red-200 bg-red-50 text-red-800'
+                    ? 'border-[#e5c185]/40 bg-[#e5c185]/10 text-[#e5c185]'
+                    : 'border-red-900/50 bg-red-950/40 text-red-300'
                 }`}
               >
                 {subscriptionMessage.text}
@@ -879,14 +909,14 @@ export default function ClientView() {
             />
 
             {subscriptionCheckoutPreferenceId && (
-              <div className="mx-auto mt-8 max-w-md rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-                <p className="mb-3 text-center text-xs text-zinc-500">
+              <div className="mx-auto mt-8 max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+                <p className="mb-3 text-center text-xs text-zinc-400">
                   Completá el pago con Mercado Pago para activar tu abono.
                 </p>
                 <Wallet
                   initialization={{ preferenceId: subscriptionCheckoutPreferenceId, redirectMode: 'self' }}
                   locale="es-AR"
-                  customization={{ theme: 'default' }}
+                  customization={{ theme: 'dark' }}
                   onError={(err) => {
                     setSubscriptionMessage({
                       kind: 'err',
