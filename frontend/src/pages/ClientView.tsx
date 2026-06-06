@@ -1,7 +1,12 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle } from 'lucide-react';
+import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle, ExternalLink } from 'lucide-react';
 import { BOOKING_FALLBACK_WHATSAPP_URL, checkBackendHealth } from '../utils/backendHealth';
+import {
+  SHOP_ADDRESS,
+  SHOP_MAPS_DIRECTIONS_URL,
+  SHOP_MAPS_EMBED_URL,
+} from '../constants/shopLocation';
 import { WhatsAppIcon } from '../components/WhatsAppIcon';
 import { api } from '../store';
 import { ANY_BARBER_ID, ApiError } from '../api';
@@ -209,6 +214,7 @@ export default function ClientView() {
   const [senaCheckoutLoading, setSenaCheckoutLoading] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(startOfToday());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const heroSectionRef = useRef<HTMLElement | null>(null);
@@ -221,6 +227,20 @@ export default function ClientView() {
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [dragged, setDragged] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setHeaderScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const scrollToReserva = useCallback(() => {
+    setIsMobileMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      document.getElementById('reserva')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
 
   const selectedWeekday = getISODay(parse(selectedDate, 'yyyy-MM-dd', new Date()));
   const isSelectedDateClosed = !openWeekdays.includes(selectedWeekday) || closedDates.includes(selectedDate);
@@ -637,16 +657,29 @@ export default function ClientView() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
       {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/50">
-        <div className="mx-auto flex h-16 min-w-0 max-w-6xl items-center justify-between gap-2 px-3 sm:h-20 sm:px-4 md:px-6">
-          <div className="flex min-w-0 flex-shrink-0 items-center gap-2 sm:gap-3">
+      <nav
+        className={`fixed top-0 left-0 right-0 z-50 border-b transition-all duration-200 ${
+          headerScrolled
+            ? 'border-zinc-800 bg-zinc-950/95 shadow-lg shadow-black/30 backdrop-blur-md'
+            : 'border-zinc-800/50 bg-zinc-950/80 backdrop-blur-md'
+        }`}
+      >
+        <div className="mx-auto flex h-16 min-w-0 max-w-7xl items-center justify-between gap-2 px-3 sm:h-20 sm:px-4 md:px-6">
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            className="flex min-w-0 flex-shrink-0 items-center gap-2 sm:gap-3"
+          >
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-800 bg-zinc-900 sm:h-10 sm:w-10">
               <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="h-full w-full object-cover" />
             </div>
             <span className="truncate font-serif text-sm font-black uppercase tracking-widest text-white sm:text-base md:text-lg">
               Lion Barber
             </span>
-          </div>
+          </a>
 
           {/* Enlaces — centro en desktop grande */}
           <div className="hidden min-w-0 flex-1 items-center justify-center gap-4 px-2 text-sm font-medium text-zinc-400 lg:flex xl:gap-6">
@@ -661,66 +694,76 @@ export default function ClientView() {
                 Abonos
               </a>
             )}
-            <a href="#reserva" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
-              Reservar
-            </a>
             <a href="#contacto" className="whitespace-nowrap transition-colors hover:text-[#e5c185]">
               Contacto
             </a>
           </div>
 
-          {/* Acciones de usuario — derecha en desktop grande */}
-          <div className="hidden flex-shrink-0 items-center gap-2 lg:flex xl:gap-3">
-            {profile ? (
-              <>
-                <span className="hidden text-xs uppercase tracking-wider text-zinc-500 xl:inline">
-                  Hola, {profile.name.split(' ')[0]}
-                </span>
-                {canAccessDashboard && (
-                  <Link
-                    to="/dashboard"
-                    className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-bold uppercase tracking-wider text-[#e5c185] transition-colors hover:text-[#d4b074]"
-                    title="Panel"
-                  >
-                    <LayoutDashboard size={16} />
-                    <span className="hidden xl:inline">Panel</span>
-                  </Link>
-                )}
-                <Link
-                  to="/perfil"
-                  className="whitespace-nowrap rounded-full bg-[#e5c185] px-3 py-2 text-xs font-bold uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074] xl:px-4"
-                >
-                  Mi perfil
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  title="Salir"
-                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 px-2.5 py-2 text-xs font-bold uppercase tracking-wider text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white xl:px-3"
-                >
-                  <LogOut size={14} />
-                  <span className="hidden xl:inline">Salir</span>
-                </button>
-              </>
-            ) : (
-              <Link
-                to="/login"
-                className="whitespace-nowrap rounded-full bg-[#e5c185] px-4 py-2 text-xs font-bold uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074]"
-              >
-                Iniciar sesión
-              </Link>
-            )}
-          </div>
+          {/* CTA + usuario + menú móvil */}
+          <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
+            <a
+              href="#reserva"
+              onClick={(e) => {
+                e.preventDefault();
+                scrollToReserva();
+              }}
+              className="inline-flex shrink-0 items-center justify-center rounded-full border-2 border-black bg-[#e5c185] px-3 py-2 text-[10px] font-black uppercase tracking-wide text-zinc-950 shadow-md transition-all hover:scale-105 hover:bg-[#d4b074] sm:px-4 sm:py-2.5 sm:text-xs sm:tracking-wider"
+            >
+              <span className="sm:hidden">Reservar</span>
+              <span className="hidden sm:inline">Reservar turno</span>
+            </a>
 
-          {/* Tablet y móvil: menú hamburguesa */}
-          <button
-            type="button"
-            className="p-2 text-zinc-400 transition-colors hover:text-[#e5c185] lg:hidden"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            aria-label={isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
-          >
-            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+            <div className="hidden items-center gap-2 lg:flex xl:gap-3">
+              {profile ? (
+                <>
+                  <span className="hidden text-xs uppercase tracking-wider text-zinc-500 xl:inline">
+                    Hola, {profile.name.split(' ')[0]}
+                  </span>
+                  {canAccessDashboard && (
+                    <Link
+                      to="/dashboard"
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-bold uppercase tracking-wider text-[#e5c185] transition-colors hover:text-[#d4b074]"
+                      title="Panel"
+                    >
+                      <LayoutDashboard size={16} />
+                      <span className="hidden xl:inline">Panel</span>
+                    </Link>
+                  )}
+                  <Link
+                    to="/perfil"
+                    className="whitespace-nowrap rounded-full border border-zinc-700 px-3 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#e5c185]/50 hover:text-[#e5c185] xl:px-4"
+                  >
+                    Mi perfil
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    title="Salir"
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-700 px-2.5 py-2 text-xs font-bold uppercase tracking-wider text-zinc-400 transition-colors hover:border-zinc-500 hover:text-white xl:px-3"
+                  >
+                    <LogOut size={14} />
+                    <span className="hidden xl:inline">Salir</span>
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  className="whitespace-nowrap rounded-full border border-zinc-700 px-3 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#e5c185]/50 hover:text-[#e5c185]"
+                >
+                  Iniciar sesión
+                </Link>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="p-2 text-zinc-400 transition-colors hover:text-[#e5c185] lg:hidden"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label={isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
+            >
+              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
         </div>
 
         {/* Menú móvil / tablet */}
@@ -731,7 +774,13 @@ export default function ClientView() {
             {showAbonosSection && (
               <a href="#abonos" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Abonos</a>
             )}
-            <a href="#reserva" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Reservar</a>
+            <button
+              type="button"
+              onClick={() => scrollToReserva()}
+              className="w-full rounded-xl border-2 border-black bg-[#e5c185] px-4 py-3 text-xs font-black uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074]"
+            >
+              Reservar turno
+            </button>
             <a href="#contacto" onClick={() => setIsMobileMenuOpen(false)} className="text-zinc-400 hover:text-[#e5c185] font-medium transition-colors">Contacto</a>
             <div className="h-px bg-zinc-800/50 my-2"></div>
             {profile ? (
@@ -1378,8 +1427,76 @@ export default function ClientView() {
         </div>
       </section>
 
+      {/* Ubicación */}
+      <section id="contacto" className="border-y border-zinc-900 bg-zinc-950 px-4 py-12 sm:px-6 sm:py-16 md:py-20">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-10 text-center sm:mb-12">
+            <h2 className="font-serif text-2xl font-black uppercase tracking-tight text-white sm:text-3xl md:text-4xl">
+              Ubicación
+            </h2>
+            <div className="mx-auto mt-3 h-1 w-20 rounded-full bg-[#e5c185] sm:w-24" />
+            <p className="mx-auto mt-4 max-w-2xl font-sans text-sm font-light text-zinc-400 sm:text-base">
+              Encontranos en el corazón de la ciudad. Abrí el mapa para ver cómo llegar.
+            </p>
+          </div>
+
+          <div className="grid items-stretch gap-8 lg:grid-cols-2 lg:gap-10">
+            <div className="flex flex-col justify-center gap-6 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 sm:p-8">
+              <div className="space-y-4">
+                <p className="flex items-start gap-3 text-sm text-zinc-300 sm:text-base">
+                  <MapPin size={20} className="mt-0.5 shrink-0 text-[#e5c185]" aria-hidden />
+                  <span>
+                    <span className="block text-xs font-bold uppercase tracking-widest text-zinc-500">Dirección</span>
+                    <span className="mt-1 block font-medium text-white">{SHOP_ADDRESS}</span>
+                  </span>
+                </p>
+                <p className="flex items-start gap-3 text-sm text-zinc-300 sm:text-base">
+                  <Clock size={20} className="mt-0.5 shrink-0 text-[#e5c185]" aria-hidden />
+                  <span>
+                    <span className="block text-xs font-bold uppercase tracking-widest text-zinc-500">Horarios</span>
+                    <span className="mt-1 block">Lun a Vie: 10–20 hs · Sáb: 10–18 hs</span>
+                  </span>
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                <a
+                  href={SHOP_MAPS_DIRECTIONS_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-black bg-[#e5c185] px-5 py-3 text-xs font-black uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074]"
+                >
+                  <ExternalLink size={16} />
+                  Cómo llegar
+                </a>
+                <a
+                  href={BOOKING_FALLBACK_WHATSAPP_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-700 px-5 py-3 text-xs font-bold uppercase tracking-wider text-zinc-300 transition-colors hover:border-[#e5c185]/50 hover:text-[#e5c185]"
+                >
+                  <Phone size={16} />
+                  WhatsApp
+                </a>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/30 shadow-2xl">
+              <iframe
+                title="Mapa de ubicación de Lion Barber"
+                src={SHOP_MAPS_EMBED_URL}
+                className="h-[280px] w-full sm:h-[320px] lg:h-full lg:min-h-[360px]"
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
-      <footer id="contacto" className="bg-zinc-950 border-t border-zinc-900 py-8 sm:py-12 px-4 sm:px-6">
+      <footer className="bg-zinc-950 border-t border-zinc-900 py-8 sm:py-12 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 items-center text-center md:text-left">
           <div className="flex flex-col items-center md:items-start gap-3 sm:gap-4">
             <div className="flex items-center gap-3">
@@ -1392,8 +1509,14 @@ export default function ClientView() {
           </div>
           
           <div className="flex flex-col items-center md:items-start gap-2 text-zinc-400 text-xs sm:text-sm font-sans">
-            <p className="flex items-center gap-2 flex-wrap justify-center md:justify-start"><MapPin size={16} className="text-[#e5c185] flex-shrink-0" /> <span className="break-words">Dr. Nicolas Repeto 1602, CABA</span></p>
-            <p className="flex items-center gap-2 flex-wrap justify-center md:justify-start"><Clock size={16} className="text-[#e5c185] flex-shrink-0" /> <span>Lun a Vie: 10-20hs | Sáb: 10-18hs</span></p>
+            <p className="flex items-center gap-2 flex-wrap justify-center md:justify-start">
+              <MapPin size={16} className="text-[#e5c185] flex-shrink-0" />
+              <span className="break-words">{SHOP_ADDRESS}</span>
+            </p>
+            <p className="flex items-center gap-2 flex-wrap justify-center md:justify-start">
+              <Clock size={16} className="text-[#e5c185] flex-shrink-0" />
+              <span>Lun a Vie: 10-20hs | Sáb: 10-18hs</span>
+            </p>
           </div>
 
           <div className="flex justify-center md:justify-end gap-4">
