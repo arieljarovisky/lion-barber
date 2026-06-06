@@ -358,6 +358,8 @@ export default function Dashboard() {
   const [dragOverServiceId, setDragOverServiceId] = useState<string | null>(null);
   const [serviceError, setServiceError] = useState('');
   const [scheduleBarberId, setScheduleBarberId] = useState('');
+  /** Pestaña activa de agenda del día en móvil (varios barberos). */
+  const [dayAgendaMobileBarberId, setDayAgendaMobileBarberId] = useState('');
   const [francos, setFrancos] = useState<BarberFrancoRow[]>([]);
   const [timeBlocks, setTimeBlocks] = useState<BarberTimeBlockRow[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
@@ -773,7 +775,13 @@ export default function Dashboard() {
   }, [loadData]);
 
   useEffect(() => {
-    if (profile?.role !== 'staff' || view !== 'agenda') return;
+    if (barbers.length === 0) return;
+    setDayAgendaMobileBarberId((prev) =>
+      prev && barbers.some((b) => b.id === prev) ? prev : barbers[0].id
+    );
+  }, [barbers]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.hidden) return;
       void loadData({ silent: true });
@@ -1297,6 +1305,116 @@ export default function Dashboard() {
       </button>
     );
   };
+
+  const renderBarberDayAgendaRows = (barber: Barber, barberAppointments: Appointment[]) =>
+    buildDayTimelineRows(
+      barberAppointments,
+      agendaTimeSlots,
+      getBlockedSlotsForBarberDate(barber.id, dateStr)
+    ).map((row) => {
+      if (row.kind === 'free') {
+        return (
+          <button
+            key={row.slot}
+            type="button"
+            onClick={() => openCreateModalForSlot(dateStr, row.slot, barber.id)}
+            className="flex w-full items-center gap-2 rounded-lg py-2.5 text-left text-sm min-h-[2.75rem] transition-colors hover:bg-emerald-50/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/40"
+            title={`Nuevo turno con ${barber.name} · ${row.slot}`}
+          >
+            <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold tabular-nums">
+              {row.slot}
+            </span>
+            <span className="flex flex-1 items-center gap-1.5 border border-dashed border-zinc-200/80 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:border-[#e5c185] hover:text-[#b39055]">
+              <Plus size={12} aria-hidden />
+              Libre
+            </span>
+          </button>
+        );
+      }
+      if (row.kind === 'blocked') {
+        return (
+          <div
+            key={`blocked-${barber.id}-${row.slot}`}
+            className="flex items-center gap-2 rounded-lg py-2.5 text-left text-sm min-h-[2.75rem] bg-red-50/70"
+            title={`Bloqueado · ${barber.name} · ${row.slot}`}
+          >
+            <span className="w-14 font-mono text-red-700 flex-shrink-0 text-xs font-semibold tabular-nums">
+              {row.slot}
+            </span>
+            <span className="flex flex-1 items-center gap-1.5 border border-red-200 rounded-lg px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-red-600">
+              Bloqueado
+            </span>
+          </div>
+        );
+      }
+      const { app, span, slot } = row;
+      const dm = app.durationMinutes ?? 30;
+      const endClock = addMinutesToClock(slot, dm);
+      return (
+        <div
+          key={`${app.id}-${slot}`}
+          className="flex items-stretch gap-2 py-2.5 text-sm"
+          style={{ minHeight: `${span * 2.5}rem` }}
+        >
+          <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold pt-0.5 tabular-nums">
+            {slot}
+            {span > 1 ? (
+              <span className="block text-[10px] text-zinc-400 mt-0.5">{endClock}</span>
+            ) : null}
+          </span>
+          <div className="flex-1 min-w-0 flex flex-col gap-2 border border-amber-200/80 bg-amber-50/50 rounded-xl px-2.5 py-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <ClientProfileLink
+                userId={app.userId}
+                name={app.name}
+                phone={app.phone}
+                adminClients={adminClients}
+                className="font-semibold text-zinc-800 truncate block hover:text-[#b39055]"
+                stopPropagation
+              />
+              <span className="text-[10px] text-zinc-500 tabular-nums">{dm} min</span>
+              <AppointmentPaymentBadge app={app} className="mt-1" />
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0 self-end sm:self-auto">
+              {appointmentNeedsManualContact(app) && (() => {
+                const waUrl = buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate);
+                if (!waUrl) return null;
+                return (
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center h-10 w-10 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                    title="Enviar WhatsApp"
+                  >
+                    <MessageCircle size={16} />
+                  </a>
+                );
+              })()}
+              <button
+                type="button"
+                onClick={() => tryOpenEditModal(app)}
+                className="inline-flex items-center justify-center h-10 w-10 text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
+                title="Editar"
+              >
+                <Pencil size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void tryDeleteAppointment(app.id)}
+                className="inline-flex items-center justify-center h-10 w-10 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Eliminar"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    });
+
+  const mobileDayAgendaBarber =
+    appointmentsByBarber.find(({ barber }) => barber.id === dayAgendaMobileBarberId) ?? appointmentsByBarber[0];
 
   const closeModal = () => {
     setModalOpen(false);
@@ -2119,7 +2237,7 @@ export default function Dashboard() {
             {loading ? (
               <div className="p-12 text-center text-zinc-400">Cargando...</div>
             ) : (
-              <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)] sm:max-h-[calc(100vh-320px)] -mx-2 sm:mx-0">
+              <div className="overflow-x-auto -mx-2 sm:mx-0">
                 <table className="w-full min-w-[640px] sm:min-w-[720px] border-collapse table-fixed">
                   <tbody>
                     {agendaTimeSlots.map((slot, slotIndex) => (
@@ -2265,14 +2383,13 @@ export default function Dashboard() {
                 Cargando agenda…
               </div>
             ) : isSingleBarberDayView && appointmentsByBarber[0] ? (
-              <div className="max-w-4xl mx-auto">
+              <div className="hidden lg:block max-w-4xl mx-auto mb-8">
                 <div className="flex items-center justify-between gap-4 mb-4 px-1">
                   <h3 className="font-bold text-lg text-zinc-900">Horarios del día</h3>
-                  <span className="text-xs text-zinc-500 hidden sm:inline">Deslizá si hay muchos turnos</span>
+                  <span className="text-xs text-zinc-500">Deslizá si hay muchos turnos</span>
                 </div>
                 <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-                  <div className="max-h-[min(70vh,560px)] overflow-y-auto overscroll-contain">
-                    <ul className="divide-y divide-zinc-100">
+                  <ul className="divide-y divide-zinc-100">
                       {buildDayTimelineRows(
                         appointmentsByBarber[0].appointments,
                         agendaTimeSlots,
@@ -2404,24 +2521,76 @@ export default function Dashboard() {
                         );
                       })}
                     </ul>
-                  </div>
                 </div>
               </div>
             ) : (
-              <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden">
-                <div className="p-5 sm:p-6 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                  <h3 className="font-black text-lg text-zinc-900">Calendario por peluquero</h3>
+              <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden mb-8">
+                <div className="p-4 sm:p-6 border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h3 className="font-black text-lg text-zinc-900">Agendas del día</h3>
                   <p className="text-xs text-zinc-500 capitalize">
-                    {format(selectedDate, "EEEE d MMMM", { locale: es })}
+                    {format(selectedDate, "EEEE d 'de' MMMM yyyy", { locale: es })}
                   </p>
                 </div>
-                <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+
+                {/* Móvil: un barbero a la vez con pestañas */}
+                <div className="lg:hidden p-4 space-y-4">
+                  <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x snap-mandatory">
+                    {appointmentsByBarber.map(({ barber, appointments: barberAppointments }) => {
+                      const active = barber.id === (mobileDayAgendaBarber?.barber.id ?? dayAgendaMobileBarberId);
+                      const count = barberAppointments.length;
+                      return (
+                        <button
+                          key={barber.id}
+                          type="button"
+                          onClick={() => setDayAgendaMobileBarberId(barber.id)}
+                          className={`flex shrink-0 snap-start items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                            active
+                              ? 'border-zinc-900 bg-zinc-900 text-white shadow-sm'
+                              : 'border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300'
+                          }`}
+                        >
+                          <img
+                            src={barber.photo}
+                            alt=""
+                            className="w-8 h-8 rounded-lg object-cover ring-1 ring-white/20"
+                            referrerPolicy="no-referrer"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-bold truncate max-w-[7rem]">{barber.name}</span>
+                            <span className={`block text-[10px] font-semibold tabular-nums ${active ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                              {count} turno{count === 1 ? '' : 's'}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {mobileDayAgendaBarber ? (
+                    <div className="rounded-2xl border border-zinc-200 overflow-hidden bg-white">
+                      <div className="bg-gradient-to-r from-zinc-900 to-zinc-800 text-white px-4 py-3 flex items-center gap-3">
+                        <img
+                          src={mobileDayAgendaBarber.barber.photo}
+                          alt={mobileDayAgendaBarber.barber.name}
+                          className="w-10 h-10 rounded-xl object-cover ring-2 ring-white/10"
+                          referrerPolicy="no-referrer"
+                        />
+                        <p className="font-bold text-base leading-tight">{mobileDayAgendaBarber.barber.name}</p>
+                      </div>
+                      <div className="p-3 divide-y divide-zinc-100">
+                        {renderBarberDayAgendaRows(mobileDayAgendaBarber.barber, mobileDayAgendaBarber.appointments)}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Desktop: columnas sin scroll interno (un solo scroll de página) */}
+                <div className="hidden lg:grid p-4 sm:p-6 grid-cols-2 xl:grid-cols-3 gap-5">
                   {appointmentsByBarber.map(({ barber, appointments: barberAppointments }) => (
                     <div
                       key={barber.id}
-                      className="border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-white"
+                      className="border border-zinc-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow bg-white flex flex-col"
                     >
-                      <div className="bg-gradient-to-r from-zinc-900 to-zinc-800 text-white p-4 flex items-center gap-3">
+                      <div className="bg-gradient-to-r from-zinc-900 to-zinc-800 text-white p-4 flex items-center gap-3 shrink-0">
                         <img
                           src={barber.photo}
                           alt={barber.name}
@@ -2430,112 +2599,8 @@ export default function Dashboard() {
                         />
                         <p className="font-bold text-base leading-tight">{barber.name}</p>
                       </div>
-                      <div className="p-3 divide-y divide-zinc-100 max-h-[300px] overflow-y-auto">
-                        {buildDayTimelineRows(
-                          barberAppointments,
-                          agendaTimeSlots,
-                          getBlockedSlotsForBarberDate(barber.id, dateStr)
-                        ).map((row) => {
-                          if (row.kind === 'free') {
-                            return (
-                              <button
-                                key={row.slot}
-                                type="button"
-                                onClick={() => openCreateModalForSlot(dateStr, row.slot, barber.id)}
-                                className="flex w-full items-center gap-2 rounded-lg py-2 text-left text-sm min-h-[2.25rem] transition-colors hover:bg-emerald-50/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/40"
-                                title={`Nuevo turno con ${barber.name} · ${row.slot}`}
-                              >
-                                <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold">
-                                  {row.slot}
-                                </span>
-                                <span className="flex flex-1 items-center gap-1.5 border border-dashed border-zinc-200/80 rounded-md px-2 py-1 text-xs font-medium text-zinc-400 hover:border-[#e5c185] hover:text-[#b39055]">
-                                  <Plus size={12} aria-hidden />
-                                  Libre
-                                </span>
-                              </button>
-                            );
-                          }
-                          if (row.kind === 'blocked') {
-                            return (
-                              <div
-                                key={`blocked-${barber.id}-${row.slot}`}
-                                className="flex items-center gap-2 rounded-lg py-2 text-left text-sm min-h-[2.25rem] bg-red-50/70"
-                                title={`Bloqueado · ${barber.name} · ${row.slot}`}
-                              >
-                                <span className="w-14 font-mono text-red-700 flex-shrink-0 text-xs font-semibold">
-                                  {row.slot}
-                                </span>
-                                <span className="flex flex-1 items-center gap-1.5 border border-red-200 rounded-md px-2 py-1 text-xs font-bold uppercase tracking-wide text-red-600">
-                                  Bloqueado
-                                </span>
-                              </div>
-                            );
-                          }
-                          const { app, span, slot } = row;
-                          const dm = app.durationMinutes ?? 30;
-                          const endClock = addMinutesToClock(slot, dm);
-                          return (
-                            <div
-                              key={`${app.id}-${slot}`}
-                              className="flex items-stretch gap-2 py-2 text-sm"
-                              style={{ minHeight: `${span * 2.5}rem` }}
-                            >
-                              <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold pt-0.5">
-                                {slot}
-                                {span > 1 ? (
-                                  <span className="block text-[10px] text-zinc-400 mt-0.5">{endClock}</span>
-                                ) : null}
-                              </span>
-                              <div className="flex-1 min-w-0 flex items-center justify-between gap-2 border border-amber-200/80 bg-amber-50/50 rounded-lg px-2 py-1.5">
-                                <div className="min-w-0">
-                                  <ClientProfileLink
-                                    userId={app.userId}
-                                    name={app.name}
-                                    phone={app.phone}
-                                    adminClients={adminClients}
-                                    className="font-medium text-zinc-800 truncate block hover:text-[#b39055]"
-                                    stopPropagation
-                                  />
-                                  <span className="text-[10px] text-zinc-500">{dm} min</span>
-                                  <AppointmentPaymentBadge app={app} className="mt-1" />
-                                </div>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  {appointmentNeedsManualContact(app) && (() => {
-                                    const waUrl = buildAppointmentWhatsappUrl(app, shopWhatsappMessageTemplate);
-                                    if (!waUrl) return null;
-                                    return (
-                                      <a
-                                        href={waUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="p-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
-                                        title="Enviar WhatsApp"
-                                      >
-                                        <MessageCircle size={14} />
-                                      </a>
-                                    );
-                                  })()}
-                                  <button
-                                    type="button"
-                                    onClick={() => tryOpenEditModal(app)}
-                                    className="p-1.5 text-zinc-400 hover:text-[#e5c185] hover:bg-amber-50 rounded-lg transition-colors"
-                                    title="Editar"
-                                  >
-                                    <Pencil size={14} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void tryDeleteAppointment(app.id)}
-                                    className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Eliminar"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
+                      <div className="p-3 divide-y divide-zinc-100">
+                        {renderBarberDayAgendaRows(barber, barberAppointments)}
                       </div>
                     </div>
                   ))}
