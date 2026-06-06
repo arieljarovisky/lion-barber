@@ -17,6 +17,7 @@ import {
   sendDepositConfirmedEmail,
   sendDepositPendingEmail,
   sendAppointmentScheduledEmail,
+  notifyClientSubscriptionActivated,
   isRealClientEmail,
 } from '../services/email.js';
 import { findUserById } from '../repositories/users.js';
@@ -827,6 +828,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     try {
       await assignSubscriptionPlanToClient(userId, subRef.p);
       console.log(`[Webhook MP] abono asignado user=${userId} plan=${subRef.p}`);
+      void notifyClientSubscriptionActivated(userId);
     } catch (e) {
       console.error('Webhook MP: no se pudo asignar abono', e);
     }

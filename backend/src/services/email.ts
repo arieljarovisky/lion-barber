@@ -1,6 +1,10 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import type { Appointment } from '../types.js';
 import { PLACEHOLDER_EMAIL_HOST } from '../repositories/users.js';
+import {
+  getClientSubscriptionStatus,
+  type ClientSubscriptionStatus,
+} from './clientSubscription.js';
 
 let cachedTransporter: Transporter | null = null;
 let cachedTransporterKey = '';
@@ -106,6 +110,72 @@ function buildAppointmentTable(app: Appointment): { text: string; html: string }
     )
     .join('');
   return { text, html };
+}
+
+function buildSubscriptionDetailRows(status: ClientSubscriptionStatus): Array<[string, string]> {
+  return [
+    ['Abono', status.planName],
+    ['Cortes disponibles', `${status.cutsRemaining} de ${status.cutsPerMonth}`],
+    ['Cortes usados este mes', String(status.cutsUsed)],
+    ['Vigencia del abono', `${fmtDate(status.periodStart)} – ${fmtDate(status.periodEnd)}`],
+  ];
+}
+
+function rowsToHtml(rows: Array<[string, string]>): string {
+  return rows
+    .map(
+      ([k, v]) =>
+        `<tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #f4f4f5;color:#71717a;font-size:11px;text-transform:uppercase;letter-spacing:.16em;font-weight:700;width:35%;">${escapeHtml(
+            k
+          )}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #f4f4f5;color:#18181b;font-weight:700;font-size:15px;">${escapeHtml(
+            v
+          )}</td>
+        </tr>`
+    )
+    .join('');
+}
+
+function rowsToText(rows: Array<[string, string]>): string {
+  return rows.map(([k, v]) => `${k}: ${v}`).join('\n');
+}
+
+function mergeAppointmentAndSubscriptionDetails(
+  app: Appointment,
+  subscription: ClientSubscriptionStatus | null
+): { text: string; html: string; subscriptionNoticeHtml?: string } {
+  const { text: apptText, html: apptHtml } = buildAppointmentTable(app);
+  if (!subscription) {
+    return { text: apptText, html: apptHtml };
+  }
+  const subRows = buildSubscriptionDetailRows(subscription);
+  const text = `${apptText}\n\nTu abono:\n${rowsToText(subRows)}`;
+  const html = `${apptHtml}${rowsToHtml(subRows)}`;
+  const subscriptionNoticeHtml =
+    subscription.cutsRemaining <= 0
+      ? `Tu abono «${escapeHtml(subscription.planName)}» no tiene cortes disponibles este mes (${subscription.cutsUsed}/${subscription.cutsPerMonth} usados).`
+      : `Con tu abono «${escapeHtml(subscription.planName)}» te quedan <strong>${subscription.cutsRemaining}</strong> corte${subscription.cutsRemaining === 1 ? '' : 's'} disponible${subscription.cutsRemaining === 1 ? '' : 's'} este mes (hasta el ${escapeHtml(fmtDate(subscription.periodEnd))}).`;
+  return { text, html, subscriptionNoticeHtml };
+}
+
+async function loadSubscriptionForAppointment(
+  app: Appointment
+): Promise<ClientSubscriptionStatus | null> {
+  if (app.userId == null || !Number.isFinite(Number(app.userId))) return null;
+  try {
+    return await getClientSubscriptionStatus(Number(app.userId));
+  } catch {
+    return null;
+  }
+}
+
+function getClientPerfilUrl(): string {
+  return `${getFrontendUrlForEmail()}/perfil`;
+}
+
+function getClientReservaUrl(): string {
+  return `${getFrontendUrlForEmail()}/#reserva`;
 }
 
 function getFrontendUrlForEmail(): string {
@@ -352,7 +422,9 @@ export async function sendDepositPendingEmail(
   }
   const shopName = getShopNameForEmails();
 
-  const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
+  const subscription = await loadSubscriptionForAppointment(app);
+  const { text: detailsText, html: detailsHtml, subscriptionNoticeHtml } =
+    mergeAppointmentAndSubscriptionDetails(app, subscription);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
   const minutes = options.depositMinutes;
 
@@ -378,7 +450,9 @@ export async function sendDepositPendingEmail(
     intro: 'Reservamos tu horario y estamos esperando que se acredite el pago de la seña para confirmarlo.',
     detailsHtml,
     noticeColor: 'amber',
-    noticeHtml: `Tenés <strong>${minutes} minutos</strong> para completar el pago. Si no se acredita en ese plazo, la reserva se cancela automáticamente.`,
+    noticeHtml: subscriptionNoticeHtml
+      ? `${subscriptionNoticeHtml}<br /><br />Tenés <strong>${minutes} minutos</strong> para completar el pago. Si no se acredita en ese plazo, la reserva se cancela automáticamente.`
+      : `Tenés <strong>${minutes} minutos</strong> para completar el pago. Si no se acredita en ese plazo, la reserva se cancela automáticamente.`,
     cta: options.paymentUrl ? { label: 'Pagar la seña', url: options.paymentUrl } : undefined,
     secondaryCta: { label: 'Reprogramar turno', url: getClientPerfilRescheduleUrl(app.id) },
     outro: 'También podés gestionar tus turnos desde tu perfil en nuestro sitio.',
@@ -404,7 +478,9 @@ export async function sendAppointmentScheduledEmail(
   }
   const shopName = getShopNameForEmails();
 
-  const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
+  const subscription = await loadSubscriptionForAppointment(app);
+  const { text: detailsText, html: detailsHtml, subscriptionNoticeHtml } =
+    mergeAppointmentAndSubscriptionDetails(app, subscription);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
   const reproUrl = getClientPerfilRescheduleUrl(app.id);
 
@@ -426,9 +502,12 @@ export async function sendAppointmentScheduledEmail(
     greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
     intro: 'Agendamos tu turno con éxito. Te dejamos los detalles para que los tengas a mano.',
     detailsHtml,
-    noticeColor: 'green',
-    noticeHtml: 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
+    noticeColor: subscription?.cutsRemaining === 0 ? 'amber' : 'green',
+    noticeHtml: subscriptionNoticeHtml
+      ? `${subscriptionNoticeHtml}<br /><br />Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.`
+      : 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
     cta: { label: 'Reprogramar turno', url: reproUrl },
+    secondaryCta: subscription ? { label: 'Ver mi abono', url: getClientPerfilUrl() } : undefined,
     outro: '¡Te esperamos!',
   });
 
@@ -452,7 +531,9 @@ export async function sendDepositConfirmedEmail(
   }
   const shopName = getShopNameForEmails();
 
-  const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
+  const subscription = await loadSubscriptionForAppointment(app);
+  const { text: detailsText, html: detailsHtml, subscriptionNoticeHtml } =
+    mergeAppointmentAndSubscriptionDetails(app, subscription);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
   const reproUrl = getClientPerfilRescheduleUrl(app.id);
 
@@ -474,9 +555,12 @@ export async function sendDepositConfirmedEmail(
     greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
     intro: 'Recibimos el pago de la seña. Tu turno quedó confirmado.',
     detailsHtml,
-    noticeColor: 'green',
-    noticeHtml: 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
+    noticeColor: subscription?.cutsRemaining === 0 ? 'amber' : 'green',
+    noticeHtml: subscriptionNoticeHtml
+      ? `${subscriptionNoticeHtml}<br /><br />Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.`
+      : 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
     cta: { label: 'Reprogramar turno', url: reproUrl },
+    secondaryCta: subscription ? { label: 'Ver mi abono', url: getClientPerfilUrl() } : undefined,
     outro: '¡Te esperamos!',
   });
 
@@ -532,4 +616,76 @@ export async function sendAppointmentReminder1hEmail(email: string, app: Appoint
     text,
     html,
   });
+}
+
+/** Aviso al cliente: abono activado (compra online o asignación del local). */
+export async function sendSubscriptionActivatedEmail(
+  email: string,
+  clientName: string,
+  status: ClientSubscriptionStatus
+): Promise<void> {
+  if (!isRealClientEmail(email)) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn(
+      '[Email] OMITIDO sendSubscriptionActivatedEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).'
+    );
+    return;
+  }
+  const shopName = getShopNameForEmails();
+  const greetingName = clientName.trim().split(/\s+/)[0] || 'Hola';
+  const subRows: Array<[string, string]> = [
+    ['Plan', status.planName],
+    ['Precio mensual', status.monthlyPrice],
+    ['Cortes incluidos', `${status.cutsPerMonth} por mes`],
+    ['Cortes disponibles ahora', `${status.cutsRemaining} de ${status.cutsPerMonth}`],
+    ['Vigencia', `${fmtDate(status.periodStart)} – ${fmtDate(status.periodEnd)}`],
+  ];
+  const detailsText = rowsToText(subRows);
+  const detailsHtml = rowsToHtml(subRows);
+
+  const text = [
+    `${greetingName}, tu abono en ${shopName} ya está activo.`,
+    '',
+    detailsText,
+    '',
+    'Podés reservar turnos online sin pagar seña mientras tengas cortes disponibles.',
+    '',
+    `Ver tu abono: ${getClientPerfilUrl()}`,
+    `Reservar turno: ${getClientReservaUrl()}`,
+  ].join('\n');
+
+  const html = renderBrandedEmail({
+    title: '¡Tu abono está activo!',
+    greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
+    intro:
+      'Recibimos tu pago y activamos tu abono mensual. Desde ahora podés reservar sin seña mientras tengas cortes disponibles en el mes.',
+    detailsHtml,
+    noticeColor: 'green',
+    noticeHtml: `Tenés <strong>${status.cutsRemaining}</strong> corte${status.cutsRemaining === 1 ? '' : 's'} disponible${status.cutsRemaining === 1 ? '' : 's'} hasta el <strong>${escapeHtml(fmtDate(status.periodEnd))}</strong>.`,
+    cta: { label: 'Reservar turno', url: getClientReservaUrl() },
+    secondaryCta: { label: 'Ver mi abono', url: getClientPerfilUrl() },
+    outro: 'Podés seguir el consumo de tu abono en cualquier momento desde tu perfil.',
+  });
+
+  await sendMail({
+    to: email,
+    subject: `Tu abono en ${shopName} está activo`,
+    text,
+    html,
+  });
+}
+
+/** Envía confirmación de abono si el cliente tiene email real. */
+export async function notifyClientSubscriptionActivated(userId: number): Promise<void> {
+  try {
+    const { findUserById } = await import('../repositories/users.js');
+    const user = await findUserById(userId);
+    if (!user || !isRealClientEmail(user.email)) return;
+    const status = await getClientSubscriptionStatus(userId);
+    if (!status) return;
+    console.log(`[Email] Disparando aviso de abono activado a userId=${userId} email=${user.email}`);
+    await sendSubscriptionActivatedEmail(user.email, user.name, status);
+  } catch (err) {
+    console.error('[Email] No se pudo enviar aviso de abono activado', err);
+  }
 }

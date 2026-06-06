@@ -44,6 +44,8 @@ interface AuthContextType {
   sessionExpired: boolean;
   /** Limpia el flag de sesión expirada (típicamente al mostrar el aviso). */
   clearSessionExpired: () => void;
+  /** Recarga nombre, puntos, abono, etc. desde el backend. */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -57,6 +59,7 @@ const AuthContext = createContext<AuthContextType>({
   canAccessDashboard: false,
   sessionExpired: false,
   clearSessionExpired: () => {},
+  refreshProfile: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -162,6 +165,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearSessionExpired = useCallback(() => {
     setSessionExpired(false);
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    try {
+      const user = await api.auth.getMe();
+      setProfile(profileFromBackend(user));
+    } catch {
+      /* perfil desactualizado o sesión inválida */
+    }
   }, []);
 
   /** Registra el handler global para 401: lo invoca `fetchApi` cuando detecta sesión inválida. */
@@ -270,6 +282,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         canAccessDashboard,
         sessionExpired,
         clearSessionExpired,
+        refreshProfile,
       }}
     >
       {children}

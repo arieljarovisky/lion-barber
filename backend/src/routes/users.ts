@@ -4,6 +4,7 @@ import * as userRepo from '../repositories/users.js';
 import * as appointmentRepo from '../repositories/appointments.js';
 import { toAdminClientPayload } from './adminClientPayload.js';
 import { assignSubscriptionPlanToClient } from '../services/clientSubscription.js';
+import { notifyClientSubscriptionActivated } from '../services/email.js';
 
 const router = Router();
 
@@ -204,6 +205,9 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     }
     if (subscriptionPlanIdPatch !== undefined) {
       await assignSubscriptionPlanToClient(id, subscriptionPlanIdPatch);
+      if (subscriptionPlanIdPatch != null) {
+        void notifyClientSubscriptionActivated(id);
+      }
     }
 
     const updated =

@@ -11,6 +11,7 @@ import {
   X,
   ChevronDown,
   Info,
+  Scissors,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
@@ -21,6 +22,7 @@ import { formatAppointmentProductsSummary } from '../utils/appointmentProducts';
 import { Wallet } from '@mercadopago/sdk-react';
 import { format, isBefore, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { formatCatalogPriceArs } from '../utils/money';
 
 /** `new Date('yyyy-MM-dd')` en JS es UTC → en AR muestra el día anterior. Usar calendario local. */
 function parseAppointmentDateOnly(dateStr: string): Date {
@@ -170,7 +172,7 @@ const SenaWalletBrick = React.memo(function SenaWalletBrick({
 });
 
 export default function Perfil() {
-  const { profile, logout, canAccessDashboard } = useAuth();
+  const { profile, logout, canAccessDashboard, refreshProfile } = useAuth();
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -212,6 +214,10 @@ export default function Perfil() {
   useEffect(() => {
     reload();
   }, [reload]);
+
+  useEffect(() => {
+    void refreshProfile();
+  }, [refreshProfile]);
 
   /** Abrir reprogramación desde enlace en emails (?reprogramar=id). */
   useEffect(() => {
@@ -472,21 +478,96 @@ export default function Perfil() {
           <p className="text-zinc-400 text-xs sm:text-sm mt-1 break-all px-2 max-w-full">{profile.email}</p>
         </div>
 
-        {profile.subscription && (
-          <section className="bg-violet-950/40 border border-violet-800/60 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0">
-            <h2 className="text-base sm:text-lg font-bold text-violet-100">Abono {profile.subscription.planName}</h2>
-            <p className="mt-2 text-sm text-violet-200/90">
-              Este mes tenés{' '}
-              <span className="font-black text-white">{profile.subscription.cutsRemaining}</span> de{' '}
-              {profile.subscription.cutsPerMonth} cortes. Sin seña al reservar.
-            </p>
-            {profile.subscription.cutsRemaining <= 0 && (
-              <p className="mt-2 text-sm font-semibold text-amber-300">
-                No podés reservar online hasta el próximo mes o hasta que el local renueve tu cupo.
+        {profile.subscription && (() => {
+          const sub = profile.subscription;
+          const usedPct =
+            sub.cutsPerMonth > 0
+              ? Math.min(100, Math.round((sub.cutsUsed / sub.cutsPerMonth) * 100))
+              : 0;
+          const remainingPct = Math.max(0, 100 - usedPct);
+          const periodLabel = `${format(parseAppointmentDateOnly(sub.periodStart), "d MMM", { locale: es })} – ${format(parseAppointmentDateOnly(sub.periodEnd), "d MMM yyyy", { locale: es })}`;
+          return (
+            <section
+              id="mi-abono"
+              className="bg-zinc-900/50 border border-[#e5c185]/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#e5c185]/20 flex items-center justify-center flex-shrink-0">
+                    <Scissors size={20} className="sm:w-[22px] sm:h-[22px] text-[#e5c185]" />
+                  </div>
+                  <div className="min-w-0 text-left">
+                    <h2 className="text-base sm:text-lg font-bold text-white truncate">Mi abono</h2>
+                    <p className="text-sm text-[#e5c185] font-semibold truncate">{sub.planName}</p>
+                  </div>
+                </div>
+                {sub.monthlyPrice && (
+                  <span className="text-xs font-bold text-zinc-400 bg-zinc-950/60 px-2.5 py-1 rounded-lg border border-zinc-800">
+                    {formatCatalogPriceArs(sub.monthlyPrice)}/mes
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
+                <div className="rounded-xl bg-zinc-950/60 border border-zinc-800 p-3 text-center">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Disponibles</p>
+                  <p className="text-2xl sm:text-3xl font-black text-[#e5c185] tabular-nums">{sub.cutsRemaining}</p>
+                </div>
+                <div className="rounded-xl bg-zinc-950/60 border border-zinc-800 p-3 text-center">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Usados</p>
+                  <p className="text-2xl sm:text-3xl font-black text-white tabular-nums">{sub.cutsUsed}</p>
+                </div>
+                <div className="rounded-xl bg-zinc-950/60 border border-zinc-800 p-3 text-center">
+                  <p className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Del plan</p>
+                  <p className="text-2xl sm:text-3xl font-black text-zinc-300 tabular-nums">{sub.cutsPerMonth}</p>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="flex justify-between text-[11px] text-zinc-500 mb-1.5">
+                  <span>Consumo del mes</span>
+                  <span className="tabular-nums">
+                    {sub.cutsUsed}/{sub.cutsPerMonth} cortes
+                  </span>
+                </div>
+                <div className="h-2.5 rounded-full bg-zinc-800 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#e5c185] to-[#d4b074] transition-all"
+                    style={{ width: `${remainingPct}%` }}
+                  />
+                </div>
+              </div>
+
+              <p className="text-xs text-zinc-500 mb-3">
+                Período vigente: <span className="text-zinc-300">{periodLabel}</span>
               </p>
-            )}
-          </section>
-        )}
+
+              {sub.cutsRemaining > 0 ? (
+                <p className="text-sm text-zinc-300 mb-4">
+                  Podés reservar turnos online <strong className="text-white">sin pagar seña</strong> mientras tengas
+                  cortes disponibles.
+                </p>
+              ) : (
+                <p className="text-sm font-semibold text-amber-300 mb-4">
+                  No tenés cortes disponibles este mes. Podés reservar de nuevo cuando renueve tu cupo o el local lo
+                  actualice.
+                </p>
+              )}
+
+              <Link
+                to="/#reserva"
+                className={`inline-flex items-center justify-center w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-bold transition-colors ${
+                  sub.cutsRemaining > 0
+                    ? 'bg-[#e5c185] hover:bg-[#d4b074] text-zinc-950'
+                    : 'bg-zinc-800 text-zinc-500 pointer-events-none opacity-60'
+                }`}
+                aria-disabled={sub.cutsRemaining <= 0}
+              >
+                Reservar turno
+              </Link>
+            </section>
+          );
+        })()}
 
         <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
