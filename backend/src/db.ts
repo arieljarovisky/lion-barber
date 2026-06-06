@@ -69,6 +69,7 @@ async function ensureSubscriptionPlanPresentationColumns(): Promise<void> {
     ['features', 'JSON NULL'],
     ['highlighted', 'TINYINT(1) NOT NULL DEFAULT 0'],
     ['badge_text', 'VARCHAR(80) NULL'],
+    ['validity_days', 'INT NULL'],
   ];
   for (const [col, def] of cols) {
     if (!(await tableHasColumn('subscription_plans', col))) {

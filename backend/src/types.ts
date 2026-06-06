@@ -106,7 +106,8 @@ export interface ClientSubscriptionInfo {
   cutsUsed: number;
   cutsRemaining: number;
   periodStart: string;
-  periodEnd: string;
+  periodEnd: string | null;
+  validityDays?: number | null;
   monthlyPrice: string;
 }
 

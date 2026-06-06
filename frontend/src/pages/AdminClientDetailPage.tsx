@@ -439,12 +439,15 @@ export default function AdminClientDetailPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-zinc-900">Plan de abono</p>
                     <p className="mt-0.5 text-xs text-zinc-500">
-                      Sin seña en la web. Los cortes se renuevan cada mes calendario.
+                      Sin seña en la web. El abono termina al usar todos los cortes o al vencer la fecha del plan, si
+                      tiene vigencia configurada.
                     </p>
                     {client.subscription && (
                       <p className="mt-2 text-sm font-semibold text-violet-900">
-                        Este mes: {client.subscription.cutsRemaining} de {client.subscription.cutsPerMonth}{' '}
-                        cortes disponibles
+                        {client.subscription.cutsRemaining} de {client.subscription.cutsPerMonth} cortes disponibles
+                        {client.subscription.periodEnd
+                          ? ` · vence ${client.subscription.periodEnd.slice(0, 10)}`
+                          : ''}
                       </p>
                     )}
                   </div>
@@ -457,7 +460,8 @@ export default function AdminClientDetailPage() {
                   <option value="">Sin abono</option>
                   {availablePlans.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} — {p.monthlyPrice} ({p.cutsPerMonth} cortes/mes)
+                      {p.name} — {p.monthlyPrice} ({p.cutsPerMonth} cortes
+                      {p.validityDays != null ? `, ${p.validityDays} días` : ', sin vencimiento'})
                     </option>
                   ))}
                 </select>

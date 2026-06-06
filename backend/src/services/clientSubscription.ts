@@ -12,13 +12,16 @@ export interface ClientSubscriptionStatus {
   cutsPerMonth: number;
   cutsUsed: number;
   cutsRemaining: number;
+  /** Fecha de activación del abono (YYYY-MM-DD). */
   periodStart: string;
-  periodEnd: string;
+  /** Fecha de vencimiento solo si el plan tiene vigencia configurada; si no, null. */
+  periodEnd: string | null;
+  validityDays: number | null;
   monthlyPrice: string;
 }
 
-/** Primer día del mes calendario actual (Argentina, YYYY-MM-DD). */
-export function currentSubscriptionPeriodStartYmd(): string {
+/** Fecha calendario actual en Argentina (YYYY-MM-DD). */
+export function currentArgentinaYmd(): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Argentina/Buenos_Aires',
     year: 'numeric',
@@ -27,17 +30,36 @@ export function currentSubscriptionPeriodStartYmd(): string {
   }).formatToParts(new Date());
   const y = parts.find((p) => p.type === 'year')?.value ?? '1970';
   const m = parts.find((p) => p.type === 'month')?.value ?? '01';
-  return `${y}-${m}-01`;
+  const d = parts.find((p) => p.type === 'day')?.value ?? '01';
+  return `${y}-${m}-${d}`;
 }
 
-/** Último día del mes de `periodStart` (YYYY-MM-DD). */
-export function subscriptionPeriodEndYmd(periodStart: string): string {
-  const [y, m] = periodStart.slice(0, 10).split('-').map(Number);
-  const last = new Date(Date.UTC(y, m, 0));
-  const yy = last.getUTCFullYear();
-  const mm = String(last.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(last.getUTCDate()).padStart(2, '0');
+/** Suma días calendario a una fecha YYYY-MM-DD. */
+export function addDaysYmd(startYmd: string, days: number): string {
+  const [y, m, d] = startYmd.slice(0, 10).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
   return `${yy}-${mm}-${dd}`;
+}
+
+export function subscriptionExpiresAtYmd(
+  activatedAt: string,
+  validityDays: number | null | undefined
+): string | null {
+  if (validityDays == null || !Number.isFinite(validityDays) || validityDays <= 0) return null;
+  return addDaysYmd(activatedAt, Math.floor(validityDays));
+}
+
+export function isSubscriptionExpiredByDate(
+  activatedAt: string,
+  validityDays: number | null | undefined
+): boolean {
+  const expiresAt = subscriptionExpiresAtYmd(activatedAt, validityDays);
+  if (!expiresAt) return false;
+  return currentArgentinaYmd() > expiresAt;
 }
 
 type DbUserSubscription = Pick<
@@ -62,30 +84,34 @@ function rowPeriodStartYmd(u: DbUserSubscription): string | null {
   return String(raw).slice(0, 10);
 }
 
-/** Si el mes calendario cambió, reinicia el contador de cortes. */
-export async function ensureSubscriptionPeriodCurrent(userId: number): Promise<void> {
-  const rows = await query<DbUserSubscription[]>(
-    `SELECT id, subscription_plan_id, subscription_period_start, subscription_cuts_used
-     FROM users WHERE id = ? AND role = 'client' LIMIT 1`,
+async function expireClientSubscription(userId: number): Promise<void> {
+  await query(
+    `UPDATE users SET subscription_plan_id = NULL, subscription_period_start = NULL,
+     subscription_cuts_used = 0, deposit_exempt = 0 WHERE id = ? AND role = 'client'`,
     [userId]
   );
-  const u = rows[0];
-  if (!u?.subscription_plan_id) return;
+}
 
-  const currentPeriod = currentSubscriptionPeriodStartYmd();
-  const stored = rowPeriodStartYmd(u);
-  if (stored === currentPeriod) return;
-
-  await query(
-    `UPDATE users SET subscription_period_start = ?, subscription_cuts_used = 0 WHERE id = ? AND role = 'client'`,
-    [currentPeriod, userId]
-  );
+async function maybeExpireClientSubscription(
+  userId: number,
+  plan: SubscriptionPlan,
+  activatedAt: string,
+  cutsUsed: number
+): Promise<boolean> {
+  if (isSubscriptionExpiredByDate(activatedAt, plan.validityDays)) {
+    await expireClientSubscription(userId);
+    return true;
+  }
+  if (cutsUsed >= plan.cutsPerMonth) {
+    await expireClientSubscription(userId);
+    return true;
+  }
+  return false;
 }
 
 export async function getClientSubscriptionStatus(
   userId: number
 ): Promise<ClientSubscriptionStatus | null> {
-  await ensureSubscriptionPeriodCurrent(userId);
   const rows = await query<DbUserSubscription[]>(
     `SELECT id, subscription_plan_id, subscription_period_start, subscription_cuts_used
      FROM users WHERE id = ? AND role = 'client' LIMIT 1`,
@@ -97,8 +123,13 @@ export async function getClientSubscriptionStatus(
   const plan = await getSubscriptionPlanById(u.subscription_plan_id);
   if (!plan || !plan.active) return null;
 
-  const periodStart = rowPeriodStartYmd(u) ?? currentSubscriptionPeriodStartYmd();
+  const activatedAt = rowPeriodStartYmd(u) ?? currentArgentinaYmd();
   const cutsUsed = Math.max(0, Number(u.subscription_cuts_used ?? 0));
+
+  if (await maybeExpireClientSubscription(userId, plan, activatedAt, cutsUsed)) {
+    return null;
+  }
+
   const cutsRemaining = Math.max(0, plan.cutsPerMonth - cutsUsed);
 
   return {
@@ -107,8 +138,9 @@ export async function getClientSubscriptionStatus(
     cutsPerMonth: plan.cutsPerMonth,
     cutsUsed,
     cutsRemaining,
-    periodStart,
-    periodEnd: subscriptionPeriodEndYmd(periodStart),
+    periodStart: activatedAt,
+    periodEnd: subscriptionExpiresAtYmd(activatedAt, plan.validityDays),
+    validityDays: plan.validityDays ?? null,
     monthlyPrice: plan.monthlyPrice,
   };
 }
@@ -119,7 +151,7 @@ export function userHasActiveSubscriptionPlan(
   return Boolean(u.subscription_plan_id?.trim());
 }
 
-/** Abono activo → sin seña en la web (además del flag manual deposit_exempt). */
+/** Abono activo con cortes disponibles → sin seña en la web (además del flag manual deposit_exempt). */
 export async function isClientDepositExempt(userId: number): Promise<boolean> {
   const rows = await query<Pick<DbUser, 'deposit_exempt' | 'subscription_plan_id'>[]>(
     'SELECT deposit_exempt, subscription_plan_id FROM users WHERE id = ? LIMIT 1',
@@ -128,9 +160,8 @@ export async function isClientDepositExempt(userId: number): Promise<boolean> {
   const u = rows[0];
   if (!u) return false;
   if (u.deposit_exempt === true || u.deposit_exempt === 1) return true;
-  if (!u.subscription_plan_id) return false;
-  const plan = await getSubscriptionPlanById(u.subscription_plan_id);
-  return Boolean(plan?.active);
+  const status = await getClientSubscriptionStatus(userId);
+  return status != null && status.cutsRemaining > 0;
 }
 
 export async function assignSubscriptionPlanToClient(
@@ -145,11 +176,7 @@ export async function assignSubscriptionPlanToClient(
   }
 
   if (planId == null || planId === '') {
-    await query(
-      `UPDATE users SET subscription_plan_id = NULL, subscription_period_start = NULL,
-       subscription_cuts_used = 0, deposit_exempt = 0 WHERE id = ? AND role = 'client'`,
-      [userId]
-    );
+    await expireClientSubscription(userId);
     return;
   }
 
@@ -158,11 +185,11 @@ export async function assignSubscriptionPlanToClient(
     throw new Error('Plan de abono no encontrado o inactivo');
   }
 
-  const periodStart = currentSubscriptionPeriodStartYmd();
+  const activatedAt = currentArgentinaYmd();
   await query(
     `UPDATE users SET subscription_plan_id = ?, subscription_period_start = ?,
      subscription_cuts_used = 0, deposit_exempt = 1 WHERE id = ? AND role = 'client'`,
-    [planId, periodStart, userId]
+    [planId, activatedAt, userId]
   );
 }
 
@@ -177,10 +204,22 @@ export async function tryConsumeSubscriptionCut(userId: number): Promise<boolean
        AND subscription_cuts_used < ?`,
     [userId, status.planId, status.cutsPerMonth]
   );
-  return ((res as { affectedRows?: number }).affectedRows ?? 0) > 0;
+  const ok = ((res as { affectedRows?: number }).affectedRows ?? 0) > 0;
+  if (ok && status.cutsRemaining === 1) {
+    await expireClientSubscription(userId);
+  }
+  return ok;
 }
 
 export async function restoreSubscriptionCut(userId: number): Promise<void> {
+  const rows = await query<DbUserSubscription[]>(
+    `SELECT id, subscription_plan_id, subscription_period_start, subscription_cuts_used
+     FROM users WHERE id = ? AND role = 'client' LIMIT 1`,
+    [userId]
+  );
+  const u = rows[0];
+  if (!u?.subscription_plan_id) return;
+
   await query(
     `UPDATE users SET subscription_cuts_used = GREATEST(0, subscription_cuts_used - 1)
      WHERE id = ? AND role = 'client' AND subscription_cuts_used > 0`,
@@ -193,7 +232,7 @@ export async function assertClientCanBookWithSubscription(userId: number): Promi
   if (!status) return;
   if (status.cutsRemaining <= 0) {
     throw new Error(
-      `El abono «${status.planName}» no tiene cortes disponibles este mes (${status.cutsUsed}/${status.cutsPerMonth} usados).`
+      `El abono «${status.planName}» no tiene cortes disponibles (${status.cutsUsed}/${status.cutsPerMonth} usados).`
     );
   }
 }
@@ -220,7 +259,7 @@ export async function syncSubscriptionCutWithPayment(
     }
     const consumed = await tryConsumeSubscriptionCut(Number(uid));
     if (!consumed) {
-      throw new Error('El abono no tiene cortes disponibles este mes.');
+      throw new Error('El abono no tiene cortes disponibles.');
     }
     await query('UPDATE appointments SET subscription_cut_applied = 1 WHERE id = ?', [
       appointment.id,
@@ -246,7 +285,7 @@ export async function onAppointmentConfirmed(_appointment: {
   /* sin consumo automático */
 }
 
-/** Al cancelar un turno que había consumido un corte, lo devuelve al cupo mensual. */
+/** Al cancelar un turno que había consumido un corte, lo devuelve al cupo del abono. */
 export async function onAppointmentCancelled(appointment: {
   id: string;
   userId?: number;

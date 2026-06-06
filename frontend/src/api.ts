@@ -316,6 +316,8 @@ export interface SubscriptionPlan {
   features?: string[];
   highlighted?: boolean;
   badgeText?: string;
+  /** Días de vigencia desde la activación; null = sin vencimiento por fecha. */
+  validityDays?: number | null;
 }
 
 export interface SitePromotion {
@@ -336,7 +338,8 @@ export interface ClientSubscriptionInfo {
   cutsUsed: number;
   cutsRemaining: number;
   periodStart: string;
-  periodEnd: string;
+  periodEnd: string | null;
+  validityDays?: number | null;
   monthlyPrice: string;
 }
 
@@ -871,6 +874,7 @@ export const api = {
     features?: string[];
     highlighted?: boolean;
     badgeText?: string;
+    validityDays?: number | null;
   }) =>
     fetchApi<SubscriptionPlan>('/api/subscription-plans', {
       method: 'POST',
@@ -892,6 +896,7 @@ export const api = {
       features: string[];
       highlighted: boolean;
       badgeText: string;
+      validityDays: number | null;
       sortOrder: number;
     }>
   ) =>

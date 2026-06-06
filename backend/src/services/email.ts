@@ -112,12 +112,18 @@ function buildAppointmentTable(app: Appointment): { text: string; html: string }
   return { text, html };
 }
 
+function formatSubscriptionExpiryLabel(status: ClientSubscriptionStatus): string {
+  if (status.periodEnd) return fmtDate(status.periodEnd);
+  return 'Sin fecha — termina al usar todos los cortes';
+}
+
 function buildSubscriptionDetailRows(status: ClientSubscriptionStatus): Array<[string, string]> {
   return [
     ['Abono', status.planName],
     ['Cortes disponibles', `${status.cutsRemaining} de ${status.cutsPerMonth}`],
-    ['Cortes usados este mes', String(status.cutsUsed)],
-    ['Vigencia del abono', `${fmtDate(status.periodStart)} – ${fmtDate(status.periodEnd)}`],
+    ['Cortes usados', String(status.cutsUsed)],
+    ['Activado el', fmtDate(status.periodStart)],
+    ['Vencimiento', formatSubscriptionExpiryLabel(status)],
   ];
 }
 
@@ -129,11 +135,13 @@ function buildSubscriptionAppointmentProjection(status: ClientSubscriptionStatus
 } {
   const cutNumber = status.cutsUsed + 1;
   const cutsAfter = Math.max(0, status.cutsRemaining - 1);
-  const periodEnd = fmtDate(status.periodEnd);
+  const expiryNote = status.periodEnd
+    ? ` Tu abono vence el ${fmtDate(status.periodEnd)}.`
+    : '';
 
   if (status.cutsRemaining <= 0) {
-    const noticeHtml = `Tu abono «${escapeHtml(status.planName)}» no tiene cortes disponibles este mes (${status.cutsUsed}/${status.cutsPerMonth} usados).`;
-    const noticeText = `Tu abono «${status.planName}» no tiene cortes disponibles este mes (${status.cutsUsed}/${status.cutsPerMonth} usados).`;
+    const noticeHtml = `Tu abono «${escapeHtml(status.planName)}» no tiene cortes disponibles (${status.cutsUsed}/${status.cutsPerMonth} usados).`;
+    const noticeText = `Tu abono «${status.planName}» no tiene cortes disponibles (${status.cutsUsed}/${status.cutsPerMonth} usados).`;
     return { detailRows: buildSubscriptionDetailRows(status), noticeHtml, noticeText };
   }
 
@@ -143,21 +151,23 @@ function buildSubscriptionAppointmentProjection(status: ClientSubscriptionStatus
     [
       'Después de este turno',
       cutsAfter === 0
-        ? 'Sin cortes disponibles hasta el próximo mes'
+        ? 'Sin cortes — el abono finaliza al atenderte'
         : `${cutsAfter} corte${cutsAfter === 1 ? '' : 's'} disponible${cutsAfter === 1 ? '' : 's'}`,
     ],
-    ['Vigencia del abono', `${fmtDate(status.periodStart)} – ${periodEnd}`],
   ];
+  if (status.periodEnd) {
+    detailRows.push(['Vence el', fmtDate(status.periodEnd)]);
+  }
 
   const noticeHtml =
     cutsAfter === 0
-      ? `Este turno será tu <strong>corte ${cutNumber} de ${status.cutsPerMonth}</strong> del mes con tu abono «${escapeHtml(status.planName)}». Cuando te atiendan, <strong>no te quedarán cortes disponibles</strong> hasta el ${escapeHtml(periodEnd)}.`
-      : `Este turno será tu <strong>corte ${cutNumber} de ${status.cutsPerMonth}</strong> del mes con tu abono «${escapeHtml(status.planName)}». Cuando te atiendan, te quedarán <strong>${cutsAfter}</strong> corte${cutsAfter === 1 ? '' : 's'} disponible${cutsAfter === 1 ? '' : 's'} (hasta el ${escapeHtml(periodEnd)}).`;
+      ? `Este turno será tu <strong>corte ${cutNumber} de ${status.cutsPerMonth}</strong> con tu abono «${escapeHtml(status.planName)}». Cuando te atiendan, <strong>tu abono finalizará</strong> porque no te quedarán cortes.${escapeHtml(expiryNote)}`
+      : `Este turno será tu <strong>corte ${cutNumber} de ${status.cutsPerMonth}</strong> con tu abono «${escapeHtml(status.planName)}». Cuando te atiendan, te quedarán <strong>${cutsAfter}</strong> corte${cutsAfter === 1 ? '' : 's'} disponible${cutsAfter === 1 ? '' : 's'}.${escapeHtml(expiryNote)}`;
 
   const noticeText =
     cutsAfter === 0
-      ? `Este turno será tu corte ${cutNumber} de ${status.cutsPerMonth} del mes con tu abono «${status.planName}». Cuando te atiendan, no te quedarán cortes disponibles hasta el ${periodEnd}.`
-      : `Este turno será tu corte ${cutNumber} de ${status.cutsPerMonth} del mes con tu abono «${status.planName}». Cuando te atiendan, te quedarán ${cutsAfter} corte${cutsAfter === 1 ? '' : 's'} disponible${cutsAfter === 1 ? '' : 's'} (hasta el ${periodEnd}).`;
+      ? `Este turno será tu corte ${cutNumber} de ${status.cutsPerMonth} con tu abono «${status.planName}». Cuando te atiendan, tu abono finalizará porque no te quedarán cortes.${expiryNote}`
+      : `Este turno será tu corte ${cutNumber} de ${status.cutsPerMonth} con tu abono «${status.planName}». Cuando te atiendan, te quedarán ${cutsAfter} corte${cutsAfter === 1 ? '' : 's'} disponible${cutsAfter === 1 ? '' : 's'}.${expiryNote}`;
 
   return { detailRows, noticeHtml, noticeText };
 }
@@ -672,10 +682,11 @@ export async function sendSubscriptionActivatedEmail(
   const greetingName = clientName.trim().split(/\s+/)[0] || 'Hola';
   const subRows: Array<[string, string]> = [
     ['Plan', status.planName],
-    ['Precio mensual', status.monthlyPrice],
-    ['Cortes incluidos', `${status.cutsPerMonth} por mes`],
+    ['Precio', status.monthlyPrice],
+    ['Cortes incluidos', String(status.cutsPerMonth)],
     ['Cortes disponibles ahora', `${status.cutsRemaining} de ${status.cutsPerMonth}`],
-    ['Vigencia', `${fmtDate(status.periodStart)} – ${fmtDate(status.periodEnd)}`],
+    ['Activado el', fmtDate(status.periodStart)],
+    ['Vencimiento', formatSubscriptionExpiryLabel(status)],
   ];
   const detailsText = rowsToText(subRows);
   const detailsHtml = rowsToHtml(subRows);
@@ -695,10 +706,12 @@ export async function sendSubscriptionActivatedEmail(
     title: '¡Tu abono está activo!',
     greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
     intro:
-      'Recibimos tu pago y activamos tu abono mensual. Desde ahora podés reservar sin seña mientras tengas cortes disponibles en el mes.',
+      'Recibimos tu pago y activamos tu abono. Desde ahora podés reservar sin seña mientras tengas cortes disponibles.',
     detailsHtml,
     noticeColor: 'green',
-    noticeHtml: `Tenés <strong>${status.cutsRemaining}</strong> corte${status.cutsRemaining === 1 ? '' : 's'} disponible${status.cutsRemaining === 1 ? '' : 's'} hasta el <strong>${escapeHtml(fmtDate(status.periodEnd))}</strong>.`,
+    noticeHtml: status.periodEnd
+      ? `Tenés <strong>${status.cutsRemaining}</strong> corte${status.cutsRemaining === 1 ? '' : 's'} disponible${status.cutsRemaining === 1 ? '' : 's'}. Tu abono vence el <strong>${escapeHtml(fmtDate(status.periodEnd))}</strong> o cuando uses todos los cortes, lo que ocurra primero.`
+      : `Tenés <strong>${status.cutsRemaining}</strong> corte${status.cutsRemaining === 1 ? '' : 's'} disponible${status.cutsRemaining === 1 ? '' : 's'}. El abono finaliza cuando uses todos los cortes incluidos.`,
     cta: { label: 'Reservar turno', url: getClientReservaUrl() },
     secondaryCta: { label: 'Ver mi abono', url: getClientPerfilUrl() },
     outro: 'Podés seguir el consumo de tu abono en cualquier momento desde tu perfil.',

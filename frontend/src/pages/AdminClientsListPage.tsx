@@ -466,7 +466,7 @@ export default function AdminClientsListPage() {
                           {c.subscription && (
                             <span
                               className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700"
-                              title={`Abono: ${c.subscription.cutsRemaining}/${c.subscription.cutsPerMonth} cortes este mes`}
+                              title={`Abono: ${c.subscription.cutsRemaining}/${c.subscription.cutsPerMonth} cortes disponibles`}
                             >
                               Abono
                             </span>

@@ -10,6 +10,7 @@ import {
 import { SHOP_INSTAGRAM_URL } from '../constants/shopSocial';
 import { WhatsAppIcon, whatsAppLionButtonClassName } from '../components/WhatsAppIcon';
 import { InstagramIcon } from '../components/InstagramIcon';
+import ClientMobileNav from '../components/ClientMobileNav';
 import { api } from '../store';
 import { ANY_BARBER_ID, ApiError } from '../api';
 import type { Service, Barber, SubscriptionPlan, SitePromotion } from '../api';
@@ -717,9 +718,15 @@ export default function ClientView() {
             </a>
             <button
               type="button"
-              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-[#e5c185]"
+              className={`flex h-10 w-10 items-center justify-center rounded-xl border transition-colors ${
+                isMobileMenuOpen
+                  ? 'border-[#e5c185]/40 bg-[#e5c185]/10 text-[#e5c185]'
+                  : 'border-transparent text-zinc-400 hover:border-zinc-800 hover:bg-zinc-900 hover:text-[#e5c185]'
+              }`}
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               aria-label={isMobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="client-mobile-nav"
             >
               {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
@@ -785,81 +792,15 @@ export default function ClientView() {
           </div>
         </div>
 
-        {/* Menú móvil / tablet */}
-        {isMobileMenuOpen && (
-          <div className="absolute left-0 top-16 flex w-full flex-col gap-1 border-b border-zinc-800/50 bg-zinc-950 px-4 py-3 shadow-2xl sm:top-20 lg:hidden">
-            {(
-              [
-                { href: '#servicios', label: 'Servicios' },
-                { href: '#barberos', label: 'Barberos' },
-                ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
-                { href: '#contacto', label: 'Contacto' },
-              ] as const
-            ).map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="rounded-lg px-3 py-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-900 hover:text-[#e5c185]"
-              >
-                {item.label}
-              </a>
-            ))}
-
-            <div className="my-2 h-px bg-zinc-800/80" />
-
-            {profile ? (
-              <div className="space-y-1">
-                <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-3 py-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e5c185]/15 text-sm font-black uppercase text-[#e5c185]">
-                    {profile.name.trim().charAt(0) || '?'}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-white">{profile.name.split(' ')[0]}</p>
-                    <p className="truncate text-xs text-zinc-500">{profile.email}</p>
-                  </div>
-                </div>
-                <Link
-                  to="/perfil"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-900 hover:text-white"
-                >
-                  <User size={18} />
-                  Mi perfil
-                </Link>
-                {canAccessDashboard && (
-                  <Link
-                    to="/dashboard"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-[#e5c185] transition-colors hover:bg-zinc-900"
-                  >
-                    <LayoutDashboard size={18} />
-                    Panel
-                  </Link>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    void handleLogout();
-                  }}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-white"
-                >
-                  <LogOut size={18} />
-                  Cerrar sesión
-                </button>
-              </div>
-            ) : (
-              <Link
-                to="/login"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="block rounded-lg bg-[#e5c185] px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074]"
-              >
-                Iniciar sesión
-              </Link>
-            )}
-          </div>
-        )}
+        <ClientMobileNav
+          isOpen={isMobileMenuOpen}
+          onClose={() => setIsMobileMenuOpen(false)}
+          showAbonosSection={showAbonosSection}
+          profile={profile}
+          canAccessDashboard={canAccessDashboard}
+          onLogout={handleLogout}
+          onReserva={scrollToReserva}
+        />
       </nav>
 
       {/* Hero Section */}
@@ -1047,8 +988,8 @@ export default function ClientView() {
                   <p className="font-bold">Abono {profile.subscription.planName}</p>
                   <p className="mt-1 text-violet-200/90">
                     {profile.subscription.cutsRemaining > 0
-                      ? `Te quedan ${profile.subscription.cutsRemaining} de ${profile.subscription.cutsPerMonth} cortes este mes. Confirmás sin pagar seña.`
-                      : `Usaste los ${profile.subscription.cutsPerMonth} cortes del mes. No podés reservar online hasta el próximo período.`}
+                      ? `Te quedan ${profile.subscription.cutsRemaining} de ${profile.subscription.cutsPerMonth} cortes. Confirmás sin pagar seña.`
+                      : `Usaste los ${profile.subscription.cutsPerMonth} cortes de tu abono. No podés reservar online hasta que compres o te asignen uno nuevo.`}
                   </p>
                 </div>
               )}

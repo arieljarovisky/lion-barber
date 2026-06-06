@@ -349,8 +349,8 @@ export default function AppointmentPaymentSplitsModal({
                 </p>
                 <p className="mt-0.5 text-sm font-semibold text-zinc-900">
                   {clientSubscription.cutsRemaining > 0
-                    ? `${clientSubscription.cutsRemaining} corte${clientSubscription.cutsRemaining === 1 ? '' : 's'} disponible${clientSubscription.cutsRemaining === 1 ? '' : 's'} este mes`
-                    : 'Sin cortes disponibles este mes'}
+                    ? `${clientSubscription.cutsRemaining} corte${clientSubscription.cutsRemaining === 1 ? '' : 's'} disponible${clientSubscription.cutsRemaining === 1 ? '' : 's'} en el abono`
+                    : 'Sin cortes disponibles en el abono'}
                   <span className="ml-1 text-xs font-normal text-zinc-500">
                     ({clientSubscription.cutsUsed}/{clientSubscription.cutsPerMonth} usados)
                   </span>

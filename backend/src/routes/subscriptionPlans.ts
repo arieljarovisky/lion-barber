@@ -4,6 +4,14 @@ import { requireAuth, requireAdmin, requireStaffOrAdmin } from '../middleware/au
 
 const router = Router();
 
+function parseValidityDays(raw: unknown): number | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(999, Math.floor(n));
+}
+
 router.get('/public', async (_req, res) => {
   try {
     const plans = await repo.getActiveSubscriptionPlans();
@@ -56,6 +64,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         : undefined,
       highlighted: Boolean(body.highlighted),
       badgeText: typeof body.badgeText === 'string' ? body.badgeText : undefined,
+      validityDays: parseValidityDays(body.validityDays),
     });
     res.status(201).json(plan);
   } catch (err) {
@@ -93,6 +102,7 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
   if (body.bonusText !== undefined) updates.bonusText = String(body.bonusText);
   if (body.badgeText !== undefined) updates.badgeText = String(body.badgeText);
   if (body.highlighted !== undefined) updates.highlighted = Boolean(body.highlighted);
+  if (body.validityDays !== undefined) updates.validityDays = parseValidityDays(body.validityDays);
   if (body.sortOrder !== undefined) {
     const order = Number(body.sortOrder);
     if (!Number.isFinite(order)) {

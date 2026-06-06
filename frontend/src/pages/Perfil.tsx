@@ -485,7 +485,12 @@ export default function Perfil() {
               ? Math.min(100, Math.round((sub.cutsUsed / sub.cutsPerMonth) * 100))
               : 0;
           const remainingPct = Math.max(0, 100 - usedPct);
-          const periodLabel = `${format(parseAppointmentDateOnly(sub.periodStart), "d MMM", { locale: es })} – ${format(parseAppointmentDateOnly(sub.periodEnd), "d MMM yyyy", { locale: es })}`;
+          const activatedLabel = format(parseAppointmentDateOnly(sub.periodStart), "d MMM yyyy", {
+            locale: es,
+          });
+          const expiryLabel = sub.periodEnd
+            ? format(parseAppointmentDateOnly(sub.periodEnd), "d MMM yyyy", { locale: es })
+            : null;
           return (
             <section
               id="mi-abono"
@@ -525,9 +530,9 @@ export default function Perfil() {
 
               <div className="mb-4">
                 <div className="flex justify-between text-[11px] text-zinc-500 mb-1.5">
-                  <span>Consumo del mes</span>
+                  <span>Cortes del abono</span>
                   <span className="tabular-nums">
-                    {sub.cutsUsed}/{sub.cutsPerMonth} cortes
+                    {sub.cutsUsed}/{sub.cutsPerMonth} usados
                   </span>
                 </div>
                 <div className="h-2.5 rounded-full bg-zinc-800 overflow-hidden">
@@ -539,7 +544,15 @@ export default function Perfil() {
               </div>
 
               <p className="text-xs text-zinc-500 mb-3">
-                Período vigente: <span className="text-zinc-300">{periodLabel}</span>
+                Activado el <span className="text-zinc-300">{activatedLabel}</span>
+                {expiryLabel ? (
+                  <>
+                    {' '}
+                    · Vence el <span className="text-zinc-300">{expiryLabel}</span>
+                  </>
+                ) : (
+                  <> · Sin vencimiento por fecha (termina al usar todos los cortes)</>
+                )}
               </p>
 
               {sub.cutsRemaining > 0 ? (
@@ -549,8 +562,8 @@ export default function Perfil() {
                 </p>
               ) : (
                 <p className="text-sm font-semibold text-amber-300 mb-4">
-                  No tenés cortes disponibles este mes. Podés reservar de nuevo cuando renueve tu cupo o el local lo
-                  actualice.
+                  No tenés cortes disponibles. Tu abono finalizó; podés comprar uno nuevo o pedir que te asignen otro
+                  desde el local.
                 </p>
               )}
 

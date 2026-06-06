@@ -16,6 +16,14 @@ function featuresToText(features?: string[]): string {
   return (features ?? []).join('\n');
 }
 
+function parseOptionalValidityDays(raw: string): number | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const n = parseInt(t, 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.min(999, n);
+}
+
 function textToFeatures(text: string): string[] {
   return text
     .split('\n')
@@ -33,6 +41,7 @@ export default function SubscriptionPlansPanel({
   const [name, setName] = useState('');
   const [monthlyPrice, setMonthlyPrice] = useState('');
   const [cutsPerMonth, setCutsPerMonth] = useState('4');
+  const [validityDays, setValidityDays] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Abono mensual');
   const [compareAtPrice, setCompareAtPrice] = useState('');
@@ -46,6 +55,7 @@ export default function SubscriptionPlansPanel({
   const [editName, setEditName] = useState('');
   const [editPrice, setEditPrice] = useState('');
   const [editCuts, setEditCuts] = useState('');
+  const [editValidityDays, setEditValidityDays] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editCompareAtPrice, setEditCompareAtPrice] = useState('');
@@ -70,7 +80,7 @@ export default function SubscriptionPlansPanel({
     }
     const cuts = parseInt(cutsPerMonth, 10);
     if (!Number.isFinite(cuts) || cuts < 1) {
-      showToast('Los cortes por mes deben ser al menos 1', 'err');
+      showToast('Los cortes incluidos deben ser al menos 1', 'err');
       return;
     }
     setSaving(true);
@@ -79,6 +89,7 @@ export default function SubscriptionPlansPanel({
         name: trimmed,
         monthlyPrice: price,
         cutsPerMonth: cuts,
+        validityDays: parseOptionalValidityDays(validityDays),
         description: description.trim(),
         category: category.trim(),
         compareAtPrice: compareAtPrice.trim(),
@@ -91,6 +102,7 @@ export default function SubscriptionPlansPanel({
       setName('');
       setMonthlyPrice('');
       setCutsPerMonth('4');
+      setValidityDays('');
       setDescription('');
       setCategory('Abono mensual');
       setCompareAtPrice('');
@@ -113,6 +125,7 @@ export default function SubscriptionPlansPanel({
     setEditName(p.name);
     setEditPrice(p.monthlyPrice);
     setEditCuts(String(p.cutsPerMonth));
+    setEditValidityDays(p.validityDays != null ? String(p.validityDays) : '');
     setEditDescription(p.description ?? '');
     setEditCategory(p.category ?? 'Abono mensual');
     setEditCompareAtPrice(p.compareAtPrice ?? '');
@@ -132,7 +145,7 @@ export default function SubscriptionPlansPanel({
     }
     const cuts = parseInt(editCuts, 10);
     if (!Number.isFinite(cuts) || cuts < 1) {
-      showToast('Cortes por mes inválidos', 'err');
+      showToast('Cortes incluidos inválidos', 'err');
       return;
     }
     try {
@@ -140,6 +153,7 @@ export default function SubscriptionPlansPanel({
         name: trimmed,
         monthlyPrice: editPrice.trim(),
         cutsPerMonth: cuts,
+        validityDays: parseOptionalValidityDays(editValidityDays),
         active: editActive,
         description: editDescription.trim(),
         category: editCategory.trim(),
@@ -183,6 +197,7 @@ export default function SubscriptionPlansPanel({
           <h2 className="text-lg font-black text-zinc-900">Planes de abono</h2>
           <p className="text-sm text-zinc-500">
             Configurá los abonos que se muestran en la web y podés asignar manualmente desde la ficha de cada cliente.
+            Por defecto el abono termina al usar todos los cortes; opcionalmente podés limitar la vigencia en días.
           </p>
         </div>
       </div>
@@ -208,8 +223,17 @@ export default function SubscriptionPlansPanel({
           max={99}
           value={cutsPerMonth}
           onChange={(e) => setCutsPerMonth(e.target.value)}
-          placeholder="Cortes/mes"
+          placeholder="Cortes incluidos"
           className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+        />
+        <input
+          type="number"
+          min={1}
+          max={999}
+          value={validityDays}
+          onChange={(e) => setValidityDays(e.target.value)}
+          placeholder="Vigencia en días (vacío = sin vencimiento)"
+          className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm sm:col-span-2"
         />
         <textarea
           value={description}
@@ -302,7 +326,17 @@ export default function SubscriptionPlansPanel({
                     max={99}
                     value={editCuts}
                     onChange={(e) => setEditCuts(e.target.value)}
+                    placeholder="Cortes incluidos"
                     className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={editValidityDays}
+                    onChange={(e) => setEditValidityDays(e.target.value)}
+                    placeholder="Vigencia en días (vacío = sin vencimiento)"
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm sm:col-span-2"
                   />
                   <textarea
                     value={editDescription}
@@ -379,7 +413,8 @@ export default function SubscriptionPlansPanel({
                     )}
                   </p>
                   <p className="mt-0.5 text-sm text-zinc-500">
-                    {formatCatalogPriceArs(p.monthlyPrice)} · {p.cutsPerMonth} corte{p.cutsPerMonth === 1 ? '' : 's'}/mes
+                    {formatCatalogPriceArs(p.monthlyPrice)} · {p.cutsPerMonth} corte{p.cutsPerMonth === 1 ? '' : 's'}
+                    {p.validityDays != null ? ` · ${p.validityDays} días de vigencia` : ' · sin vencimiento por fecha'}
                   </p>
                   {p.description && <p className="mt-1 text-xs text-zinc-400">{p.description}</p>}
                 </div>

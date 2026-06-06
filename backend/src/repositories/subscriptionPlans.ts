@@ -8,6 +8,8 @@ export interface SubscriptionPlan {
   cutsPerMonth: number;
   active: boolean;
   sortOrder: number;
+  /** Días de vigencia desde la activación; null = sin vencimiento por fecha. */
+  validityDays: number | null;
   description: string;
   category: string;
   compareAtPrice: string;
@@ -33,6 +35,7 @@ interface DbPlan {
   features?: unknown;
   highlighted?: number | boolean | null;
   badge_text?: string | null;
+  validity_days?: number | null;
 }
 
 function parseFeatures(raw: unknown): string[] {
@@ -57,7 +60,7 @@ function parseFeatures(raw: unknown): string[] {
 
 function defaultFeatures(cutsPerMonth: number): string[] {
   return [
-    `${cutsPerMonth} corte${cutsPerMonth === 1 ? '' : 's'} incluido${cutsPerMonth === 1 ? '' : 's'} por mes`,
+    `${cutsPerMonth} corte${cutsPerMonth === 1 ? '' : 's'} incluido${cutsPerMonth === 1 ? '' : 's'}`,
     'Sin seña en cada reserva',
     'Reservá online cuando quieras',
   ];
@@ -86,6 +89,10 @@ function rowToPlan(r: DbPlan): SubscriptionPlan {
     features: features.length > 0 ? features : defaultFeatures(cutsPerMonth),
     highlighted: Boolean(r.highlighted),
     badgeText: r.badge_text ?? '',
+    validityDays:
+      r.validity_days != null && Number.isFinite(Number(r.validity_days)) && Number(r.validity_days) > 0
+        ? Math.floor(Number(r.validity_days))
+        : null,
   };
 }
 
@@ -142,6 +149,7 @@ export async function createSubscriptionPlan(data: {
   features?: string[];
   highlighted?: boolean;
   badgeText?: string;
+  validityDays?: number | null;
 }): Promise<SubscriptionPlan> {
   let id = slugFromName(data.name);
   const existing = await getSubscriptionPlanById(id);
@@ -153,11 +161,15 @@ export async function createSubscriptionPlan(data: {
   );
   const nextOrder = Number(maxRows[0]?.maxOrder ?? 0) + 1;
   const cuts = Math.max(1, Math.min(99, Math.floor(data.cutsPerMonth)));
+  const validityDays =
+    data.validityDays != null && Number.isFinite(Number(data.validityDays)) && Number(data.validityDays) > 0
+      ? Math.min(999, Math.floor(Number(data.validityDays)))
+      : null;
   await query(
     `INSERT INTO subscription_plans
       (id, name, monthly_price, cuts_per_month, active, sort_order, description, category,
-       compare_at_price, discount_label, bonus_text, features, highlighted, badge_text)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       compare_at_price, discount_label, bonus_text, features, highlighted, badge_text, validity_days)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       data.name.trim(),
@@ -173,6 +185,7 @@ export async function createSubscriptionPlan(data: {
       serializeFeatures(data.features),
       data.highlighted ? 1 : 0,
       (data.badgeText ?? '').trim() || null,
+      validityDays,
     ]
   );
   const created = await getSubscriptionPlanById(id);
@@ -197,6 +210,7 @@ export async function updateSubscriptionPlan(
       | 'features'
       | 'highlighted'
       | 'badgeText'
+      | 'validityDays'
       | 'sortOrder'
     >
   >
@@ -205,10 +219,16 @@ export async function updateSubscriptionPlan(
   if (!current) return null;
   const updated = { ...current, ...data };
   const cuts = Math.max(1, Math.min(99, Math.floor(updated.cutsPerMonth)));
+  const validityDays =
+    updated.validityDays != null &&
+    Number.isFinite(Number(updated.validityDays)) &&
+    Number(updated.validityDays) > 0
+      ? Math.min(999, Math.floor(Number(updated.validityDays)))
+      : null;
   await query(
     `UPDATE subscription_plans SET name = ?, monthly_price = ?, cuts_per_month = ?, active = ?,
      description = ?, category = ?, compare_at_price = ?, discount_label = ?, bonus_text = ?,
-     features = ?, highlighted = ?, badge_text = ?, sort_order = ? WHERE id = ?`,
+     features = ?, highlighted = ?, badge_text = ?, validity_days = ?, sort_order = ? WHERE id = ?`,
     [
       updated.name.trim(),
       String(updated.monthlyPrice).trim(),
@@ -222,6 +242,7 @@ export async function updateSubscriptionPlan(
       serializeFeatures(updated.features),
       updated.highlighted ? 1 : 0,
       updated.badgeText.trim() || null,
+      validityDays,
       updated.sortOrder,
       id,
     ]
