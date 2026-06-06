@@ -1845,7 +1845,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
               : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
+    <div className={`${agendasOnly ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-zinc-50 text-zinc-900 font-sans flex`}>
       {toast && (
         <div
           className="fixed bottom-6 right-6 z-[200] max-w-[min(100vw-2rem,22rem)] pointer-events-none"
@@ -1870,7 +1870,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       )}
       <DashboardPanelShell activePanel={view as DashboardPanelId} onNavigate={handlePanelNavigate} bare={agendasOnly}>
         {agendasOnly && (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-4 shrink-0">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 pb-3 shrink-0">
             <div className="min-w-0">
               <h2 className="text-xl sm:text-2xl font-black text-zinc-900 tracking-tight">Agendas del día</h2>
               <p className="text-sm text-zinc-500 capitalize mt-0.5">
@@ -1924,7 +1924,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
             desde Equipo eligiendo tu nombre en la agenda.
           </div>
         )}
-        <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:gap-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className={agendasOnly ? 'hidden' : 'mb-6 flex flex-col gap-4 sm:mb-8 sm:gap-6 lg:flex-row lg:items-center lg:justify-between'}>
           <div className="min-w-0">
             {!agendasOnly && (
               <>
@@ -2065,6 +2065,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         )}
 
         {view === 'agenda' && (
+        <div className={agendasOnly ? 'flex flex-1 flex-col min-h-0 overflow-hidden' : undefined}>
         <>
         {!isSingleBarberDayView && !agendasOnly && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 max-w-2xl">
@@ -2344,7 +2345,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
               </div>
             ) : isSingleBarberDayView && appointmentsByBarber[0] ? (
               <div
-                className={`max-w-4xl mx-auto mb-8 ${agendasOnly ? '' : 'hidden lg:block'}`}
+                className={
+                  agendasOnly
+                    ? 'flex flex-1 flex-col min-h-0 w-full mb-0'
+                    : 'hidden lg:block max-w-4xl mx-auto mb-8'
+                }
               >
                 <div className="flex items-center justify-between gap-4 mb-4 px-1">
                   <h3 className="font-bold text-lg text-zinc-900">Horarios del día</h3>
@@ -2352,10 +2357,14 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 </div>
                 <div
                   className={`rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden ${
-                    agendasOnly ? 'overflow-y-auto overscroll-contain max-h-[calc(100vh-140px)]' : ''
+                    agendasOnly ? 'flex flex-1 flex-col min-h-0' : ''
                   }`}
                 >
-                  <ul className="divide-y divide-zinc-100">
+                  <ul
+                    className={`divide-y divide-zinc-100 ${
+                      agendasOnly ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain' : ''
+                    }`}
+                  >
                       {buildDayTimelineRows(
                         appointmentsByBarber[0].appointments,
                         agendaTimeSlots,
@@ -2490,8 +2499,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 </div>
               </div>
             ) : agendasOnly ? (
-              <div className="bg-white border border-zinc-200 rounded-3xl shadow-sm overflow-hidden flex flex-col min-h-0 flex-1">
-                <div className="p-4 sm:p-5 min-h-0 flex-1 flex flex-col">
+              <div className="bg-white border border-zinc-200 rounded-2xl sm:rounded-3xl shadow-sm overflow-hidden flex flex-col min-h-0 flex-1">
+                <div className="p-3 sm:p-4 min-h-0 flex-1 flex flex-col overflow-hidden">
                   <BarberDayCalendarsGrid
                     columns={appointmentsByBarber}
                     timeSlots={agendaTimeSlots}
@@ -2504,8 +2513,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                     onCreateSlot={openCreateModalForSlot}
                     onEdit={tryOpenEditModal}
                     onDelete={tryDeleteAppointment}
-                    scrollMaxHeight="calc(100vh - 140px)"
-                    scrollMinHeight="calc(100vh - 140px)"
+                    fillAvailableHeight
                     compact={false}
                   />
                 </div>
@@ -2895,6 +2903,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         </div>
         )}
         </>
+        </div>
         )}
 
         {view === 'servicios' && (

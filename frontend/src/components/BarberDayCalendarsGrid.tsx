@@ -31,6 +31,8 @@ type Props = {
   scrollMaxHeight?: string;
   /** Altura mínima del área scrolleable (CSS). */
   scrollMinHeight?: string;
+  /** Si true, el scroll usa el alto del contenedor padre (flex) en lugar de vh fijos. */
+  fillAvailableHeight?: boolean;
   /** Filas más compactas en el panel principal. */
   compact?: boolean;
 };
@@ -178,6 +180,7 @@ export default function BarberDayCalendarsGrid({
   onDelete,
   scrollMaxHeight = 'calc(100vh - 280px)',
   scrollMinHeight = 'min(72vh, 720px)',
+  fillAvailableHeight = false,
   compact = false,
 }: Props) {
   if (columns.length === 0) return null;
@@ -220,8 +223,14 @@ export default function BarberDayCalendarsGrid({
       </div>
 
       <div
-        className="overflow-y-auto overflow-x-hidden overscroll-contain border border-t-0 border-zinc-200 rounded-b-2xl bg-white shadow-sm"
-        style={{ maxHeight: scrollMaxHeight, minHeight: scrollMinHeight }}
+        className={`overflow-y-auto overflow-x-hidden overscroll-contain border border-t-0 border-zinc-200 rounded-b-2xl bg-white shadow-sm ${
+          fillAvailableHeight ? 'flex-1 min-h-0' : ''
+        }`}
+        style={
+          fillAvailableHeight
+            ? undefined
+            : { maxHeight: scrollMaxHeight, minHeight: scrollMinHeight }
+        }
       >
         <div
           className="grid gap-4 p-3 sm:p-4"
