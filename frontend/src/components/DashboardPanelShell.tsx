@@ -89,11 +89,11 @@ export default function DashboardPanelShell({
         }`}
       >
         <div className="flex items-center gap-3 border-b border-zinc-800 p-4">
-          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg">
             <img
               src={LION_LOGO_URL}
               alt="Lion Barber"
-              className="h-full w-full object-contain p-0.5"
+              className="h-full w-full object-contain"
             />
           </div>
           <div className="min-w-0 flex-1">

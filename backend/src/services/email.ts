@@ -310,7 +310,7 @@ function renderBrandedEmail(opts: BrandedEmailOpts): string {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
             <tr>
               <td align="center" style="padding:8px 8px 22px;">
-                <img src="${escapeHtml(logoUrl)}" width="92" height="92" alt="${escapeHtml(shopName)}" style="display:block;border:0;outline:0;background:#0a0a0a;border-radius:50%;" />
+                <img src="${escapeHtml(logoUrl)}" width="120" height="auto" alt="${escapeHtml(shopName)}" style="display:block;border:0;outline:0;max-width:120px;height:auto;" />
                 <div style="margin-top:14px;font-size:11px;letter-spacing:.32em;color:${accent};text-transform:uppercase;font-weight:700;">${escapeHtml(eyebrow)}</div>
               </td>
             </tr>
