@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
-import { LION_LOGO_CIRCLE_URL } from '../constants/brandLogo';
+import { LION_LOGO_URL } from '../constants/brandLogo';
 import { useAuth } from '../contexts/AuthContext';
 import { motion } from 'motion/react';
 
@@ -60,13 +60,11 @@ export default function Login() {
     <div className="min-h-screen min-h-[100dvh] bg-zinc-950 text-zinc-50 font-sans flex flex-col items-center justify-center p-4 sm:p-6 w-full min-w-0 box-border">
       <div className="w-full max-w-md min-w-0 px-1">
         <div className="flex justify-center mb-6 sm:mb-8">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 sm:border-4 border-[#e5c185] flex items-center justify-center overflow-hidden bg-zinc-900 flex-shrink-0">
-            <img
-              src={LION_LOGO_CIRCLE_URL}
-              alt="Lion Barber"
-              className="h-full w-full object-cover"
-            />
-          </div>
+          <img
+            src={LION_LOGO_URL}
+            alt="Lion Barber"
+            className="h-28 w-auto max-w-[min(100%,14rem)] object-contain sm:h-32"
+          />
         </div>
         <h1 className="text-2xl sm:text-3xl font-serif font-black text-white text-center uppercase tracking-tight mb-2">
           Lion Barber

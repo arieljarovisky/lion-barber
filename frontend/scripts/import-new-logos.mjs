@@ -1,5 +1,5 @@
 /**
- * Importa los logos de `Nuevo logo/` a public/ y genera favicons.
+ * Importa el logo oficial desde `Nuevo logo/` a public/ y genera favicons.
  */
 import fs from 'fs';
 import path from 'path';
@@ -12,58 +12,67 @@ const root = path.join(__dirname, '..');
 const srcDir = path.join(root, 'Nuevo logo');
 const publicDir = path.join(root, 'public');
 
-const SOURCES = {
-  circle: 'WhatsApp Image 2026-06-08 at 17.51.00 (1).jpeg',
-  head: 'WhatsApp Image 2026-06-08 at 17.51.01 (1).jpeg',
-  full: 'WhatsApp Image 2026-06-08 at 17.51.01 (3).jpeg',
-};
+/** Logo oficial Lion Barber (cabezal + tipografía). */
+const PRIMARY_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.01 (3).jpeg';
 
-async function writePng(sourceName, destName, size) {
-  const input = path.join(srcDir, sourceName);
+const BG = { r: 9, g: 9, b: 11, alpha: 1 };
+
+function sourcePath() {
+  const input = path.join(srcDir, PRIMARY_LOGO);
   if (!fs.existsSync(input)) {
-    throw new Error(`No se encontró: ${input}`);
+    throw new Error(`No se encontró el logo: ${input}`);
   }
-  let img = sharp(input);
-  if (size) {
-    img = img.resize(size, size, { fit: 'cover', position: 'centre' });
+  return input;
+}
+
+async function writeMainLogo() {
+  const input = sourcePath();
+  const meta = await sharp(input).metadata();
+  const width = meta.width ?? 800;
+  const height = meta.height ?? 1200;
+  const targetW = Math.min(640, width);
+
+  const png = await sharp(input)
+    .resize({ width: targetW, withoutEnlargement: false })
+    .png({ quality: 92 })
+    .toBuffer();
+
+  const outputs = [
+    'lion-logo.png',
+    'lion-logo-full.png',
+    'lion-logo-circle.png',
+    'lion-logo-hero-for-ui.png',
+    'lion-logo-hero.png',
+    'lion-barber-logo.png',
+    'lion-icon.png',
+    'lion-head-transparent.png',
+    'lion-logo-hero-transparent.png',
+  ];
+
+  for (const name of outputs) {
+    fs.writeFileSync(path.join(publicDir, name), png);
+    console.log('ok', name);
   }
-  await img.png({ quality: 92 }).toFile(path.join(publicDir, destName));
+}
+
+async function writeSquareIcon(destName, px) {
+  await sharp(sourcePath())
+    .resize(px, px, { fit: 'contain', position: 'centre', background: BG })
+    .png()
+    .toFile(path.join(publicDir, destName));
   console.log('ok', destName);
 }
 
-await writePng(SOURCES.circle, 'lion-logo-circle.png', 512);
-await writePng(SOURCES.full, 'lion-logo-full.png', 800);
-await writePng(SOURCES.head, 'lion-logo-head.png', 512);
+await writeMainLogo();
 
-for (const legacy of [
-  'lion-logo-hero-for-ui.png',
-  'lion-logo-hero.png',
-  'lion-barber-logo.png',
-  'lion-icon.png',
-  'lion-head-transparent.png',
-  'lion-logo-hero-transparent.png',
-]) {
-  await sharp(path.join(publicDir, 'lion-logo-circle.png'))
-    .resize(512, 512, { fit: 'cover', position: 'centre' })
-    .png()
-    .toFile(path.join(publicDir, legacy));
-  console.log('ok legacy', legacy);
-}
-
-const faviconSizes = [
+for (const [name, px] of [
   ['favicon-16x16.png', 16],
   ['favicon-32x32.png', 32],
   ['apple-touch-icon.png', 180],
   ['android-chrome-192x192.png', 192],
   ['android-chrome-512x512.png', 512],
-];
-
-for (const [name, px] of faviconSizes) {
-  await sharp(path.join(publicDir, 'lion-logo-circle.png'))
-    .resize(px, px, { fit: 'cover', position: 'centre' })
-    .png()
-    .toFile(path.join(publicDir, name));
-  console.log('ok', name);
+]) {
+  await writeSquareIcon(name, px);
 }
 
 const icoBuf = await toIco([
@@ -72,4 +81,4 @@ const icoBuf = await toIco([
 ]);
 fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuf);
 console.log('ok favicon.ico');
-console.log('Logos importados.');
+console.log('Logo importado desde', PRIMARY_LOGO);

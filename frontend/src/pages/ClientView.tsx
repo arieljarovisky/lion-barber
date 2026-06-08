@@ -8,7 +8,7 @@ import {
   SHOP_MAPS_EMBED_URL,
 } from '../constants/shopLocation';
 import { SHOP_INSTAGRAM_URL } from '../constants/shopSocial';
-import { LION_LOGO_CIRCLE_URL } from '../constants/brandLogo';
+import { LION_LOGO_URL } from '../constants/brandLogo';
 import { WhatsAppIcon, whatsAppLionButtonClassName } from '../components/WhatsAppIcon';
 import { InstagramIcon } from '../components/InstagramIcon';
 import ClientMobileNavUserSection from '../components/ClientMobileNavUserSection';
@@ -661,9 +661,11 @@ export default function ClientView() {
             }}
             className="flex min-w-0 flex-shrink-0 items-center gap-2 sm:gap-3"
           >
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-800 bg-zinc-900 sm:h-10 sm:w-10">
-              <img src={LION_LOGO_CIRCLE_URL} alt="Lion Barber" className="h-full w-full object-cover" />
-            </div>
+            <img
+              src={LION_LOGO_URL}
+              alt="Lion Barber"
+              className="h-9 w-auto max-w-[2.75rem] object-contain sm:h-10 sm:max-w-[3rem]"
+            />
             <span className="truncate font-serif text-sm font-black uppercase tracking-widest text-white sm:text-base md:text-lg">
               Lion Barber
             </span>
@@ -1493,12 +1495,11 @@ export default function ClientView() {
       <footer className="bg-zinc-950 border-t border-zinc-900 py-8 sm:py-12 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 items-center text-center md:text-left">
           <div className="flex flex-col items-center md:items-start gap-3 sm:gap-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-800 bg-zinc-900 sm:h-9 sm:w-9">
-                <img src={LION_LOGO_CIRCLE_URL} alt="Lion Barber" className="h-full w-full object-cover" />
-              </div>
-              <span className="font-serif font-black tracking-widest uppercase text-white text-sm sm:text-base">Lion Barber</span>
-            </div>
+            <img
+              src={LION_LOGO_URL}
+              alt="Lion Barber"
+              className="h-14 w-auto object-contain sm:h-16"
+            />
             <p className="text-zinc-500 text-xs sm:text-sm font-sans">Estilo y precisión en cada corte.</p>
           </div>
           
