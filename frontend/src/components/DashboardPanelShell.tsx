@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { LION_LOGO_CIRCLE_URL } from '../constants/brandLogo';
 
 export type DashboardPanelId =
   | 'agenda'
@@ -90,8 +91,8 @@ export default function DashboardPanelShell({
         <div className="flex items-center gap-3 border-b border-zinc-800 p-4">
           <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-800 bg-zinc-900">
             <img
-              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s"
-              alt="Lion Logo"
+              src={LION_LOGO_CIRCLE_URL}
+              alt="Lion Barber"
               className="h-full w-full object-cover"
             />
           </div>

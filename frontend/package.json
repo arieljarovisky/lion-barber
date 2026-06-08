@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "favicons:import-logos": "node scripts/import-new-logos.mjs",
     "favicons:transparent": "node scripts/transparent-favicons.mjs"
   },
   "dependencies": {

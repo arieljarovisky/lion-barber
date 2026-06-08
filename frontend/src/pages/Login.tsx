@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
+import { LION_LOGO_CIRCLE_URL } from '../constants/brandLogo';
 import { useAuth } from '../contexts/AuthContext';
 import { motion } from 'motion/react';
 
@@ -61,9 +62,9 @@ export default function Login() {
         <div className="flex justify-center mb-6 sm:mb-8">
           <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 sm:border-4 border-[#e5c185] flex items-center justify-center overflow-hidden bg-zinc-900 flex-shrink-0">
             <img
-              src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s"
+              src={LION_LOGO_CIRCLE_URL}
               alt="Lion Barber"
-              className="w-full h-full object-cover"
+              className="h-full w-full object-cover"
             />
           </div>
         </div>

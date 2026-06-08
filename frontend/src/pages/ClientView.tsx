@@ -8,6 +8,7 @@ import {
   SHOP_MAPS_EMBED_URL,
 } from '../constants/shopLocation';
 import { SHOP_INSTAGRAM_URL } from '../constants/shopSocial';
+import { LION_LOGO_CIRCLE_URL } from '../constants/brandLogo';
 import { WhatsAppIcon, whatsAppLionButtonClassName } from '../components/WhatsAppIcon';
 import { InstagramIcon } from '../components/InstagramIcon';
 import ClientMobileNavUserSection from '../components/ClientMobileNavUserSection';
@@ -126,22 +127,6 @@ function getServiceInitials(name?: string): string {
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
 }
-
-const Logo = ({ className = "w-32 h-32" }) => (
-  <div className={`bg-white rounded-full border-4 border-zinc-900 flex flex-col items-center justify-center relative shadow-2xl ${className}`}>
-    <div className="absolute inset-1.5 border-2 border-zinc-800 rounded-full"></div>
-    <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full animate-[spin_20s_linear_infinite]">
-      <path id="curve" d="M 20 50 A 30 30 0 1 1 80 50" fill="transparent" />
-      <text className="text-[12px] font-black uppercase tracking-widest" fill="#18181b">
-        <textPath href="#curve" startOffset="50%" textAnchor="middle">Lion Barber</textPath>
-      </text>
-    </svg>
-    <div className="w-12 h-12 z-10 mt-4 rounded-full overflow-hidden border-2 border-zinc-900">
-      <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="w-full h-full object-cover" />
-    </div>
-    <div className="text-zinc-900 text-[8px] font-bold z-10 mt-1 uppercase tracking-widest">BS AS</div>
-  </div>
-);
 
 export default function ClientView() {
   const { profile, logout, canAccessDashboard, loading: authLoading } = useAuth();
@@ -677,7 +662,7 @@ export default function ClientView() {
             className="flex min-w-0 flex-shrink-0 items-center gap-2 sm:gap-3"
           >
             <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-800 bg-zinc-900 sm:h-10 sm:w-10">
-              <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="h-full w-full object-cover" />
+              <img src={LION_LOGO_CIRCLE_URL} alt="Lion Barber" className="h-full w-full object-cover" />
             </div>
             <span className="truncate font-serif text-sm font-black uppercase tracking-widest text-white sm:text-base md:text-lg">
               Lion Barber
@@ -1509,8 +1494,8 @@ export default function ClientView() {
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 items-center text-center md:text-left">
           <div className="flex flex-col items-center md:items-start gap-3 sm:gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 bg-zinc-900 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden border border-zinc-800">
-                <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9afJTOOxlqBtn27Asuu-Jvmb0NQZP6tKPGg&s" alt="Lion Logo" className="w-full h-full object-cover" />
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-zinc-800 bg-zinc-900 sm:h-9 sm:w-9">
+                <img src={LION_LOGO_CIRCLE_URL} alt="Lion Barber" className="h-full w-full object-cover" />
               </div>
               <span className="font-serif font-black tracking-widest uppercase text-white text-sm sm:text-base">Lion Barber</span>
             </div>
