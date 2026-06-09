@@ -8,6 +8,13 @@ import {
   toggleWeekdayInList,
   WEEKDAY_OPTIONS,
 } from '../utils/sitePromotions';
+import {
+  defaultButtonTextForHref,
+  isKnownPromotionCtaHref,
+  normalizePromotionCtaHref,
+  PROMOTION_CTA_LINKS,
+  promotionSectionLabel,
+} from '../constants/promotionCtaLinks';
 
 type PromotionsPanelProps = {
   promotions: SitePromotion[];
@@ -113,6 +120,65 @@ function PromotionScheduleFields({
   );
 }
 
+function PromotionCtaFields({
+  ctaHref,
+  ctaLabel,
+  onCtaHrefChange,
+  onCtaLabelChange,
+}: {
+  ctaHref: string;
+  ctaLabel: string;
+  onCtaHrefChange: (href: string) => void;
+  onCtaLabelChange: (label: string) => void;
+}) {
+  const knownHref = isKnownPromotionCtaHref(ctaHref);
+  const selectValue = knownHref ? ctaHref : PROMOTION_CTA_LINKS[0].href;
+
+  const handleSectionChange = (href: string) => {
+    onCtaHrefChange(href);
+    const prevDefault = defaultButtonTextForHref(ctaHref);
+    if (!ctaLabel.trim() || ctaLabel.trim() === prevDefault) {
+      onCtaLabelChange(defaultButtonTextForHref(href));
+    }
+  };
+
+  return (
+    <>
+      <div>
+        <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-zinc-500">
+          ¿A dónde va el botón?
+        </label>
+        <select
+          value={selectValue}
+          onChange={(e) => handleSectionChange(e.target.value)}
+          className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+        >
+          {PROMOTION_CTA_LINKS.map((link) => (
+            <option key={link.href} value={link.href}>
+              {link.sectionLabel}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1.5 text-[11px] text-zinc-400">
+          Al tocar el botón en la web, el cliente baja a esa sección de la página principal.
+        </p>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-zinc-500">
+          Texto del botón
+        </label>
+        <input
+          type="text"
+          value={ctaLabel}
+          onChange={(e) => onCtaLabelChange(e.target.value)}
+          placeholder={defaultButtonTextForHref(selectValue)}
+          className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+        />
+      </div>
+    </>
+  );
+}
+
 export default function PromotionsPanel({
   promotions,
   loading,
@@ -123,8 +189,8 @@ export default function PromotionsPanel({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [badgeText, setBadgeText] = useState('');
-  const [ctaLabel, setCtaLabel] = useState('Ver abonos');
-  const [ctaHref, setCtaHref] = useState('#abonos');
+  const [ctaLabel, setCtaLabel] = useState('Reservar turno');
+  const [ctaHref, setCtaHref] = useState('#reserva');
   const [activeWeekdays, setActiveWeekdays] = useState<number[]>([]);
   const [discountPercent, setDiscountPercent] = useState('');
   const [depositCoversFull, setDepositCoversFull] = useState(false);
@@ -170,8 +236,8 @@ export default function PromotionsPanel({
       setTitle('');
       setDescription('');
       setBadgeText('');
-      setCtaLabel('Ver abonos');
-      setCtaHref('#abonos');
+      setCtaLabel('Reservar turno');
+      setCtaHref('#reserva');
       setActiveWeekdays([]);
       setDiscountPercent('');
       setDepositCoversFull(false);
@@ -189,8 +255,10 @@ export default function PromotionsPanel({
     setEditTitle(p.title);
     setEditDescription(p.description);
     setEditBadgeText(p.badgeText);
-    setEditCtaLabel(p.ctaLabel || 'Ver abonos');
-    setEditCtaHref(p.ctaHref || '#abonos');
+    setEditCtaHref(normalizePromotionCtaHref(p.ctaHref));
+    setEditCtaLabel(
+      p.ctaLabel || defaultButtonTextForHref(normalizePromotionCtaHref(p.ctaHref))
+    );
     setEditActive(p.active);
     setEditActiveWeekdays(p.activeWeekdays ?? []);
     setEditDiscountPercent(p.discountPercent != null ? String(p.discountPercent) : '');
@@ -274,21 +342,13 @@ export default function PromotionsPanel({
           value={badgeText}
           onChange={(e) => setBadgeText(e.target.value)}
           placeholder="Etiqueta (ej. OFERTA)"
-          className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
-        />
-        <input
-          type="text"
-          value={ctaLabel}
-          onChange={(e) => setCtaLabel(e.target.value)}
-          placeholder="Texto del botón"
-          className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
-        />
-        <input
-          type="text"
-          value={ctaHref}
-          onChange={(e) => setCtaHref(e.target.value)}
-          placeholder="Enlace (ej. #reservar)"
           className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm sm:col-span-2"
+        />
+        <PromotionCtaFields
+          ctaHref={ctaHref}
+          ctaLabel={ctaLabel}
+          onCtaHrefChange={setCtaHref}
+          onCtaLabelChange={setCtaLabel}
         />
         <PromotionScheduleFields
           activeWeekdays={activeWeekdays}
@@ -335,19 +395,13 @@ export default function PromotionsPanel({
                     value={editBadgeText}
                     onChange={(e) => setEditBadgeText(e.target.value)}
                     placeholder="Etiqueta"
-                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                  />
-                  <input
-                    value={editCtaLabel}
-                    onChange={(e) => setEditCtaLabel(e.target.value)}
-                    placeholder="Texto botón"
-                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                  />
-                  <input
-                    value={editCtaHref}
-                    onChange={(e) => setEditCtaHref(e.target.value)}
-                    placeholder="Enlace"
                     className="rounded-lg border border-zinc-200 px-3 py-2 text-sm sm:col-span-2"
+                  />
+                  <PromotionCtaFields
+                    ctaHref={editCtaHref}
+                    ctaLabel={editCtaLabel}
+                    onCtaHrefChange={setEditCtaHref}
+                    onCtaLabelChange={setEditCtaLabel}
                   />
                   <PromotionScheduleFields
                     activeWeekdays={editActiveWeekdays}
@@ -394,7 +448,7 @@ export default function PromotionsPanel({
                   </p>
                   {(p.ctaLabel || p.ctaHref) && (
                     <p className="mt-1 text-xs text-zinc-400">
-                      CTA: {p.ctaLabel || '—'} → {p.ctaHref || '—'}
+                      Botón: «{p.ctaLabel || 'Ver más'}» → {promotionSectionLabel(p.ctaHref)}
                     </p>
                   )}
                 </div>

@@ -48,7 +48,7 @@ export default function SitePromotionBanner({ promotions }: SitePromotionBannerP
             </div>
             {(promo.ctaLabel || promo.ctaHref) && (
               <a
-                href={promo.ctaHref || '#abonos'}
+                href={promo.ctaHref || '#reserva'}
                 className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#e5c185] px-5 py-3 text-xs font-black uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074]"
               >
                 {promo.ctaLabel || 'Ver más'}
