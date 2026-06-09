@@ -141,20 +141,53 @@ async function writeMainLogo() {
   }
 }
 
-async function writeSquareIcon(destName, px) {
-  const input = path.join(srcDir, CIRCLE_LOGO);
+async function loadHeadLogoForIcon(targetPx) {
+  const input = path.join(srcDir, HEAD_LOGO);
   if (!fs.existsSync(input)) {
-    throw new Error(`No se encontró el logo circular: ${input}`);
+    throw new Error(`No se encontró el logo de cabeza: ${input}`);
   }
-  await sharp(input)
-    .resize(px, px, {
-      fit: 'cover',
-      position: 'centre',
-      background: FAVICON_BG,
-    })
-    .flatten({ background: FAVICON_BG })
-    .png()
-    .toFile(path.join(publicDir, destName));
+
+  const { data, info } = await sharp(input)
+    .resize({ width: Math.max(targetPx * 4, 256), withoutEnlargement: false })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const rgba = makeEdgeBackgroundTransparent(data, info.width, info.height, 36);
+  return sharp(rgba, { raw: { width: info.width, height: info.height, channels: 4 } }).trim({
+    threshold: 12,
+  });
+}
+
+async function writeSquareIcon(destName, px) {
+  const head = await loadHeadLogoForIcon(px);
+
+  if (px <= 48) {
+    const inner = Math.max(12, Math.round(px * 0.92));
+    const pad = Math.max(0, Math.round((px - inner) / 2));
+    await head
+      .resize(inner, inner, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .extend({
+        top: pad,
+        bottom: px - inner - pad,
+        left: pad,
+        right: px - inner - pad,
+        background: FAVICON_BG,
+      })
+      .flatten({ background: FAVICON_BG })
+      .png({ compressionLevel: 9, palette: true })
+      .toFile(path.join(publicDir, destName));
+  } else {
+    await head
+      .resize(px, px, { fit: 'cover', position: 'centre' })
+      .flatten({ background: FAVICON_BG })
+      .png({ compressionLevel: 9 })
+      .toFile(path.join(publicDir, destName));
+  }
+
   console.log('ok', destName);
 }
 
@@ -188,10 +221,7 @@ for (const [name, px] of [
   await writeSquareIcon(name, px);
 }
 
-const icoBuf = await toIco([
-  fs.readFileSync(path.join(publicDir, 'favicon-16x16.png')),
-  fs.readFileSync(path.join(publicDir, 'favicon-32x32.png')),
-]);
+const icoBuf = await toIco([fs.readFileSync(path.join(publicDir, 'favicon-32x32.png'))]);
 fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuf);
 console.log('ok favicon.ico');
 console.log('Logo importado (fondo transparente) desde', PRIMARY_LOGO);
