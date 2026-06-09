@@ -130,6 +130,27 @@ export async function decrementGroupCutsUsed(groupId: number): Promise<void> {
   );
 }
 
+export async function setGroupSubscriptionUsage(
+  groupId: number,
+  data: { cutsUsed?: number; periodStart?: string }
+): Promise<void> {
+  const sets: string[] = [];
+  const params: (number | string)[] = [];
+
+  if (data.cutsUsed !== undefined) {
+    sets.push('cuts_used = ?');
+    params.push(Math.max(0, Math.floor(data.cutsUsed)));
+  }
+  if (data.periodStart !== undefined) {
+    sets.push('period_start = ?');
+    params.push(data.periodStart.slice(0, 10));
+  }
+  if (sets.length === 0) return;
+
+  params.push(groupId);
+  await query(`UPDATE client_subscription_groups SET ${sets.join(', ')} WHERE id = ?`, params);
+}
+
 export async function userHasAnySubscriptionLink(userId: number): Promise<boolean> {
   const rows = await query<
     { subscription_group_id: number | null; subscription_plan_id: string | null }[]

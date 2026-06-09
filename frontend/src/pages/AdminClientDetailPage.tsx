@@ -49,6 +49,8 @@ export default function AdminClientDetailPage() {
   const [formNotes, setFormNotes] = useState('');
   const [formExempt, setFormExempt] = useState(false);
   const [formSubscriptionPlanId, setFormSubscriptionPlanId] = useState('');
+  const [formSubscriptionCutsUsed, setFormSubscriptionCutsUsed] = useState('0');
+  const [formSubscriptionPeriodStart, setFormSubscriptionPeriodStart] = useState('');
   const [availablePlans, setAvailablePlans] = useState<SubscriptionPlan[]>([]);
   const [allClients, setAllClients] = useState<AdminClientWithHistory[]>([]);
   const [linkHostClientId, setLinkHostClientId] = useState('');
@@ -130,6 +132,8 @@ export default function AdminClientDetailPage() {
     setFormNotes(client.adminNotes ?? '');
     setFormExempt(Boolean(client.depositExempt));
     setFormSubscriptionPlanId(client.subscription?.planId ?? '');
+    setFormSubscriptionCutsUsed(String(client.subscription?.cutsUsed ?? 0));
+    setFormSubscriptionPeriodStart(client.subscription?.periodStart?.slice(0, 10) ?? '');
   }, [client]);
 
   const handlePanelNavigate = useCallback(
@@ -191,6 +195,33 @@ export default function AdminClientDetailPage() {
       if (nextPlanId !== currentPlanId) {
         payload.subscriptionPlanId = nextPlanId || null;
       }
+      const planSelected = Boolean(nextPlanId);
+      if (planSelected) {
+        const cutsUsed = parseInt(formSubscriptionCutsUsed, 10);
+        if (!Number.isFinite(cutsUsed) || cutsUsed < 0) {
+          setError('Los cortes usados deben ser un número ≥ 0.');
+          setSaving(false);
+          return;
+        }
+        const selectedPlan = availablePlans.find((p) => p.id === nextPlanId);
+        const maxCuts = selectedPlan?.cutsPerMonth ?? client.subscription?.cutsPerMonth;
+        if (maxCuts != null && cutsUsed > maxCuts) {
+          setError(`Los cortes usados no pueden superar ${maxCuts}.`);
+          setSaving(false);
+          return;
+        }
+        const currentCutsUsed = client.subscription?.cutsUsed;
+        const currentPeriodStart = client.subscription?.periodStart?.slice(0, 10) ?? '';
+        const nextPeriodStart = formSubscriptionPeriodStart.trim();
+        if (currentCutsUsed !== cutsUsed) {
+          payload.subscriptionCutsUsed = cutsUsed;
+        }
+        if (nextPeriodStart && nextPeriodStart !== currentPeriodStart) {
+          payload.subscriptionPeriodStart = nextPeriodStart;
+        } else if (!client.subscription && nextPeriodStart) {
+          payload.subscriptionPeriodStart = nextPeriodStart;
+        }
+      }
       if (!emailLocked) {
         payload.email = email;
       }
@@ -215,6 +246,9 @@ export default function AdminClientDetailPage() {
     formNotes,
     formExempt,
     formSubscriptionPlanId,
+    formSubscriptionCutsUsed,
+    formSubscriptionPeriodStart,
+    availablePlans,
     emailLocked,
   ]);
 
@@ -326,6 +360,20 @@ export default function AdminClientDetailPage() {
     if (client.subscription.sharedMembers?.length) return client.subscription.sharedMembers;
     return [{ id: client.id, name: client.name, email: client.email }];
   }, [client]);
+
+  const selectedSubscriptionPlan = useMemo(
+    () => availablePlans.find((p) => p.id === formSubscriptionPlanId),
+    [availablePlans, formSubscriptionPlanId]
+  );
+
+  const subscriptionCutsMax =
+    selectedSubscriptionPlan?.cutsPerMonth ?? client?.subscription?.cutsPerMonth ?? null;
+
+  const formCutsUsedNum = parseInt(formSubscriptionCutsUsed, 10);
+  const subscriptionCutsRemainingPreview =
+    subscriptionCutsMax != null && Number.isFinite(formCutsUsedNum)
+      ? Math.max(0, subscriptionCutsMax - formCutsUsedNum)
+      : null;
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
@@ -579,6 +627,57 @@ export default function AdminClientDetailPage() {
                     </option>
                   ))}
                 </select>
+
+                {formSubscriptionPlanId ? (
+                  <div className="rounded-xl border border-violet-200 bg-white px-3 py-3 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-violet-900">
+                      Ajuste manual (migración)
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">
+                          Cortes usados
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={subscriptionCutsMax ?? undefined}
+                          value={formSubscriptionCutsUsed}
+                          onChange={(e) => setFormSubscriptionCutsUsed(e.target.value)}
+                          className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm tabular-nums"
+                        />
+                        {subscriptionCutsRemainingPreview != null && subscriptionCutsMax != null ? (
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            Quedan{' '}
+                            <span className="font-semibold text-violet-900">
+                              {subscriptionCutsRemainingPreview}
+                            </span>{' '}
+                            de {subscriptionCutsMax} disponibles
+                          </p>
+                        ) : null}
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">
+                          Activado el
+                        </label>
+                        <input
+                          type="date"
+                          value={formSubscriptionPeriodStart}
+                          onChange={(e) => setFormSubscriptionPeriodStart(e.target.value)}
+                          className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm"
+                        />
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          Fecha desde la que corre la vigencia del plan.
+                        </p>
+                      </div>
+                    </div>
+                    {client.subscription && displayedMembers.length > 1 ? (
+                      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
+                        Este abono es compartido: el ajuste de cortes aplica al pool de todos los vinculados.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
 
                 {client.subscription ? (
                   <div className="rounded-xl border border-violet-200 bg-white/80 p-3 space-y-3">

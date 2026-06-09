@@ -789,6 +789,8 @@ export const api = {
       points?: number;
       depositExempt?: boolean;
       subscriptionPlanId?: string | null;
+      subscriptionCutsUsed?: number;
+      subscriptionPeriodStart?: string;
       adminNotes?: string | null;
       accountBalanceArs?: number;
     }

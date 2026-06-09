@@ -9,6 +9,7 @@ import {
   getSubscriptionGroupForClient,
   linkClientToSharedSubscription,
   removeClientFromSubscription,
+  updateClientSubscriptionUsage,
 } from '../services/clientSubscription.js';
 import { notifyClientSubscriptionActivated } from '../services/email.js';
 
@@ -122,6 +123,8 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     points?: unknown;
     depositExempt?: unknown;
     subscriptionPlanId?: unknown;
+    subscriptionCutsUsed?: unknown;
+    subscriptionPeriodStart?: unknown;
     adminNotes?: unknown;
     accountBalanceArs?: unknown;
   };
@@ -195,7 +198,36 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     patch.accountBalanceArs = raw;
   }
 
-  if (Object.keys(patch).length === 0 && subscriptionPlanIdPatch === undefined) {
+  let subscriptionUsagePatch: { cutsUsed?: number; periodStart?: string } | undefined;
+  if (body.subscriptionCutsUsed !== undefined || body.subscriptionPeriodStart !== undefined) {
+    subscriptionUsagePatch = {};
+    if (body.subscriptionCutsUsed !== undefined) {
+      const n =
+        typeof body.subscriptionCutsUsed === 'number'
+          ? body.subscriptionCutsUsed
+          : parseInt(String(body.subscriptionCutsUsed), 10);
+      if (!Number.isFinite(n)) {
+        return res.status(400).json({ error: 'subscriptionCutsUsed debe ser un número' });
+      }
+      subscriptionUsagePatch.cutsUsed = n;
+    }
+    if (body.subscriptionPeriodStart !== undefined) {
+      if (body.subscriptionPeriodStart !== null && typeof body.subscriptionPeriodStart !== 'string') {
+        return res.status(400).json({ error: 'subscriptionPeriodStart debe ser texto YYYY-MM-DD' });
+      }
+      if (typeof body.subscriptionPeriodStart === 'string' && body.subscriptionPeriodStart.trim()) {
+        subscriptionUsagePatch.periodStart = body.subscriptionPeriodStart.trim().slice(0, 10);
+      }
+    }
+    if (
+      subscriptionUsagePatch.cutsUsed === undefined &&
+      subscriptionUsagePatch.periodStart === undefined
+    ) {
+      subscriptionUsagePatch = undefined;
+    }
+  }
+
+  if (Object.keys(patch).length === 0 && subscriptionPlanIdPatch === undefined && subscriptionUsagePatch === undefined) {
     return res.status(400).json({ error: 'No hay campos para actualizar' });
   }
 
@@ -214,6 +246,9 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
       if (assigned && subscriptionPlanIdPatch != null) {
         void notifyClientSubscriptionActivated(id);
       }
+    }
+    if (subscriptionUsagePatch !== undefined) {
+      await updateClientSubscriptionUsage(id, subscriptionUsagePatch);
     }
 
     const updated =

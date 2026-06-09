@@ -213,6 +213,54 @@ export async function assignSubscriptionPlanToClient(
   return true;
 }
 
+/** Ajuste manual de cortes usados y/o fecha de activación (migración / corrección admin). */
+export async function updateClientSubscriptionUsage(
+  userId: number,
+  data: { cutsUsed?: number; periodStart?: string }
+): Promise<void> {
+  await assertClientRole(userId);
+
+  if (data.cutsUsed === undefined && data.periodStart === undefined) return;
+
+  const groupId = await resolveGroupIdForUser(userId);
+  if (groupId == null) {
+    throw new Error('El cliente no tiene un abono activo.');
+  }
+
+  const group = await groups.getSubscriptionGroupById(groupId);
+  if (!group) {
+    throw new Error('Abono no encontrado.');
+  }
+
+  const plan = await getSubscriptionPlanById(group.subscription_plan_id);
+  if (!plan) {
+    throw new Error('Plan de abono no encontrado.');
+  }
+
+  const patch: { cutsUsed?: number; periodStart?: string } = {};
+
+  if (data.cutsUsed !== undefined) {
+    const n = typeof data.cutsUsed === 'number' ? data.cutsUsed : parseInt(String(data.cutsUsed), 10);
+    if (!Number.isFinite(n) || n < 0) {
+      throw new Error('Los cortes usados deben ser un número ≥ 0.');
+    }
+    if (n > plan.cutsPerMonth) {
+      throw new Error(`Los cortes usados no pueden superar ${plan.cutsPerMonth}.`);
+    }
+    patch.cutsUsed = Math.floor(n);
+  }
+
+  if (data.periodStart !== undefined) {
+    const ymd = String(data.periodStart).trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+      throw new Error('La fecha de activación debe ser YYYY-MM-DD.');
+    }
+    patch.periodStart = ymd;
+  }
+
+  await groups.setGroupSubscriptionUsage(groupId, patch);
+}
+
 /** Vincula un cliente al abono compartido de otro (mismo cupo de cortes). */
 export async function linkClientToSharedSubscription(
   userId: number,
