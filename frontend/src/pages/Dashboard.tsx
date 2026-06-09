@@ -645,8 +645,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   /** Vista semana solo para admin (elige un peluquero). Los barberos usan vista por día (día actual / calendario). */
   const isWeekView = selectedBarberId !== 'all' && !isStaffBarber;
   const isDayToday = isSameDay(selectedDate, new Date());
-  /** Un solo peluquero en pantalla (ej. cuenta barbero en local chico): layout de día ampliado */
-  const isSingleBarberDayView = !isWeekView && barbers.length === 1 && !isStaffBarber;
+  /** Un solo peluquero en pantalla (ej. cuenta barbero): layout de día ampliado */
+  const isSingleBarberDayView = !isWeekView && barbers.length === 1;
 
   const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -660,7 +660,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       ]);
       setAppointments(appRes);
       notifyBarberForPaidAppointments(appRes);
-      setBarbers(barbersRes);
+      const staffBid = profile?.role === 'staff' ? profile.barberId ?? null : null;
+      setBarbers(staffBid ? barbersRes.filter((b) => b.id === staffBid) : barbersRes);
       setServices(servicesRes);
     } catch (e) {
       setAppointments([]);
@@ -674,7 +675,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, [dateStr, selectedBarberId, isWeekView, notifyBarberForPaidAppointments]);
+  }, [dateStr, selectedBarberId, isWeekView, profile?.role, profile?.barberId, notifyBarberForPaidAppointments]);
 
   useEffect(() => {
     const from = isWeekView ? weekFromYmd : dateStr;
@@ -732,12 +733,10 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
 
   useEffect(() => {
     if (profile?.role === 'staff' && profile.barberId) {
+      setSelectedBarberId(profile.barberId);
       setScheduleBarberId(profile.barberId);
-      if (!agendasOnly) {
-        setSelectedBarberId(profile.barberId);
-      }
     }
-  }, [profile?.role, profile?.barberId, agendasOnly]);
+  }, [profile?.role, profile?.barberId]);
 
   useEffect(() => {
     if (view === 'horarios' && barbers.length && !scheduleBarberId) {
@@ -1772,12 +1771,16 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   useEffect(() => {
     if (!agendasOnly) return;
     setView('agenda');
-    setSelectedBarberId('all');
+    if (profile?.role === 'staff' && profile.barberId) {
+      setSelectedBarberId(profile.barberId);
+    } else {
+      setSelectedBarberId('all');
+    }
     const fecha = new URLSearchParams(location.search).get('fecha');
     if (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
       setSelectedDate(parseISO(`${fecha}T12:00:00`));
     }
-  }, [agendasOnly, location.search]);
+  }, [agendasOnly, location.search, profile?.role, profile?.barberId]);
 
   const openAgendasInNewTab = useCallback(() => {
     const url = `${window.location.origin}/dashboard/agendas?fecha=${dateStr}`;
@@ -1865,7 +1868,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       ? {
           title: 'Agenda de Turnos',
           subtitle: isStaffBarber
-            ? 'Ves la agenda de todos; solo podés cargar y editar turnos en tu columna.'
+            ? 'Solo tus turnos y tu calendario.'
             : 'Calendario por peluquero y gestión de reservas.',
         }
       : view === 'servicios'
