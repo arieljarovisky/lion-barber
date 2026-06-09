@@ -508,7 +508,7 @@ export default function Perfil() {
                 </div>
                 {sub.monthlyPrice && (
                   <span className="text-xs font-bold text-zinc-400 bg-zinc-950/60 px-2.5 py-1 rounded-lg border border-zinc-800">
-                    {formatCatalogPriceArs(sub.monthlyPrice)}/mes
+                    {formatCatalogPriceArs(sub.monthlyPrice)}
                   </span>
                 )}
               </div>

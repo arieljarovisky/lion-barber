@@ -3,7 +3,7 @@ import { query } from '../db.js';
 export interface SubscriptionPlan {
   id: string;
   name: string;
-  /** Precio mensual referencia (texto, ej. "$80.000"). */
+  /** Precio de referencia del plan (texto, ej. "$80.000"). */
   monthlyPrice: string;
   cutsPerMonth: number;
   active: boolean;
@@ -82,7 +82,7 @@ function rowToPlan(r: DbPlan): SubscriptionPlan {
     active: Boolean(r.active),
     sortOrder: r.sort_order,
     description: r.description ?? '',
-    category: r.category ?? 'Abono mensual',
+    category: (r.category ?? 'Abono').replace(/^Abono mensual$/i, 'Abono'),
     compareAtPrice: r.compare_at_price ?? '',
     discountLabel: r.discount_label ?? '',
     bonusText: r.bonus_text ?? '',
@@ -178,7 +178,7 @@ export async function createSubscriptionPlan(data: {
       data.active !== false ? 1 : 0,
       nextOrder,
       (data.description ?? '').trim() || null,
-      (data.category ?? 'Abono mensual').trim() || 'Abono mensual',
+      (data.category ?? 'Abono').trim() || 'Abono',
       (data.compareAtPrice ?? '').trim() || null,
       (data.discountLabel ?? '').trim() || null,
       (data.bonusText ?? '').trim() || null,
@@ -235,7 +235,7 @@ export async function updateSubscriptionPlan(
       cuts,
       updated.active ? 1 : 0,
       updated.description.trim() || null,
-      updated.category.trim() || 'Abono mensual',
+      updated.category.trim() || 'Abono',
       updated.compareAtPrice.trim() || null,
       updated.discountLabel.trim() || null,
       updated.bonusText.trim() || null,

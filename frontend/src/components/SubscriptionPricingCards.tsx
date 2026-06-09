@@ -7,7 +7,7 @@ type SubscriptionPricingCardsProps = {
   loading: boolean;
   checkoutPlanId: string | null;
   checkoutLoading: boolean;
-  onBuy: (planId: string) => void;
+  onContinue: (plan: import('../api').SubscriptionPlan) => void;
   isLoggedIn: boolean;
   onLoginRequired: () => void;
 };
@@ -17,7 +17,7 @@ export function SubscriptionPricingCards({
   loading,
   checkoutPlanId,
   checkoutLoading,
-  onBuy,
+  onContinue,
   isLoggedIn,
   onLoginRequired,
 }: SubscriptionPricingCardsProps) {
@@ -55,7 +55,7 @@ export function SubscriptionPricingCards({
             )}
 
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
-              {plan.category || 'Abono mensual'}
+              {plan.category?.replace(/^Abono mensual$/i, 'Abono') || 'Abono'}
             </p>
             <h3 className="mt-2 font-serif text-lg font-black uppercase tracking-tight text-white sm:text-xl lg:text-base xl:text-lg">
               {plan.name}
@@ -83,7 +83,6 @@ export function SubscriptionPricingCards({
               )}
               <p className="font-sans text-2xl font-black text-[#e5c185] sm:text-3xl lg:text-xl xl:text-2xl">
                 {formatCatalogPriceArs(plan.monthlyPrice)}
-                <span className="text-sm font-semibold text-zinc-500 lg:text-xs xl:text-sm">/mes</span>
               </p>
               {plan.bonusText && (
                 <p className="mt-1 text-xs font-medium text-[#e5c185]/80">{plan.bonusText}</p>
@@ -98,7 +97,7 @@ export function SubscriptionPricingCards({
                   onLoginRequired();
                   return;
                 }
-                onBuy(plan.id);
+                onContinue(plan);
               }}
               className="mt-5 w-full rounded-xl border-2 border-black bg-[#e5c185] py-3 font-sans text-xs font-black uppercase tracking-wider text-zinc-950 transition-all hover:bg-[#d4b074] hover:scale-[1.02] disabled:opacity-60 disabled:hover:scale-100 lg:py-2.5 xl:py-3 xl:text-sm"
             >

@@ -134,7 +134,7 @@ export interface Appointment {
   createdByUserId?: number;
   /** Último usuario del panel que modificó el turno. */
   updatedByUserId?: number;
-  /** Si se descontó un corte del abono mensual al cobrar con método Abono. */
+  /** Si se descontó un corte del abono al cobrar con método Abono. */
   subscriptionCutApplied?: boolean;
 }
 
@@ -357,7 +357,7 @@ export interface AdminClientWithHistory {
   avatarUrl?: string | null;
   /** Cliente exento de pagar seña: sus reservas se confirman sin Mercado Pago. */
   depositExempt?: boolean;
-  /** Abono mensual activo (cortes incluidos, sin seña en la web). */
+  /** Abono activo (cortes incluidos, sin seña en la web). */
   subscription?: ClientSubscriptionInfo | null;
   /** Notas internas / recordatorios (solo panel admin). */
   adminNotes?: string | null;

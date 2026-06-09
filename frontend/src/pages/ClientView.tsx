@@ -18,6 +18,7 @@ import type { Service, Barber, SubscriptionPlan, SitePromotion } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import SitePromotionBanner from '../components/SitePromotionBanner';
 import { SubscriptionPricingCards } from '../components/SubscriptionPricingCards';
+import SubscriptionCheckoutConfirmModal from '../components/SubscriptionCheckoutConfirmModal';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
 import { calculateDepositAmountArs, parseArsAmount } from '../utils/money';
@@ -145,6 +146,7 @@ export default function ClientView() {
   const [subscriptionCheckoutPlanId, setSubscriptionCheckoutPlanId] = useState<string | null>(null);
   const [subscriptionCheckoutPreferenceId, setSubscriptionCheckoutPreferenceId] = useState<string | null>(null);
   const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState(false);
+  const [subscriptionConfirmPlan, setSubscriptionConfirmPlan] = useState<SubscriptionPlan | null>(null);
   const [subscriptionMessage, setSubscriptionMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const loadBookingCatalog = () => {
@@ -611,6 +613,15 @@ export default function ClientView() {
     navigate('/', { replace: true });
   };
 
+  const handleSubscriptionContinue = (plan: SubscriptionPlan) => {
+    if (!profile) {
+      handleSubscriptionLoginRequired();
+      return;
+    }
+    setSubscriptionConfirmPlan(plan);
+    setSubscriptionMessage(null);
+  };
+
   const handleBuySubscription = async (planId: string) => {
     setSubscriptionCheckoutLoading(true);
     setSubscriptionCheckoutPlanId(planId);
@@ -633,6 +644,7 @@ export default function ClientView() {
       });
     } finally {
       setSubscriptionCheckoutLoading(false);
+      setSubscriptionConfirmPlan(null);
     }
   };
 
@@ -918,7 +930,7 @@ export default function ClientView() {
               </h2>
               <div className="mx-auto mt-3 h-1 w-20 rounded-full bg-[#e5c185] sm:w-24" />
               <p className="mx-auto mt-4 max-w-2xl font-sans text-sm font-light text-zinc-400 sm:text-base">
-                Pagá online con Mercado Pago y reservá sin seña mientras tengas cortes disponibles en el mes.
+                Pagá online con Mercado Pago y reservá sin seña mientras tengas cortes disponibles en tu abono.
               </p>
             </div>
 
@@ -939,7 +951,7 @@ export default function ClientView() {
               loading={publicCatalogLoading}
               checkoutPlanId={subscriptionCheckoutPlanId}
               checkoutLoading={subscriptionCheckoutLoading}
-              onBuy={(planId) => void handleBuySubscription(planId)}
+              onContinue={handleSubscriptionContinue}
               isLoggedIn={Boolean(profile)}
               onLoginRequired={handleSubscriptionLoginRequired}
             />
@@ -1619,6 +1631,18 @@ export default function ClientView() {
           </div>
         </div>
       )}
+      <SubscriptionCheckoutConfirmModal
+        plan={subscriptionConfirmPlan}
+        loading={subscriptionCheckoutLoading}
+        onClose={() => {
+          if (!subscriptionCheckoutLoading) setSubscriptionConfirmPlan(null);
+        }}
+        onConfirm={() => {
+          if (subscriptionConfirmPlan) {
+            void handleBuySubscription(subscriptionConfirmPlan.id);
+          }
+        }}
+      />
     </div>
   );
 }

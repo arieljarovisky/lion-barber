@@ -236,7 +236,7 @@ async function createMercadoPagoSubscriptionPreference(
     items: [
       {
         id: `lion-abono-${input.planId}`,
-        title: `Abono mensual — ${input.planName}`,
+        title: `Abono — ${input.planName}`,
         quantity: 1,
         unit_price: input.amountArs,
         currency_id: 'ARS',
@@ -691,7 +691,7 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
 });
 
 /**
- * Checkout de abono mensual (Checkout Pro). Al aprobar el pago, el webhook asigna el plan al cliente.
+ * Checkout de abono (Checkout Pro). Al aprobar el pago, el webhook asigna el plan al cliente.
  */
 router.post('/subscription', requireAuth, async (req, res) => {
   const config = getMpConfig();

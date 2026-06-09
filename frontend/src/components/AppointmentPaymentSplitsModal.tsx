@@ -357,7 +357,7 @@ export default function AppointmentPaymentSplitsModal({
                 </p>
                 {clientSubscription.cutsRemaining > 0 && (
                   <p className="mt-1 text-[11px] text-zinc-600">
-                    Al guardar con forma de pago «Abono» se descuenta un corte del cupo mensual.
+                    Al guardar con forma de pago «Abono» se descuenta un corte de los disponibles.
                   </p>
                 )}
               </div>

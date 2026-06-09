@@ -1852,7 +1852,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
               : view === 'abonos'
                 ? {
                     title: 'Abonos',
-                    subtitle: 'Planes mensuales con cortes incluidos. Se muestran en la web y podés asignarlos manualmente.',
+                    subtitle: 'Planes de abono con cortes incluidos. Se muestran en la web y podés asignarlos manualmente.',
                   }
                 : view === 'promociones'
                   ? {

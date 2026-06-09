@@ -62,7 +62,7 @@ async function migrateServicePaymentMethodTransferToAccount(): Promise<void> {
 async function ensureSubscriptionPlanPresentationColumns(): Promise<void> {
   const cols: [string, string][] = [
     ['description', 'TEXT NULL'],
-    ['category', "VARCHAR(100) NULL DEFAULT 'Abono mensual'"],
+    ['category', "VARCHAR(100) NULL DEFAULT 'Abono'"],
     ['compare_at_price', 'VARCHAR(50) NULL'],
     ['discount_label', 'VARCHAR(80) NULL'],
     ['bonus_text', 'VARCHAR(255) NULL'],
@@ -76,6 +76,14 @@ async function ensureSubscriptionPlanPresentationColumns(): Promise<void> {
       await pool.execute(`ALTER TABLE subscription_plans ADD COLUMN ${col} ${def}`);
     }
   }
+}
+
+async function migrateSubscriptionPlanCategoryLabels(): Promise<void> {
+  if (!(await tableHasColumn('subscription_plans', 'category'))) return;
+  await pool.execute(
+    `UPDATE subscription_plans SET category = 'Abono'
+     WHERE category IS NULL OR TRIM(category) = '' OR LOWER(TRIM(category)) = 'abono mensual'`
+  );
 }
 
 async function migrateMonotributoLimitColumns(): Promise<void> {
@@ -249,6 +257,7 @@ export async function initDb(): Promise<void> {
     )
   `);
   await ensureSubscriptionPlanPresentationColumns();
+  await migrateSubscriptionPlanCategoryLabels();
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS site_promotions (
       id VARCHAR(50) PRIMARY KEY,

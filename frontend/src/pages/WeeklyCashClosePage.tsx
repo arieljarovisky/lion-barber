@@ -535,7 +535,7 @@ export default function WeeklyCashClosePage() {
                 <div className="border-b border-zinc-100 bg-zinc-50/80 px-4 py-3">
                   <h2 className="font-black text-zinc-900">Cobros en local por método</h2>
                   <p className="mt-0.5 text-xs text-zinc-500">
-                    Saldo cobrado en el turno (sin abono). El abono mensual no suma acá.
+                    Saldo cobrado en el turno (sin abono). El abono por cortes no suma acá.
                   </p>
                 </div>
                 <div className="cash-close-table-wrap overflow-x-auto p-4">
