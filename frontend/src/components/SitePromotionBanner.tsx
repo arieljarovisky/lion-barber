@@ -42,10 +42,14 @@ export default function SitePromotionBanner({ promotions }: SitePromotionBannerP
                   </span>
                 ) : null}
 
-                <h2 className="line-clamp-2 text-base font-black text-white sm:text-lg">{promo.title}</h2>
+                {!discountLabel && (
+                  <h2 className="line-clamp-2 text-base font-black text-white sm:text-lg">{promo.title}</h2>
+                )}
 
                 {promo.description && (
-                  <p className="mt-2 line-clamp-3 text-xs text-zinc-400 sm:text-sm">{promo.description}</p>
+                  <p className="mt-2 line-clamp-3 text-xs uppercase tracking-wide text-zinc-300 sm:text-sm">
+                    {promo.description}
+                  </p>
                 )}
 
                 {(promo.activeWeekdays?.length || promo.discountPercent) && (
