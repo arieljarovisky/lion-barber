@@ -19,6 +19,11 @@ function productUnitPriceArs(product: ShopProduct): number | null {
   return parseArsAmount(product.unitPrice ?? undefined);
 }
 
+function productMaxQty(product: ShopProduct): number {
+  if (product.stock == null) return 99;
+  return Math.min(99, Math.max(0, product.stock));
+}
+
 export default function ShopCatalogSection({
   products,
   isLoggedIn,
@@ -49,10 +54,12 @@ export default function ShopCatalogSection({
   const cartCount = cartLines.reduce((n, l) => n + l.quantity, 0);
 
   const setQty = (productId: string, quantity: number) => {
+    const product = products.find((p) => p.id === productId);
+    const max = product ? productMaxQty(product) : 99;
     setCart((prev) => {
       const next = { ...prev };
       if (quantity <= 0) delete next[productId];
-      else next[productId] = Math.min(99, quantity);
+      else next[productId] = Math.min(max, quantity);
       return next;
     });
     setPreferenceId(null);
@@ -130,6 +137,11 @@ export default function ShopCatalogSection({
                   {product.description && (
                     <p className="mt-1 line-clamp-2 text-[10px] font-light text-zinc-400 sm:mt-2 sm:line-clamp-3 sm:text-sm">
                       {product.description}
+                    </p>
+                  )}
+                  {product.stock != null && (
+                    <p className="mt-1 text-[10px] font-semibold text-zinc-500 sm:text-xs">
+                      {product.stock <= 5 ? `Quedan ${product.stock}` : `${product.stock} disponibles`}
                     </p>
                   )}
                   <div className="mt-auto flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-3 sm:pt-4">

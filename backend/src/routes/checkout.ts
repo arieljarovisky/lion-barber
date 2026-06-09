@@ -42,7 +42,7 @@ import {
 } from '../repositories/productOrders.js';
 import { resolveProductOrderLines } from '../services/productCheckout.js';
 import { incrementClientPoints } from '../repositories/users.js';
-import { getShopProductById } from '../repositories/shopProducts.js';
+import { getShopProductById, decrementProductStock } from '../repositories/shopProducts.js';
 import {
   calculateBookingDepositArs,
   isPromotionActiveOnDate,
@@ -1020,6 +1020,11 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     if (paid?.status === 'paid') {
       let points = 0;
       for (const line of paid.items) {
+        try {
+          await decrementProductStock(line.productId, line.quantity);
+        } catch (e) {
+          console.error('[Webhook MP] no se pudo descontar stock', line.productId, e);
+        }
         const product = await getShopProductById(line.productId);
         if (product?.pointsReward) points += product.pointsReward * line.quantity;
       }

@@ -45,12 +45,13 @@ router.get('/', requireAuth, requireStaffOrAdmin, async (_req, res) => {
 });
 
 router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
-  const { name, pointsReward, unitPrice, description, webActive } = req.body as {
+  const { name, pointsReward, unitPrice, description, webActive, stock } = req.body as {
     name?: string;
     pointsReward?: unknown;
     unitPrice?: unknown;
     description?: unknown;
     webActive?: boolean;
+    stock?: unknown;
   };
   if (!name || typeof name !== 'string' || !name.trim()) {
     return res.status(400).json({ error: 'Se requiere nombre del producto' });
@@ -61,6 +62,14 @@ router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
   }
   const up =
     unitPrice != null && String(unitPrice).trim() !== '' ? String(unitPrice).trim() : undefined;
+  let stockValue: number | null | undefined;
+  if (stock !== undefined) {
+    const parsed = repo.normalizeProductStock(stock);
+    if (parsed === 'invalid') {
+      return res.status(400).json({ error: 'El stock debe ser un número entero ≥ 0' });
+    }
+    stockValue = parsed;
+  }
   try {
     const p = await repo.createShopProduct({
       name: name.trim(),
@@ -68,6 +77,7 @@ router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
       unitPrice: up,
       description: description != null ? String(description) : undefined,
       webActive,
+      stock: stockValue,
     });
     res.status(201).json(p);
   } catch (err) {
@@ -77,13 +87,14 @@ router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
 });
 
 router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
-  const { name, pointsReward, unitPrice, description, imageUrl, webActive } = req.body as {
+  const { name, pointsReward, unitPrice, description, imageUrl, webActive, stock } = req.body as {
     name?: string;
     pointsReward?: unknown;
     unitPrice?: unknown;
     description?: unknown;
     imageUrl?: unknown;
     webActive?: boolean;
+    stock?: unknown;
   };
   const updates: Parameters<typeof repo.updateShopProduct>[1] = {};
   if (name !== undefined) updates.name = String(name);
@@ -104,6 +115,13 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
     updates.imageUrl = null;
   }
   if (webActive !== undefined) updates.webActive = Boolean(webActive);
+  if (stock !== undefined) {
+    const parsed = repo.normalizeProductStock(stock);
+    if (parsed === 'invalid') {
+      return res.status(400).json({ error: 'El stock debe ser un número entero ≥ 0' });
+    }
+    updates.stock = parsed;
+  }
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'Nada para actualizar' });
   }

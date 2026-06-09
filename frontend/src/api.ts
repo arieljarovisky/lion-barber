@@ -208,6 +208,8 @@ export interface ShopProduct {
   description?: string | null;
   /** Visible y comprable en la web pública. */
   webActive?: boolean;
+  /** Unidades disponibles; `null` = sin control de stock. */
+  stock?: number | null;
 }
 
 export interface ProductOrderLine {
@@ -741,6 +743,7 @@ export const api = {
     description?: string | null;
     imageUrl?: string | null;
     webActive?: boolean;
+    stock?: number | null;
   }) =>
     fetchApi<ShopProduct>('/api/shop-products', {
       method: 'POST',
@@ -755,6 +758,7 @@ export const api = {
       description: string | null;
       imageUrl: string | null;
       webActive: boolean;
+      stock: number | null;
     }>
   ) =>
     fetchApi<ShopProduct>(`/api/shop-products/${encodeURIComponent(id)}`, {

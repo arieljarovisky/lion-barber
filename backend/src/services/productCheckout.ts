@@ -1,4 +1,4 @@
-import { getShopProductById } from '../repositories/shopProducts.js';
+import { getShopProductById, assertProductStockAvailable, decrementProductStock, productWebAvailable } from '../repositories/shopProducts.js';
 import type { ProductOrderLine } from '../types.js';
 
 function parseArsAmount(raw: string | undefined | null): number | null {
@@ -34,21 +34,28 @@ export async function resolveProductOrderLines(
   if (!items.length) throw new Error('El pedido está vacío');
   if (items.length > 20) throw new Error('Demasiados productos en el pedido');
 
-  const lines: ProductOrderLine[] = [];
-  let totalArs = 0;
-  let pointsEarned = 0;
+  if (items.length > 20) throw new Error('Demasiados productos en el pedido');
 
+  const merged = new Map<string, number>();
   for (const item of items) {
     const productId = String(item.productId ?? '').trim();
     const qty = Math.floor(Number(item.quantity));
     if (!productId || !Number.isFinite(qty) || qty <= 0 || qty > 99) {
       throw new Error('Cantidad inválida en el pedido');
     }
+    merged.set(productId, (merged.get(productId) ?? 0) + qty);
+  }
 
+  const lines: ProductOrderLine[] = [];
+  let totalArs = 0;
+  let pointsEarned = 0;
+
+  for (const [productId, qty] of merged.entries()) {
     const product = await getShopProductById(productId);
-    if (!product || !product.webActive) {
-      throw new Error(`Producto no disponible: ${productId}`);
+    if (!product || !productWebAvailable(product)) {
+      throw new Error(`«${product?.name ?? productId}» no está disponible para compra online.`);
     }
+    await assertProductStockAvailable(product, qty);
     const unitPrice = parseArsAmount(product.unitPrice ?? undefined);
     if (unitPrice == null) {
       throw new Error(`«${product.name}» no tiene precio para venta online`);

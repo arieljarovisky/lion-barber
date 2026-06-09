@@ -92,6 +92,20 @@ function ProductImageField({
   );
 }
 
+function parseStockInput(raw: string): number | null | 'invalid' {
+  const trimmed = raw.trim();
+  if (trimmed === '') return null;
+  const n = Math.floor(Number(trimmed));
+  if (!Number.isFinite(n) || n < 0 || n > 999_999) return 'invalid';
+  return n;
+}
+
+function stockStatusLabel(p: ShopProduct): { text: string; className: string } {
+  if (p.stock == null) return { text: 'Stock ilimitado', className: 'text-zinc-400' };
+  if (p.stock <= 0) return { text: 'Sin stock · oculto en web', className: 'text-red-600' };
+  return { text: `Stock: ${p.stock}`, className: 'text-emerald-700' };
+}
+
 /** Catálogo de productos de venta (nombre, precio, imagen, web). Los puntos se asignan en Puntos. */
 export default function ShopProductsPanel({
   shopProducts,
@@ -104,6 +118,7 @@ export default function ShopProductsPanel({
   const [productUnitPrice, setProductUnitPrice] = useState('');
   const [productDescription, setProductDescription] = useState('');
   const [productWebActive, setProductWebActive] = useState(true);
+  const [productStock, setProductStock] = useState('');
   const [pendingImageData, setPendingImageData] = useState<string | null>(null);
   const [pendingImageLoading, setPendingImageLoading] = useState(false);
   const newImageRef = useRef<HTMLInputElement>(null);
@@ -113,12 +128,18 @@ export default function ShopProductsPanel({
   const [editUnitPrice, setEditUnitPrice] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editWebActive, setEditWebActive] = useState(true);
+  const [editStock, setEditStock] = useState('');
 
   const addProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = productName.trim();
     if (!name) {
       showToast('Escribí el nombre del producto', 'err');
+      return;
+    }
+    const parsedStock = parseStockInput(productStock);
+    if (parsedStock === 'invalid') {
+      showToast('El stock debe ser un número entero ≥ 0', 'err');
       return;
     }
     setSavingProduct(true);
@@ -130,6 +151,7 @@ export default function ShopProductsPanel({
         unitPrice: up ? up : undefined,
         description: productDescription.trim() || undefined,
         webActive: productWebActive,
+        stock: parsedStock,
       });
       if (pendingImageData) {
         await api.uploadShopProductImage(created.id, pendingImageData);
@@ -138,6 +160,7 @@ export default function ShopProductsPanel({
       setProductUnitPrice('');
       setProductDescription('');
       setProductWebActive(true);
+      setProductStock('');
       setPendingImageData(null);
       showToast('Producto agregado');
       await onRefresh();
@@ -154,12 +177,18 @@ export default function ShopProductsPanel({
     setEditUnitPrice(p.unitPrice ?? '');
     setEditDescription(p.description ?? '');
     setEditWebActive(p.webActive !== false);
+    setEditStock(p.stock == null ? '' : String(p.stock));
   };
 
   const saveEditProduct = async (id: string) => {
     const name = editName.trim();
     if (!name) {
       showToast('El nombre no puede estar vacío', 'err');
+      return;
+    }
+    const parsedStock = parseStockInput(editStock);
+    if (parsedStock === 'invalid') {
+      showToast('El stock debe ser un número entero ≥ 0', 'err');
       return;
     }
     try {
@@ -169,6 +198,7 @@ export default function ShopProductsPanel({
         unitPrice: up ? up : null,
         description: editDescription.trim() || null,
         webActive: editWebActive,
+        stock: parsedStock,
       });
       setEditingProductId(null);
       showToast('Producto actualizado');
@@ -212,9 +242,9 @@ export default function ShopProductsPanel({
           <h3 className="text-lg font-black text-zinc-900">Catálogo de productos</h3>
         </div>
         <p className="mb-4 text-sm text-zinc-500">
-          Cargá nombre, precio, foto y descripción. Los productos con «Visible en la web» y precio aparecen en la
-          tienda pública para compra con Mercado Pago. Los puntos se configuran en{' '}
-          <strong className="font-semibold text-zinc-700">Puntos</strong>.
+          Cargá nombre, precio, foto, stock y descripción. Con «Visible en la web» y precio aparecen en la tienda
+          pública. Si el stock es 0, se ocultan solos. Dejá stock vacío para no controlar unidades. Los puntos se
+          configuran en <strong className="font-semibold text-zinc-700">Puntos</strong>.
         </p>
 
         <ul className="mb-6 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
@@ -243,7 +273,14 @@ export default function ShopProductsPanel({
                       placeholder="Precio venta"
                       className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                     />
-                    <label className="flex items-center gap-2 text-sm text-zinc-600">
+                    <input
+                      value={editStock}
+                      onChange={(e) => setEditStock(e.target.value)}
+                      inputMode="numeric"
+                      placeholder="Stock (vacío = ilimitado)"
+                      className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    />
+                    <label className="flex items-center gap-2 text-sm text-zinc-600 sm:col-span-2">
                       <input
                         type="checkbox"
                         checked={editWebActive}
@@ -296,6 +333,9 @@ export default function ShopProductsPanel({
                             <span className="ml-2 text-xs text-zinc-400">· Oculto en web</span>
                           )}
                         </p>
+                        <p className={`mt-0.5 text-xs font-semibold ${stockStatusLabel(p).className}`}>
+                          {stockStatusLabel(p).text}
+                        </p>
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -342,7 +382,17 @@ export default function ShopProductsPanel({
               className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
             />
           </div>
-          <label className="flex items-end gap-2 pb-2.5 text-sm text-zinc-600">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Stock</label>
+            <input
+              value={productStock}
+              onChange={(e) => setProductStock(e.target.value)}
+              inputMode="numeric"
+              placeholder="Vacío = ilimitado"
+              className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+            />
+          </div>
+          <label className="flex items-end gap-2 pb-2.5 text-sm text-zinc-600 sm:col-span-2">
             <input
               type="checkbox"
               checked={productWebActive}
