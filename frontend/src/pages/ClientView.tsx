@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, ChevronDown, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle, ExternalLink } from 'lucide-react';
 import { BOOKING_FALLBACK_WHATSAPP_URL, checkBackendHealth } from '../utils/backendHealth';
 import {
   SHOP_ADDRESS,
@@ -24,7 +24,6 @@ import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
 import { parseArsAmount } from '../utils/money';
 import {
   calculateBookingDepositPreview,
-  isPromotionActiveOnDate,
 } from '../utils/sitePromotions';
 import {
   format,
@@ -61,6 +60,8 @@ const TIME_SLOTS = [
   '18:00', '18:20', '18:40',
   '19:00', '19:20', '19:40'
 ];
+
+const SERVICES_PREVIEW_COUNT = 3;
 
 type DayHours = { openTime: string; closeTime: string };
 
@@ -138,6 +139,7 @@ export default function ClientView() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
+  const [servicesExpanded, setServicesExpanded] = useState(false);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [openWeekdays, setOpenWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [closedDates, setClosedDates] = useState<string[]>([]);
@@ -270,10 +272,13 @@ export default function ClientView() {
     );
   }, [selectedServiceRow, profile?.depositExempt, publicPromotions, selectedDate]);
 
-  const bannerPromotions = useMemo(() => {
-    const todayYmd = format(startOfToday(), 'yyyy-MM-dd');
-    return publicPromotions.filter((p) => isPromotionActiveOnDate(p, todayYmd));
-  }, [publicPromotions]);
+  const visibleCatalogServices = useMemo(() => {
+    if (servicesExpanded || services.length <= SERVICES_PREVIEW_COUNT) return services;
+    return services.slice(0, SERVICES_PREVIEW_COUNT);
+  }, [services, servicesExpanded]);
+
+  const hasMoreServices = services.length > SERVICES_PREVIEW_COUNT;
+
   const visibleBarbers = useMemo(() => {
     if (!selectedDate || !selectedService) return barbers;
     const set = new Set(availableBarberIds);
@@ -861,7 +866,7 @@ export default function ClientView() {
 
       </section>
 
-      <SitePromotionBanner promotions={bannerPromotions} />
+      <SitePromotionBanner promotions={publicPromotions} />
 
       {/* Services Section */}
       <section id="servicios" className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 bg-zinc-950 border-y border-zinc-900">
@@ -872,7 +877,7 @@ export default function ClientView() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
-            {services.map((service) => (
+            {visibleCatalogServices.map((service) => (
               <div key={service.id} className="bg-zinc-900/50 border border-zinc-800 p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl hover:border-[#e5c185]/50 transition-colors group min-w-0">
                 <div className="w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] bg-zinc-950 border border-zinc-800 rounded-lg sm:rounded-xl flex items-center justify-center text-[#e5c185] mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
                   <span className="text-xl sm:text-2xl font-black tracking-wider select-none">
@@ -890,6 +895,29 @@ export default function ClientView() {
               </div>
             ))}
           </div>
+
+          {hasMoreServices && (
+            <div className="mt-8 sm:mt-10 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setServicesExpanded((open) => !open)}
+                className="inline-flex items-center gap-2 rounded-xl border border-[#e5c185]/40 bg-zinc-900/80 px-6 py-3 text-sm font-black uppercase tracking-wider text-[#e5c185] transition-colors hover:border-[#e5c185] hover:bg-zinc-900"
+                aria-expanded={servicesExpanded}
+              >
+                {servicesExpanded ? (
+                  <>
+                    Ver menos servicios
+                    <ChevronDown size={18} className="rotate-180 transition-transform" aria-hidden />
+                  </>
+                ) : (
+                  <>
+                    Ver todos los servicios ({services.length})
+                    <ChevronDown size={18} className="transition-transform" aria-hidden />
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

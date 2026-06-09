@@ -78,7 +78,8 @@ function PromotionScheduleFields({
         </p>
         <WeekdayPicker value={activeWeekdays} onChange={onActiveWeekdaysChange} />
         <p className="mt-1.5 text-[11px] text-zinc-400">
-          Sin selección = todos los días. Ej.: solo lunes para promo semanal.
+          Sin selección = el descuento aplica todos los días. Con días elegidos, el banner se ve
+          siempre pero el beneficio solo al reservar esos días.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -316,8 +317,8 @@ export default function PromotionsPanel({
         <div>
           <h2 className="text-lg font-black text-zinc-900">Promociones del sitio</h2>
           <p className="text-sm text-zinc-500">
-            Configurá banners y descuentos por día. Podés hacer que pagando la seña online quede
-            todo pago en el local.
+            Las promociones activas se muestran siempre en la web. El descuento y la seña promocional
+            solo aplican si el cliente reserva en los días que elijas abajo.
           </p>
         </div>
       </div>

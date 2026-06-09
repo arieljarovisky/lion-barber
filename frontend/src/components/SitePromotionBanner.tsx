@@ -33,16 +33,19 @@ export default function SitePromotionBanner({ promotions }: SitePromotionBannerP
               )}
               {(promo.activeWeekdays?.length || promo.discountPercent) && (
                 <p className="mt-2 text-xs text-zinc-400">
-                  {promo.activeWeekdays?.length ? (
-                    <span>Válida: {formatActiveWeekdays(promo.activeWeekdays)}</span>
-                  ) : null}
-                  {promo.discountPercent != null && promo.discountPercent > 0 && (
-                    <span>
-                      {promo.activeWeekdays?.length ? ' · ' : ''}
+                  {promo.discountPercent != null && promo.discountPercent > 0 ? (
+                    <>
+                      Descuento al reservar:{' '}
+                      {promo.activeWeekdays?.length
+                        ? formatActiveWeekdays(promo.activeWeekdays)
+                        : 'todos los días'}
+                      {' · '}
                       {promo.discountPercent}% del servicio
                       {promo.depositCoversFull ? ' pagando la seña online' : ''}
-                    </span>
-                  )}
+                    </>
+                  ) : promo.activeWeekdays?.length ? (
+                    <>Vigente al reservar: {formatActiveWeekdays(promo.activeWeekdays)}</>
+                  ) : null}
                 </p>
               )}
             </div>
