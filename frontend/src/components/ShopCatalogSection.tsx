@@ -99,7 +99,7 @@ export default function ShopCatalogSection({
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 sm:gap-6">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-6 lg:grid-cols-3">
           {products.map((product) => {
             const price = productUnitPriceArs(product);
             const qty = cart[product.id] ?? 0;
@@ -107,7 +107,7 @@ export default function ShopCatalogSection({
             return (
               <article
                 key={product.id}
-                className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 sm:rounded-2xl"
+                className="flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50 sm:rounded-2xl"
               >
                 <div className="aspect-square overflow-hidden bg-zinc-950">
                   {imageSrc ? (
@@ -119,45 +119,51 @@ export default function ShopCatalogSection({
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-zinc-700">
-                      <ShoppingBag size={48} strokeWidth={1.25} aria-hidden />
+                      <ShoppingBag className="h-8 w-8 sm:h-12 sm:w-12" strokeWidth={1.25} aria-hidden />
                     </div>
                   )}
                 </div>
-                <div className="flex flex-1 flex-col p-5 sm:p-6">
-                  <h3 className="font-serif text-xl font-bold text-white">{product.name}</h3>
+                <div className="flex flex-1 flex-col p-2.5 sm:p-6">
+                  <h3 className="line-clamp-2 font-serif text-xs font-bold leading-tight text-white sm:text-xl">
+                    {product.name}
+                  </h3>
                   {product.description && (
-                    <p className="mt-2 line-clamp-3 text-sm font-light text-zinc-400">{product.description}</p>
+                    <p className="mt-1 line-clamp-2 text-[10px] font-light text-zinc-400 sm:mt-2 sm:line-clamp-3 sm:text-sm">
+                      {product.description}
+                    </p>
                   )}
-                  <div className="mt-auto flex flex-wrap items-end justify-between gap-3 pt-4">
-                    <span className="font-sans text-2xl font-black text-[#e5c185]">
+                  <div className="mt-auto flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-3 sm:pt-4">
+                    <span className="font-sans text-sm font-black text-[#e5c185] sm:text-2xl">
                       {price != null ? `$${price.toLocaleString('es-AR')}` : product.unitPrice}
                     </span>
                     {qty === 0 ? (
                       <button
                         type="button"
                         onClick={() => setQty(product.id, 1)}
-                        className="rounded-lg bg-[#e5c185] px-4 py-2 text-xs font-black uppercase tracking-wider text-zinc-950 hover:bg-[#d4b074]"
+                        className="w-full rounded-md bg-[#e5c185] px-2 py-1.5 text-[10px] font-black uppercase tracking-wide text-zinc-950 hover:bg-[#d4b074] sm:w-auto sm:rounded-lg sm:px-4 sm:py-2 sm:text-xs sm:tracking-wider"
                       >
                         Agregar
                       </button>
                     ) : (
-                      <div className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1">
+                      <div className="flex w-full items-center justify-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 sm:w-auto sm:gap-2 sm:rounded-lg sm:px-2 sm:py-1">
                         <button
                           type="button"
                           onClick={() => setQty(product.id, qty - 1)}
-                          className="rounded p-1 text-zinc-400 hover:text-white"
+                          className="rounded p-0.5 text-zinc-400 hover:text-white sm:p-1"
                           aria-label="Quitar uno"
                         >
-                          <Minus size={16} />
+                          <Minus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                         </button>
-                        <span className="min-w-[1.5rem] text-center text-sm font-bold text-white">{qty}</span>
+                        <span className="min-w-[1.25rem] text-center text-xs font-bold text-white sm:min-w-[1.5rem] sm:text-sm">
+                          {qty}
+                        </span>
                         <button
                           type="button"
                           onClick={() => setQty(product.id, qty + 1)}
-                          className="rounded p-1 text-zinc-400 hover:text-white"
+                          className="rounded p-0.5 text-zinc-400 hover:text-white sm:p-1"
                           aria-label="Agregar uno"
                         >
-                          <Plus size={16} />
+                          <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                         </button>
                       </div>
                     )}
