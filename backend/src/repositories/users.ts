@@ -43,6 +43,7 @@ export interface DbUser {
   subscription_plan_id?: string | null;
   subscription_period_start?: string | Date | null;
   subscription_cuts_used?: number;
+  subscription_group_id?: number | null;
   /** Saldo cuenta corriente en ARS. Negativo = el cliente debe plata. */
   account_balance_ars?: number | string | null;
   created_at: Date;
@@ -144,11 +145,14 @@ export async function updateAdminClientById(
   }
 
   if (input.depositExempt != null) {
-    const subRows = await query<{ subscription_plan_id: string | null }[]>(
-      'SELECT subscription_plan_id FROM users WHERE id = ? LIMIT 1',
+    const subRows = await query<{ subscription_group_id: number | null; subscription_plan_id: string | null }[]>(
+      'SELECT subscription_group_id, subscription_plan_id FROM users WHERE id = ? LIMIT 1',
       [userId]
     );
-    if (!subRows[0]?.subscription_plan_id) {
+    const hasSub =
+      Boolean(subRows[0]?.subscription_group_id) ||
+      Boolean(subRows[0]?.subscription_plan_id?.trim());
+    if (!hasSub) {
       await query('UPDATE users SET deposit_exempt = ? WHERE id = ? AND role = ?', [
         input.depositExempt ? 1 : 0,
         userId,

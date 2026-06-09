@@ -16,6 +16,12 @@ const publicDir = path.join(root, 'public');
 /** Logo oficial Lion Barber (cabezal + tipografía). */
 const PRIMARY_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.01 (3).jpeg';
 
+/** Cabezal circular para favicons (legible a 16px). */
+const CIRCLE_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.00 (1).jpeg';
+const HEAD_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.01 (1).jpeg';
+
+const FAVICON_BG = { r: 9, g: 9, b: 11, alpha: 1 };
+
 const BG_TOLERANCE = 48;
 
 function sourcePath() {
@@ -136,20 +142,41 @@ async function writeMainLogo() {
 }
 
 async function writeSquareIcon(destName, px) {
-  const meta = await sharp(sourcePath()).metadata();
-  const targetW = Math.min(640, meta.width ?? 640);
-  await (await loadTransparentLogo(targetW))
+  const input = path.join(srcDir, CIRCLE_LOGO);
+  if (!fs.existsSync(input)) {
+    throw new Error(`No se encontró el logo circular: ${input}`);
+  }
+  await sharp(input)
     .resize(px, px, {
-      fit: 'contain',
+      fit: 'cover',
       position: 'centre',
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      background: FAVICON_BG,
     })
+    .flatten({ background: FAVICON_BG })
     .png()
     .toFile(path.join(publicDir, destName));
   console.log('ok', destName);
 }
 
+async function writeCircleAssets() {
+  for (const [sourceName, destName, size] of [
+    [CIRCLE_LOGO, 'lion-logo-circle.png', 512],
+    [HEAD_LOGO, 'lion-logo-head.png', 512],
+  ]) {
+    const input = path.join(srcDir, sourceName);
+    if (!fs.existsSync(input)) {
+      throw new Error(`No se encontró: ${input}`);
+    }
+    await sharp(input)
+      .resize(size, size, { fit: 'cover', position: 'centre' })
+      .png({ quality: 92 })
+      .toFile(path.join(publicDir, destName));
+    console.log('ok', destName);
+  }
+}
+
 await writeMainLogo();
+await writeCircleAssets();
 
 for (const [name, px] of [
   ['favicon-16x16.png', 16],

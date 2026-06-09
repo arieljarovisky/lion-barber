@@ -331,6 +331,12 @@ export interface SitePromotion {
   sortOrder?: number;
 }
 
+export interface ClientSubscriptionMember {
+  id: number;
+  name: string;
+  email: string;
+}
+
 export interface ClientSubscriptionInfo {
   planId: string;
   planName: string;
@@ -341,6 +347,9 @@ export interface ClientSubscriptionInfo {
   periodEnd: string | null;
   validityDays?: number | null;
   monthlyPrice: string;
+  groupId?: number;
+  ownerUserId?: number | null;
+  sharedMembers?: ClientSubscriptionMember[];
 }
 
 /** Respuesta de GET /api/users/clients (solo admin). */
@@ -794,6 +803,24 @@ export const api = {
     fetchApi<void>(`/api/users/clients/${encodeURIComponent(String(clientId))}`, {
       method: 'DELETE',
     }),
+
+  linkAdminClientToSubscription: (clientId: number, hostUserId: number) =>
+    fetchApi<{ client: AdminClientWithHistory }>(
+      `/api/users/clients/${encodeURIComponent(String(clientId))}/subscription-group/link`,
+      { method: 'POST', body: JSON.stringify({ hostUserId }) }
+    ),
+
+  addAdminClientSubscriptionMember: (hostClientId: number, memberUserId: number) =>
+    fetchApi<{ client: AdminClientWithHistory }>(
+      `/api/users/clients/${encodeURIComponent(String(hostClientId))}/subscription-group/members`,
+      { method: 'POST', body: JSON.stringify({ memberUserId }) }
+    ),
+
+  removeAdminClientSubscriptionMember: (hostClientId: number, memberUserId: number) =>
+    fetchApi<{ client: AdminClientWithHistory }>(
+      `/api/users/clients/${encodeURIComponent(String(hostClientId))}/subscription-group/members/${encodeURIComponent(String(memberUserId))}`,
+      { method: 'DELETE' }
+    ),
 
   getFixedMonthlyExpenses: () =>
     fetchApi<{ items: FixedMonthlyExpense[] }>('/api/expenses/fixed'),

@@ -86,6 +86,54 @@ async function migrateSubscriptionPlanCategoryLabels(): Promise<void> {
   );
 }
 
+async function migrateLegacySubscriptionsToGroups(): Promise<void> {
+  if (!(await tableHasColumn('users', 'subscription_group_id'))) return;
+  const [rawRows] = await pool.execute(
+    `SELECT id, subscription_plan_id, subscription_period_start, subscription_cuts_used
+     FROM users
+     WHERE role = 'client'
+       AND subscription_plan_id IS NOT NULL
+       AND TRIM(subscription_plan_id) != ''
+       AND subscription_group_id IS NULL`
+  );
+  const rows = rawRows as {
+    id: number;
+    subscription_plan_id: string;
+    subscription_period_start: string | Date | null;
+    subscription_cuts_used: number;
+  }[];
+  for (const u of rows) {
+    const periodRaw = u.subscription_period_start;
+    let periodStart: string;
+    if (periodRaw instanceof Date) {
+      periodStart = periodRaw.toISOString().slice(0, 10);
+    } else if (typeof periodRaw === 'string' && periodRaw.length >= 10) {
+      periodStart = periodRaw.slice(0, 10);
+    } else {
+      periodStart = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+    }
+    const cutsUsed = Math.max(0, Number(u.subscription_cuts_used ?? 0));
+    const [ins] = await pool.execute(
+      `INSERT INTO client_subscription_groups
+       (subscription_plan_id, period_start, cuts_used, owner_user_id)
+       VALUES (?, ?, ?, ?)`,
+      [u.subscription_plan_id.trim(), periodStart, cutsUsed, u.id]
+    );
+    const groupId = (ins as { insertId: number }).insertId;
+    await pool.execute(
+      `UPDATE users SET subscription_group_id = ?, subscription_plan_id = NULL,
+       subscription_period_start = NULL, subscription_cuts_used = 0, deposit_exempt = 1
+       WHERE id = ? AND role = 'client'`,
+      [groupId, u.id]
+    );
+  }
+}
+
 async function migrateMonotributoLimitColumns(): Promise<void> {
   const hasAnnual = await tableHasColumn('barbers', 'monotributo_annual_limit');
   const hasMonthly = await tableHasColumn('barbers', 'monotributo_monthly_limit');
@@ -258,6 +306,24 @@ export async function initDb(): Promise<void> {
   `);
   await ensureSubscriptionPlanPresentationColumns();
   await migrateSubscriptionPlanCategoryLabels();
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS client_subscription_groups (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      subscription_plan_id VARCHAR(50) NOT NULL,
+      period_start DATE NOT NULL,
+      cuts_used INT NOT NULL DEFAULT 0,
+      owner_user_id INT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_sub_group_plan (subscription_plan_id),
+      KEY idx_sub_group_owner (owner_user_id)
+    )
+  `);
+  try {
+    await pool.execute('ALTER TABLE users ADD COLUMN subscription_group_id INT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  await migrateLegacySubscriptionsToGroups();
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS site_promotions (
       id VARCHAR(50) PRIMARY KEY,

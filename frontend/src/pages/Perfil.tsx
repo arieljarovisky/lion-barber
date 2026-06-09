@@ -554,6 +554,15 @@ export default function Perfil() {
                   <> · Sin vencimiento por fecha (termina al usar todos los cortes)</>
                 )}
               </p>
+              {sub.sharedMembers && sub.sharedMembers.length > 1 && (
+                <p className="text-xs text-violet-300/90 mb-3">
+                  Abono compartido con:{' '}
+                  {sub.sharedMembers
+                    .filter((m) => m.id !== profile.id)
+                    .map((m) => m.name)
+                    .join(', ')}
+                </p>
+              )}
 
               {sub.cutsRemaining > 0 ? (
                 <p className="text-sm text-zinc-300 mb-4">

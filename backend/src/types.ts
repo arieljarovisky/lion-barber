@@ -99,6 +99,12 @@ export interface SubscriptionPlan {
   sortOrder?: number;
 }
 
+export interface ClientSubscriptionMember {
+  id: number;
+  name: string;
+  email: string;
+}
+
 export interface ClientSubscriptionInfo {
   planId: string;
   planName: string;
@@ -109,6 +115,9 @@ export interface ClientSubscriptionInfo {
   periodEnd: string | null;
   validityDays?: number | null;
   monthlyPrice: string;
+  groupId?: number;
+  ownerUserId?: number | null;
+  sharedMembers?: ClientSubscriptionMember[];
 }
 
 /** Desglose persistido al facturar con AFIP. */
