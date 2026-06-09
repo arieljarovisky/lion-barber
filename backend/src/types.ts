@@ -62,6 +62,10 @@ export interface Appointment {
   products?: AppointmentProductLine[] | null;
   /** Si el turno consumió un corte del abono del cliente. */
   subscriptionCutApplied?: boolean;
+  /** Promoción aplicada al reservar (descuento por día). */
+  promotionId?: string;
+  /** La seña online cubrió todo el importe promocional (sin saldo en local). */
+  promotionFullyPaid?: boolean;
   /** Propina en ARS; no se incluye en factura AFIP. */
   tipAmount?: number;
   /** Usuario del panel que cargó el turno (staff/admin). */

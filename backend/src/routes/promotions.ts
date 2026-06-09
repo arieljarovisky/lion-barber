@@ -24,14 +24,35 @@ router.get('/', requireAuth, requireAdmin, async (_req, res) => {
   }
 });
 
+function parseWeekdaysInput(raw: unknown): number[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map((n) => Number(n)).filter((n) => n >= 1 && n <= 7))].sort(
+    (a, b) => a - b
+  );
+}
+
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
-  const { title, description, badgeText, ctaLabel, ctaHref, active } = req.body as {
+  const {
+    title,
+    description,
+    badgeText,
+    ctaLabel,
+    ctaHref,
+    active,
+    activeWeekdays,
+    discountPercent,
+    depositCoversFull,
+  } = req.body as {
     title?: string;
     description?: string;
     badgeText?: string;
     ctaLabel?: string;
     ctaHref?: string;
     active?: boolean;
+    activeWeekdays?: unknown;
+    discountPercent?: unknown;
+    depositCoversFull?: boolean;
   };
   if (!title || typeof title !== 'string' || !title.trim()) {
     return res.status(400).json({ error: 'Se requiere título de la promoción' });
@@ -44,6 +65,12 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       ctaLabel,
       ctaHref,
       active,
+      activeWeekdays: parseWeekdaysInput(activeWeekdays),
+      discountPercent:
+        discountPercent === null || discountPercent === ''
+          ? null
+          : Number(discountPercent),
+      depositCoversFull,
     });
     res.status(201).json(promotion);
   } catch (err) {
@@ -53,7 +80,18 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 });
 
 router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
-  const { title, description, badgeText, ctaLabel, ctaHref, active, sortOrder } = req.body as {
+  const {
+    title,
+    description,
+    badgeText,
+    ctaLabel,
+    ctaHref,
+    active,
+    sortOrder,
+    activeWeekdays,
+    discountPercent,
+    depositCoversFull,
+  } = req.body as {
     title?: string;
     description?: string;
     badgeText?: string;
@@ -61,6 +99,9 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
     ctaHref?: string;
     active?: boolean;
     sortOrder?: unknown;
+    activeWeekdays?: unknown;
+    discountPercent?: unknown;
+    depositCoversFull?: boolean;
   };
   const updates: Parameters<typeof repo.updatePromotion>[1] = {};
   if (title !== undefined) {
@@ -81,6 +122,14 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
     }
     updates.sortOrder = Math.floor(order);
   }
+  if (activeWeekdays !== undefined) {
+    updates.activeWeekdays = parseWeekdaysInput(activeWeekdays) ?? [];
+  }
+  if (discountPercent !== undefined) {
+    updates.discountPercent =
+      discountPercent === null || discountPercent === '' ? null : Number(discountPercent);
+  }
+  if (depositCoversFull !== undefined) updates.depositCoversFull = Boolean(depositCoversFull);
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'Nada para actualizar' });
   }

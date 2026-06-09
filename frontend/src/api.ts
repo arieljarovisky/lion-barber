@@ -136,6 +136,10 @@ export interface Appointment {
   updatedByUserId?: number;
   /** Si se descontó un corte del abono al cobrar con método Abono. */
   subscriptionCutApplied?: boolean;
+  /** Promoción aplicada al reservar. */
+  promotionId?: string;
+  /** La seña cubrió todo el importe promocional (sin saldo en local). */
+  promotionFullyPaid?: boolean;
 }
 
 export interface DailyCashClose {
@@ -329,6 +333,12 @@ export interface SitePromotion {
   ctaHref: string;
   active: boolean;
   sortOrder?: number;
+  /** Días ISO 1=lun … 7=dom. Vacío = todos los días. */
+  activeWeekdays?: number[];
+  /** Porcentaje del precio del servicio a cobrar (ej. 50 = pagás la mitad). */
+  discountPercent?: number | null;
+  /** La seña online cubre todo el importe promocional. */
+  depositCoversFull?: boolean;
 }
 
 export interface ClientSubscriptionMember {
@@ -520,6 +530,9 @@ export const api = {
     ctaLabel?: string;
     ctaHref?: string;
     active?: boolean;
+    activeWeekdays?: number[];
+    discountPercent?: number | null;
+    depositCoversFull?: boolean;
   }) =>
     fetchApi<SitePromotion>('/api/promotions', {
       method: 'POST',
@@ -536,6 +549,9 @@ export const api = {
       ctaHref: string;
       active: boolean;
       sortOrder: number;
+      activeWeekdays: number[];
+      discountPercent: number | null;
+      depositCoversFull: boolean;
     }>
   ) =>
     fetchApi<SitePromotion>(`/api/promotions/${encodeURIComponent(id)}`, {

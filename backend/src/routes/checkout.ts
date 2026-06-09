@@ -30,7 +30,14 @@ import { getSubscriptionPlanById } from '../repositories/subscriptionPlans.js';
 import {
   getSubscriptionPaymentByMpId,
   recordSubscriptionPayment,
+  getActivePromotions,
+  getPromotionById,
 } from '../repositories/promotions.js';
+import {
+  calculateBookingDepositArs,
+  isPromotionActiveOnDate,
+  resolveBookingPromotion,
+} from '../services/sitePromotions.js';
 import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
 import { parseMercadoPagoTransactionAmountArs } from '../mercadopagoAmount.js';
 
@@ -114,7 +121,32 @@ async function createMercadoPagoSenaPreference(
   if (!servicePriceArs) {
     throw new Error('No se pudo calcular la seña: precio del servicio inválido.');
   }
-  const amountArs = calculateDepositAmountArs(servicePriceArs, DEPOSIT_PERCENT);
+
+  let amountArs = calculateDepositAmountArs(servicePriceArs, DEPOSIT_PERCENT);
+  let itemTitle = 'Seña — Lion Barber';
+
+  const existingApp = input.appointmentId
+    ? await repo.getAppointmentById(input.appointmentId)
+    : null;
+  let promo =
+    existingApp?.promotionId != null
+      ? await getPromotionById(existingApp.promotionId)
+      : null;
+  if (promo && !isPromotionActiveOnDate(promo, input.date)) {
+    promo = null;
+  }
+  if (!promo) {
+    const activePromos = await getActivePromotions();
+    promo = resolveBookingPromotion(activePromos, input.date);
+  }
+  const depositCalc = calculateBookingDepositArs(servicePriceArs, DEPOSIT_PERCENT, promo);
+  amountArs = depositCalc.amountArs;
+  if (depositCalc.promotionFullyPaid && promo?.discountPercent) {
+    itemTitle = `Promo ${promo.discountPercent}% — Lion Barber (todo pago online)`;
+  } else if (promo?.discountPercent) {
+    itemTitle = `Seña — Lion Barber (promo ${promo.discountPercent}%)`;
+  }
+
   const externalReference = buildBookingRef({
     appointmentId: input.appointmentId,
     name: input.name,
@@ -135,7 +167,7 @@ async function createMercadoPagoSenaPreference(
     items: [
       {
         id: 'lion-sena',
-        title: 'Seña — Lion Barber',
+        title: itemTitle,
         quantity: 1,
         unit_price: amountArs,
         currency_id: 'ARS',
@@ -519,6 +551,16 @@ router.post('/sena', async (req, res) => {
   let pending;
   const depositMinutes = getPendingPaymentMinutes();
   const paymentDueAt = paymentDueAtFromNow(depositMinutes);
+
+  const serviceEntity = serviceId ? await getServiceById(serviceId) : null;
+  const servicePriceArs = parseArsAmount(serviceEntity?.price ?? service);
+  const activePromos = await getActivePromotions();
+  const bookingPromo = resolveBookingPromotion(activePromos, date);
+  const depositCalc =
+    servicePriceArs != null
+      ? calculateBookingDepositArs(servicePriceArs, DEPOSIT_PERCENT, bookingPromo)
+      : null;
+
   try {
     pending = await repo.createAppointment({
       name,
@@ -533,6 +575,8 @@ router.post('/sena', async (req, res) => {
       paymentDueAt,
       depositPaid: false,
       userId: uid,
+      promotionId: depositCalc?.promotionId ?? undefined,
+      promotionFullyPaid: depositCalc?.promotionFullyPaid ?? false,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'No se pudo reservar temporalmente el horario';
@@ -872,6 +916,15 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
   }
 
   try {
+    const activePromos = await getActivePromotions();
+    const bookingPromo = resolveBookingPromotion(activePromos, ref.d);
+    const serviceEntity = ref.i ? await getServiceById(ref.i) : null;
+    const servicePriceArs = parseArsAmount(serviceEntity?.price ?? ref.s);
+    const depositCalc =
+      servicePriceArs != null
+        ? calculateBookingDepositArs(servicePriceArs, DEPOSIT_PERCENT, bookingPromo)
+        : null;
+
     const created = await repo.createAppointment({
       name: ref.n,
       phone: ref.p,
@@ -884,6 +937,8 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       depositPaid: true,
       depositAmountArs: depositAmountArs ?? undefined,
       mercadopagoPaymentId: paymentId,
+      promotionId: depositCalc?.promotionId ?? undefined,
+      promotionFullyPaid: depositCalc?.promotionFullyPaid ?? false,
       ...(userId != null && !Number.isNaN(userId) ? { userId } : {}),
     });
     void notifyBarberByWhatsappOnDepositPaid(created);

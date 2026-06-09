@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles } from 'lucide-react';
 import type { SitePromotion } from '../api';
+import { formatActiveWeekdays } from '../utils/sitePromotions';
 
 type SitePromotionBannerProps = {
   promotions: SitePromotion[];
@@ -29,6 +30,20 @@ export default function SitePromotionBanner({ promotions }: SitePromotionBannerP
               <h2 className="text-lg font-black text-white sm:text-xl">{promo.title}</h2>
               {promo.description && (
                 <p className="mt-1 text-sm text-zinc-300 sm:text-base">{promo.description}</p>
+              )}
+              {(promo.activeWeekdays?.length || promo.discountPercent) && (
+                <p className="mt-2 text-xs text-zinc-400">
+                  {promo.activeWeekdays?.length ? (
+                    <span>Válida: {formatActiveWeekdays(promo.activeWeekdays)}</span>
+                  ) : null}
+                  {promo.discountPercent != null && promo.discountPercent > 0 && (
+                    <span>
+                      {promo.activeWeekdays?.length ? ' · ' : ''}
+                      {promo.discountPercent}% del servicio
+                      {promo.depositCoversFull ? ' pagando la seña online' : ''}
+                    </span>
+                  )}
+                </p>
               )}
             </div>
             {(promo.ctaLabel || promo.ctaHref) && (

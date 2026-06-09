@@ -21,7 +21,11 @@ import { SubscriptionPricingCards } from '../components/SubscriptionPricingCards
 import SubscriptionCheckoutConfirmModal from '../components/SubscriptionCheckoutConfirmModal';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
-import { calculateDepositAmountArs, parseArsAmount } from '../utils/money';
+import { parseArsAmount } from '../utils/money';
+import {
+  calculateBookingDepositPreview,
+  isPromotionActiveOnDate,
+} from '../utils/sitePromotions';
 import {
   format,
   parse,
@@ -254,12 +258,22 @@ export default function ClientView() {
   const selectedServiceRow = services.find((s) => s.id === selectedService);
   const selectedServiceDuration = selectedServiceRow?.duration ?? 30;
   const serviceSelected = Boolean(selectedService);
-  const depositPreviewArs = useMemo(() => {
+  const depositPreview = useMemo(() => {
     if (!selectedServiceRow?.price || profile?.depositExempt) return null;
     const price = parseArsAmount(selectedServiceRow.price);
     if (price == null) return null;
-    return calculateDepositAmountArs(price, DEPOSIT_PERCENT);
-  }, [selectedServiceRow, profile?.depositExempt]);
+    return calculateBookingDepositPreview(
+      price,
+      DEPOSIT_PERCENT,
+      publicPromotions,
+      selectedDate || null
+    );
+  }, [selectedServiceRow, profile?.depositExempt, publicPromotions, selectedDate]);
+
+  const bannerPromotions = useMemo(() => {
+    const todayYmd = format(startOfToday(), 'yyyy-MM-dd');
+    return publicPromotions.filter((p) => isPromotionActiveOnDate(p, todayYmd));
+  }, [publicPromotions]);
   const visibleBarbers = useMemo(() => {
     if (!selectedDate || !selectedService) return barbers;
     const set = new Set(availableBarberIds);
@@ -847,7 +861,7 @@ export default function ClientView() {
 
       </section>
 
-      <SitePromotionBanner promotions={publicPromotions} />
+      <SitePromotionBanner promotions={bannerPromotions} />
 
       {/* Services Section */}
       <section id="servicios" className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 bg-zinc-950 border-y border-zinc-900">
@@ -1359,13 +1373,35 @@ export default function ClientView() {
                   </div>
 
                   <div className={`flex flex-col gap-3 mt-4 transition-opacity ${serviceSelected ? '' : 'opacity-40 pointer-events-none'}`}>
-                    {depositPreviewArs != null && (
+                    {depositPreview != null && (
                       <p className="text-center text-sm text-zinc-400">
-                        Seña online:{' '}
-                        <strong className="text-[#e5c185] tabular-nums">
-                          ${depositPreviewArs.toLocaleString('es-AR')}
-                        </strong>{' '}
-                        ({DEPOSIT_PERCENT}% del servicio · el resto se abona en el local)
+                        {depositPreview.fullyPaidOnDeposit ? (
+                          <>
+                            Promo activa: pagás online{' '}
+                            <strong className="text-[#e5c185] tabular-nums">
+                              ${depositPreview.amountArs.toLocaleString('es-AR')}
+                            </strong>{' '}
+                            ({depositPreview.promotion?.discountPercent}% del servicio) y quedás
+                            con todo pago. No debés nada en el local.
+                          </>
+                        ) : depositPreview.promotion ? (
+                          <>
+                            Seña online:{' '}
+                            <strong className="text-[#e5c185] tabular-nums">
+                              ${depositPreview.amountArs.toLocaleString('es-AR')}
+                            </strong>{' '}
+                            ({DEPOSIT_PERCENT}% del servicio · promo {depositPreview.promotion.discountPercent}%
+                            ese día)
+                          </>
+                        ) : (
+                          <>
+                            Seña online:{' '}
+                            <strong className="text-[#e5c185] tabular-nums">
+                              ${depositPreview.amountArs.toLocaleString('es-AR')}
+                            </strong>{' '}
+                            ({DEPOSIT_PERCENT}% del servicio · el resto se abona en el local)
+                          </>
+                        )}
                       </p>
                     )}
                     <button

@@ -334,9 +334,41 @@ export async function initDb(): Promise<void> {
       cta_href VARCHAR(500) NULL,
       active TINYINT(1) NOT NULL DEFAULT 1,
       sort_order INT NOT NULL DEFAULT 0,
+      active_weekdays VARCHAR(32) NULL,
+      discount_percent INT NULL,
+      deposit_covers_full TINYINT(1) NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  try {
+    await pool.execute('ALTER TABLE site_promotions ADD COLUMN active_weekdays VARCHAR(32) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE site_promotions ADD COLUMN discount_percent INT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE site_promotions ADD COLUMN deposit_covers_full TINYINT(1) NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN promotion_id VARCHAR(50) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE appointments ADD COLUMN promotion_fully_paid TINYINT(1) NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS subscription_payment_events (
       mercadopago_payment_id VARCHAR(64) PRIMARY KEY,
