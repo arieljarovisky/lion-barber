@@ -18,42 +18,42 @@ export default function SitePromotionBanner({ promotions }: SitePromotionBannerP
 
   return (
     <section className="border-y border-[#e5c185]/20 bg-gradient-to-r from-[#e5c185]/10 via-zinc-900 to-[#e5c185]/10 px-4 py-6 sm:px-6">
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-3">
         {promotions.map((promo) => {
           const discountLabel = promoDiscountLabel(promo);
           return (
             <article
               key={promo.id}
-              className="flex aspect-square flex-col rounded-2xl border border-[#e5c185]/30 bg-zinc-950/80 p-4 shadow-lg sm:p-5"
+              className="flex aspect-square flex-col rounded-lg border border-[#e5c185]/30 bg-zinc-950/80 p-2.5 shadow-lg sm:rounded-2xl sm:p-5"
             >
               <div className="flex flex-1 flex-col items-center justify-center text-center">
                 {discountLabel ? (
-                  <div className="mb-2 flex flex-col items-center leading-none">
-                    <span className="font-sans text-5xl font-black tabular-nums tracking-tight text-[#e5c185] sm:text-6xl">
+                  <div className="mb-1 flex flex-col items-center leading-none sm:mb-2">
+                    <span className="font-sans text-3xl font-black tabular-nums tracking-tight text-[#e5c185] sm:text-6xl">
                       {discountLabel}
                     </span>
-                    <span className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-[#e5c185]/80">
+                    <span className="mt-0.5 text-[8px] font-black uppercase tracking-[0.15em] text-[#e5c185]/80 sm:mt-1 sm:text-[10px] sm:tracking-[0.2em]">
                       descuento
                     </span>
                   </div>
                 ) : promo.badgeText ? (
-                  <span className="mb-2 rounded-full bg-[#e5c185] px-4 py-1.5 text-xs font-black uppercase tracking-wider text-zinc-950">
+                  <span className="mb-1 rounded-full bg-[#e5c185] px-2 py-1 text-[9px] font-black uppercase tracking-wide text-zinc-950 sm:mb-2 sm:px-4 sm:py-1.5 sm:text-xs sm:tracking-wider">
                     {promo.badgeText}
                   </span>
                 ) : null}
 
                 {!discountLabel && (
-                  <h2 className="line-clamp-2 text-base font-black text-white sm:text-lg">{promo.title}</h2>
+                  <h2 className="line-clamp-2 text-xs font-black text-white sm:text-lg">{promo.title}</h2>
                 )}
 
                 {promo.description && (
-                  <p className="mt-2 line-clamp-3 text-xs uppercase tracking-wide text-zinc-300 sm:text-sm">
+                  <p className="mt-1 line-clamp-2 text-[9px] uppercase tracking-wide text-zinc-300 sm:mt-2 sm:line-clamp-3 sm:text-sm">
                     {promo.description}
                   </p>
                 )}
 
                 {(promo.activeWeekdays?.length || promo.discountPercent) && (
-                  <p className="mt-2 line-clamp-2 text-[10px] text-zinc-500 sm:text-xs">
+                  <p className="mt-1 line-clamp-2 text-[8px] text-zinc-500 sm:mt-2 sm:text-xs">
                     {promo.discountPercent != null && promo.discountPercent > 0 ? (
                       <>
                         Al reservar:{' '}
@@ -72,7 +72,7 @@ export default function SitePromotionBanner({ promotions }: SitePromotionBannerP
               {(promo.ctaLabel || promo.ctaHref) && (
                 <a
                   href={promo.ctaHref || '#reserva'}
-                  className="mt-3 inline-flex w-full shrink-0 items-center justify-center rounded-xl bg-[#e5c185] px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-zinc-950 transition-colors hover:bg-[#d4b074] sm:text-xs"
+                  className="mt-2 inline-flex w-full shrink-0 items-center justify-center rounded-lg bg-[#e5c185] px-2 py-1.5 text-[9px] font-black uppercase tracking-wide text-zinc-950 transition-colors hover:bg-[#d4b074] sm:mt-3 sm:rounded-xl sm:px-4 sm:py-2.5 sm:text-xs sm:tracking-wider"
                 >
                   {promo.ctaLabel || 'Ver más'}
                 </a>
