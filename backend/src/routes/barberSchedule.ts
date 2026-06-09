@@ -14,11 +14,6 @@ function parseWeekday(v: unknown): number | null {
 
 router.get('/:barberId', requireAuth, requireStaffOrAdmin, async (req: AuthRequest, res) => {
   const { barberId } = req.params;
-  if (req.user!.role === 'staff') {
-    if (!req.user!.barberId || req.user!.barberId !== barberId) {
-      return res.status(403).json({ error: 'No autorizado' });
-    }
-  }
   const barber = await getBarberById(barberId);
   if (!barber) return res.status(404).json({ error: 'Barbero no encontrado' });
   const francos = await scheduleRepo.listFrancos(barberId);

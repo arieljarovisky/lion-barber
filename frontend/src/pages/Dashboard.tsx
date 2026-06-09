@@ -328,6 +328,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
   const isStaffBarber = Boolean(staffBarberId);
 
+  const canStaffManageBarber = useCallback(
+    (barberId: string) => !staffBarberId || staffBarberId === barberId,
+    [staffBarberId]
+  );
+
   const notifyBarberForPaidAppointments = useCallback(
     (list: Appointment[]) => {
       if (profile?.role !== 'staff') return;
@@ -640,8 +645,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   /** Vista semana solo para admin (elige un peluquero). Los barberos usan vista por día (día actual / calendario). */
   const isWeekView = selectedBarberId !== 'all' && !isStaffBarber;
   const isDayToday = isSameDay(selectedDate, new Date());
-  /** Un solo peluquero en pantalla (ej. cuenta barbero): layout de día ampliado */
-  const isSingleBarberDayView = !isWeekView && barbers.length === 1;
+  /** Un solo peluquero en pantalla (ej. cuenta barbero en local chico): layout de día ampliado */
+  const isSingleBarberDayView = !isWeekView && barbers.length === 1 && !isStaffBarber;
 
   const loadData = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
@@ -655,17 +660,21 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       ]);
       setAppointments(appRes);
       notifyBarberForPaidAppointments(appRes);
-      const staffBid = profile?.role === 'staff' ? profile.barberId ?? null : null;
-      setBarbers(staffBid ? barbersRes.filter((b) => b.id === staffBid) : barbersRes);
+      setBarbers(barbersRes);
       setServices(servicesRes);
-    } catch {
+    } catch (e) {
       setAppointments([]);
       setBarbers([]);
       setServices([]);
+      if (!opts?.silent) {
+        const msg =
+          e instanceof ApiError ? e.message : 'No se pudo cargar la agenda.';
+        setError(msg);
+      }
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, [dateStr, selectedBarberId, isWeekView, profile?.role, profile?.barberId, notifyBarberForPaidAppointments]);
+  }, [dateStr, selectedBarberId, isWeekView, notifyBarberForPaidAppointments]);
 
   useEffect(() => {
     const from = isWeekView ? weekFromYmd : dateStr;
@@ -723,10 +732,12 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
 
   useEffect(() => {
     if (profile?.role === 'staff' && profile.barberId) {
-      setSelectedBarberId(profile.barberId);
       setScheduleBarberId(profile.barberId);
+      if (!agendasOnly) {
+        setSelectedBarberId(profile.barberId);
+      }
     }
-  }, [profile?.role, profile?.barberId]);
+  }, [profile?.role, profile?.barberId, agendasOnly]);
 
   useEffect(() => {
     if (view === 'horarios' && barbers.length && !scheduleBarberId) {
@@ -1076,6 +1087,10 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
 
   /** Nuevo turno en fecha/hora concretas (clic en hueco libre del calendario). */
   const openCreateModalForSlot = (slotDateStr: string, slotTime: string, explicitBarberId?: string) => {
+    if (explicitBarberId && !canStaffManageBarber(explicitBarberId)) {
+      showToast('Solo podés cargar turnos en tu propia agenda.', 'err');
+      return;
+    }
     if (!isSuperAdmin && closedDateSet.has(slotDateStr)) {
       showToast('Día cerrado: solo super admin puede cargar turnos.', 'error');
       return;
@@ -1084,7 +1099,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     setLinkedClientId(null);
     setNewClientEmail('');
     const defaultBarber =
-      staffBarberId ?? explicitBarberId ?? selectedBarberId ?? barbers[0]?.id ?? '';
+      staffBarberId ??
+      (explicitBarberId && canStaffManageBarber(explicitBarberId) ? explicitBarberId : undefined) ??
+      (selectedBarberId !== 'all' ? selectedBarberId : undefined) ??
+      barbers[0]?.id ??
+      '';
     setForm({
       name: '',
       phone: '',
@@ -1226,7 +1245,23 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       agendaTimeSlots,
       getBlockedSlotsForBarberDate(barber.id, dateStr)
     ).map((row) => {
+      const canManage = canStaffManageBarber(barber.id);
       if (row.kind === 'free') {
+        if (!canManage) {
+          return (
+            <div
+              key={row.slot}
+              className="flex w-full items-center gap-2 rounded-lg py-2.5 text-left text-sm min-h-[2.75rem] opacity-60"
+            >
+              <span className="w-14 font-mono text-zinc-400 flex-shrink-0 text-xs font-semibold tabular-nums">
+                {row.slot}
+              </span>
+              <span className="flex flex-1 items-center gap-1.5 border border-dashed border-zinc-200/60 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-400">
+                Libre
+              </span>
+            </div>
+          );
+        }
         return (
           <button
             key={row.slot}
@@ -1305,22 +1340,26 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                   </a>
                 );
               })()}
-              <button
-                type="button"
-                onClick={() => tryOpenEditModal(app)}
-                className="inline-flex items-center justify-center h-10 w-10 text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
-                title="Editar"
-              >
-                <Pencil size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => void tryDeleteAppointment(app.id)}
-                className="inline-flex items-center justify-center h-10 w-10 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                title="Eliminar"
-              >
-                <Trash2 size={16} />
-              </button>
+              {canManage ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => tryOpenEditModal(app)}
+                    className="inline-flex items-center justify-center h-10 w-10 text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
+                    title="Editar"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void tryDeleteAppointment(app.id)}
+                    className="inline-flex items-center justify-center h-10 w-10 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Eliminar"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1826,7 +1865,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       ? {
           title: 'Agenda de Turnos',
           subtitle: isStaffBarber
-            ? 'Solo tus turnos y tu calendario.'
+            ? 'Ves la agenda de todos; solo podés cargar y editar turnos en tu columna.'
             : 'Calendario por peluquero y gestión de reservas.',
         }
       : view === 'servicios'
@@ -2375,7 +2414,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 className={
                   agendasOnly
                     ? 'flex flex-1 flex-col min-h-0 w-full mb-0'
-                    : 'hidden lg:block max-w-4xl mx-auto mb-8'
+                    : 'max-w-4xl mx-auto mb-8'
                 }
               >
                 <div className="flex items-center justify-between gap-4 mb-4 px-1">
@@ -2540,6 +2579,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                     onCreateSlot={openCreateModalForSlot}
                     onEdit={tryOpenEditModal}
                     onDelete={tryDeleteAppointment}
+                    manageBarberId={staffBarberId}
                     fillAvailableHeight
                     compact={false}
                   />

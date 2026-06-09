@@ -209,7 +209,13 @@ router.get('/', optionalAuth, async (req, res) => {
 
     if (date && typeof date === 'string') {
       if (staffBid) {
-        return res.json(await repo.getAppointmentsByBarber(staffBid, date));
+        if (barberId && typeof barberId === 'string' && barberId !== staffBid) {
+          return res.status(403).json({ error: 'No autorizado' });
+        }
+        if (barberId && typeof barberId === 'string') {
+          return res.json(await repo.getAppointmentsByBarber(staffBid, date));
+        }
+        return res.json(await repo.getAppointmentsByDate(date));
       }
       if (barberId && typeof barberId === 'string') {
         return res.json(await repo.getAppointmentsByBarber(barberId, date));
