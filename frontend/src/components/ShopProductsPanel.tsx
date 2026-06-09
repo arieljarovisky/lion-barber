@@ -4,22 +4,14 @@ import { api, ApiError } from '../api';
 import { useConfirm } from '../contexts/ConfirmContext';
 import type { ShopProduct } from '../api';
 import { resolveUploadUrl } from '../utils/mediaUrl';
+import { prepareProductImageFile, readProductImagePreview } from '../utils/productImageUpload';
 
 type ShopProductsPanelProps = {
   shopProducts: ShopProduct[];
   loading: boolean;
-  onRefresh: () => Promise<void>;
+  onRefresh: (opts?: { silent?: boolean }) => Promise<void>;
   showToast: (message: string, kind?: 'ok' | 'err') => void;
 };
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
-    reader.readAsDataURL(file);
-  });
-}
 
 function ProductImageField({
   productId,
@@ -30,30 +22,35 @@ function ProductImageField({
 }: {
   productId: string;
   imageUrl?: string | null;
-  onUploaded: () => Promise<void>;
+  onUploaded: (opts?: { silent?: boolean }) => Promise<void>;
   showToast: (message: string, kind?: 'ok' | 'err') => void;
   compact?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [imageVersion, setImageVersion] = useState(0);
-  const resolvedImage = resolveUploadUrl(imageUrl, imageVersion);
+  /** Vista previa local inmediata (mientras sube o si el listado aún no trae imageUrl). */
+  const [localPreview, setLocalPreview] = useState<string | undefined>();
+  const resolvedImage =
+    localPreview ?? resolveUploadUrl(imageUrl, imageVersion || undefined);
 
   const handleFile = async (file: File | null) => {
     if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      showToast('Elegí una imagen JPG, PNG o WebP', 'err');
-      return;
-    }
     setUploading(true);
     try {
-      const dataUrl = await readFileAsDataUrl(file);
-      await api.uploadShopProductImage(productId, dataUrl);
+      const dataUrl = await prepareProductImageFile(file);
+      setLocalPreview(dataUrl);
+      const updated = await api.uploadShopProductImage(productId, dataUrl);
+      if (updated.imageUrl) {
+        setLocalPreview(resolveUploadUrl(updated.imageUrl, Date.now()));
+      }
       setImageVersion(Date.now());
       showToast('Imagen guardada');
-      await onUploaded();
+      await onUploaded({ silent: true });
+      if (inputRef.current) inputRef.current.value = '';
     } catch (e) {
-      showToast(e instanceof ApiError ? e.message : 'No se pudo subir la imagen', 'err');
+      setLocalPreview(undefined);
+      showToast(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'No se pudo subir la imagen', 'err');
     } finally {
       setUploading(false);
     }
@@ -78,7 +75,7 @@ function ProductImageField({
         <input
           ref={inputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
           className="hidden"
           onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
         />
@@ -88,7 +85,7 @@ function ProductImageField({
           onClick={() => inputRef.current?.click()}
           className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
         >
-          {uploading ? 'Subiendo…' : imageUrl ? 'Cambiar foto' : 'Subir foto'}
+          {uploading ? 'Subiendo…' : resolvedImage ? 'Cambiar foto' : 'Subir foto'}
         </button>
       </div>
     </div>
@@ -108,6 +105,7 @@ export default function ShopProductsPanel({
   const [productDescription, setProductDescription] = useState('');
   const [productWebActive, setProductWebActive] = useState(true);
   const [pendingImageData, setPendingImageData] = useState<string | null>(null);
+  const [pendingImageLoading, setPendingImageLoading] = useState(false);
   const newImageRef = useRef<HTMLInputElement>(null);
   const [savingProduct, setSavingProduct] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
@@ -280,20 +278,14 @@ export default function ShopProductsPanel({
                 ) : (
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex min-w-0 flex-1 items-start gap-3">
-                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
-                        {resolveUploadUrl(p.imageUrl, p.id) ? (
-                          <img
-                            src={resolveUploadUrl(p.imageUrl, p.id)}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-zinc-300">
-                            <ShoppingBag size={20} aria-hidden />
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
+                      <ProductImageField
+                        productId={p.id}
+                        imageUrl={p.imageUrl}
+                        onUploaded={onRefresh}
+                        showToast={showToast}
+                        compact
+                      />
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium text-zinc-900">{p.name}</p>
                         {p.description && (
                           <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{p.description}</p>
@@ -383,22 +375,33 @@ export default function ShopProductsPanel({
               <input
                 ref={newImageRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  void readFileAsDataUrl(file)
-                    .then(setPendingImageData)
-                    .catch(() => showToast('No se pudo leer la imagen', 'err'));
+                  setPendingImageLoading(true);
+                  void readProductImagePreview(file)
+                    .then((dataUrl) => {
+                      setPendingImageData(dataUrl);
+                      showToast('Imagen lista — tocá «Agregar producto» para guardar');
+                    })
+                    .catch((err) =>
+                      showToast(err instanceof Error ? err.message : 'No se pudo leer la imagen', 'err')
+                    )
+                    .finally(() => {
+                      setPendingImageLoading(false);
+                      if (newImageRef.current) newImageRef.current.value = '';
+                    });
                 }}
               />
               <button
                 type="button"
+                disabled={pendingImageLoading}
                 onClick={() => newImageRef.current?.click()}
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-700"
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-700 disabled:opacity-50"
               >
-                Elegir imagen
+                {pendingImageLoading ? 'Procesando…' : pendingImageData ? 'Cambiar imagen' : 'Elegir imagen'}
               </button>
             </div>
           </div>

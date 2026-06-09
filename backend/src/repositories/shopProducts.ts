@@ -21,7 +21,7 @@ export function productImageApiPath(productId: string): string {
 }
 
 function productRowHasImage(r: DbShopProduct): boolean {
-  if (r.has_image != null) return Boolean(r.has_image);
+  if (r.has_image != null) return Number(r.has_image) === 1;
   return r.image_data != null && String(r.image_data).trim() !== '';
 }
 

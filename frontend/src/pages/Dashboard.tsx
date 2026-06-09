@@ -466,15 +466,15 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     }
   }, [showToast]);
 
-  const loadShopProductsPanel = useCallback(async () => {
-    setShopProductsPanelLoading(true);
+  const loadShopProductsPanel = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setShopProductsPanelLoading(true);
     try {
       const p = await api.getShopProducts();
       setShopProducts(p);
     } catch {
-      showToast('No se pudo cargar los productos', 'err');
+      if (!opts?.silent) showToast('No se pudo cargar los productos', 'err');
     } finally {
-      setShopProductsPanelLoading(false);
+      if (!opts?.silent) setShopProductsPanelLoading(false);
     }
   }, [showToast]);
 

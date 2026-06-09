@@ -36,9 +36,9 @@ app.post(
   mercadopagoWebhook
 );
 app.get('/api/webhooks/mercadopago', mercadopagoWebhook);
-/** Iconos de servicios pueden ser data URLs (SVG/base64); el default 100kb devuelve 413. */
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+/** Iconos de servicios y fotos de productos (data URLs / base64). */
+app.use(express.json({ limit: '8mb' }));
+app.use(express.urlencoded({ extended: true, limit: '8mb' }));
 
 app.use('/api/uploads/products', express.static(getProductUploadsDir(), { maxAge: '7d' }));
 
