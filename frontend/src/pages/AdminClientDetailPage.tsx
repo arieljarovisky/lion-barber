@@ -5,6 +5,7 @@ import { es } from 'date-fns/locale';
 import { ChevronLeft, Trash2, ShieldCheck, StickyNote, Save, Repeat, UserPlus, Users, X } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
+import ClientSearchInput from '../components/ClientSearchInput';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
 import { api, ApiError } from '../api';
 import { useAuth } from '../contexts/AuthContext';
@@ -611,24 +612,18 @@ export default function AdminClientDetailPage() {
                       Todos comparten el mismo cupo de cortes. Al cobrar con «Abono» en cualquier turno vinculado, se
                       descuenta del pool común.
                     </p>
-                    {addableClients.length > 0 && (
-                      <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex flex-wrap items-end gap-2">
                         <div className="min-w-0 flex-1 basis-48">
                           <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">
                             Agregar familiar / otro cliente
                           </label>
-                          <select
+                          <ClientSearchInput
+                            clients={addableClients}
                             value={addMemberClientId}
-                            onChange={(e) => setAddMemberClientId(e.target.value)}
-                            className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm"
-                          >
-                            <option value="">Elegir cliente…</option>
-                            {addableClients.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={setAddMemberClientId}
+                            placeholder="Buscar por nombre, email o teléfono…"
+                            disabled={subscriptionActionLoading || addableClients.length === 0}
+                          />
                         </div>
                         <button
                           type="button"
@@ -640,6 +635,8 @@ export default function AdminClientDetailPage() {
                           Agregar
                         </button>
                       </div>
+                    {addableClients.length === 0 && (
+                      <p className="text-[11px] text-zinc-500">No hay más clientes disponibles para vincular.</p>
                     )}
                   </div>
                 ) : (
@@ -650,18 +647,19 @@ export default function AdminClientDetailPage() {
                       </p>
                       <div className="flex flex-wrap items-end gap-2">
                         <div className="min-w-0 flex-1 basis-48">
-                          <select
+                          <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">
+                            Cliente con abono activo
+                          </label>
+                          <ClientSearchInput
+                            clients={clientsWithActiveSubscription}
                             value={linkHostClientId}
-                            onChange={(e) => setLinkHostClientId(e.target.value)}
-                            className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm"
-                          >
-                            <option value="">Cliente con abono activo…</option>
-                            {clientsWithActiveSubscription.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name} ({c.subscription!.cutsRemaining} cortes disp.)
-                              </option>
-                            ))}
-                          </select>
+                            onChange={setLinkHostClientId}
+                            placeholder="Buscar por nombre, email o teléfono…"
+                            disabled={subscriptionActionLoading}
+                            getSubtitle={(c) =>
+                              `${displayClientEmail(c.email)} · ${c.subscription!.cutsRemaining} cortes disp.`
+                            }
+                          />
                         </div>
                         <button
                           type="button"

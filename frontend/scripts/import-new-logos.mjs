@@ -178,7 +178,7 @@ async function writeSquareIcon(destName, px) {
         background: FAVICON_BG,
       })
       .flatten({ background: FAVICON_BG })
-      .png({ compressionLevel: 9, palette: true })
+      .png({ compressionLevel: 9, palette: false, colours: 256, force: true })
       .toFile(path.join(publicDir, destName));
   } else {
     await head
@@ -221,7 +221,23 @@ for (const [name, px] of [
   await writeSquareIcon(name, px);
 }
 
-const icoBuf = await toIco([fs.readFileSync(path.join(publicDir, 'favicon-32x32.png'))]);
+const icoBuf = await toIco([
+  fs.readFileSync(path.join(publicDir, 'favicon-16x16.png')),
+  fs.readFileSync(path.join(publicDir, 'favicon-32x32.png')),
+]);
 fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuf);
 console.log('ok favicon.ico');
+
+const png32 = fs.readFileSync(path.join(publicDir, 'favicon-32x32.png'));
+const dataUri = `data:image/png;base64,${png32.toString('base64')}`;
+const indexPath = path.join(root, 'index.html');
+let html = fs.readFileSync(indexPath, 'utf8');
+html = html.replace(/\n\s*<link rel="icon" type="image\/png" href="data:image\/png;base64,[^"]+" sizes="32x32" \/>/g, '');
+html = html.replace(
+  '<title>Lion Barber</title>',
+  `<title>Lion Barber</title>\n    <link rel="icon" type="image/png" href="${dataUri}" sizes="32x32" />`
+);
+fs.writeFileSync(indexPath, html);
+console.log('ok index.html (favicon inline)');
+
 console.log('Logo importado (fondo transparente) desde', PRIMARY_LOGO);
