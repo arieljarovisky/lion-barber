@@ -20,7 +20,8 @@ const PRIMARY_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.01 (3).jpeg';
 const CIRCLE_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.00 (1).jpeg';
 const HEAD_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.01 (1).jpeg';
 
-const FAVICON_BG = { r: 9, g: 9, b: 11, alpha: 1 };
+const ICON_VERSION = 5;
+const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
 
 const BG_TOLERANCE = 48;
 
@@ -161,32 +162,23 @@ async function loadHeadLogoForIcon(targetPx) {
 
 async function writeSquareIcon(destName, px) {
   const head = await loadHeadLogoForIcon(px);
+  const inner = Math.max(12, Math.round(px * (px <= 48 ? 0.94 : 0.88)));
+  const pad = Math.max(0, Math.round((px - inner) / 2));
 
-  if (px <= 48) {
-    const inner = Math.max(12, Math.round(px * 0.92));
-    const pad = Math.max(0, Math.round((px - inner) / 2));
-    await head
-      .resize(inner, inner, {
-        fit: 'contain',
-        background: { r: 0, g: 0, b: 0, alpha: 0 },
-      })
-      .extend({
-        top: pad,
-        bottom: px - inner - pad,
-        left: pad,
-        right: px - inner - pad,
-        background: FAVICON_BG,
-      })
-      .flatten({ background: FAVICON_BG })
-      .png({ compressionLevel: 9, palette: false, colours: 256, force: true })
-      .toFile(path.join(publicDir, destName));
-  } else {
-    await head
-      .resize(px, px, { fit: 'cover', position: 'centre' })
-      .flatten({ background: FAVICON_BG })
-      .png({ compressionLevel: 9 })
-      .toFile(path.join(publicDir, destName));
-  }
+  await head
+    .resize(inner, inner, {
+      fit: 'contain',
+      background: TRANSPARENT,
+    })
+    .extend({
+      top: pad,
+      bottom: px - inner - pad,
+      left: pad,
+      right: px - inner - pad,
+      background: TRANSPARENT,
+    })
+    .png({ compressionLevel: 9, force: true })
+    .toFile(path.join(publicDir, destName));
 
   console.log('ok', destName);
 }
@@ -237,6 +229,10 @@ html = html.replace(
   '<title>Lion Barber</title>',
   `<title>Lion Barber</title>\n    <link rel="icon" type="image/png" href="${dataUri}" sizes="32x32" />`
 );
+html = html.replace(/\/favicon-32x32\.png\?v=\d+/g, `/favicon-32x32.png?v=${ICON_VERSION}`);
+html = html.replace(/\/favicon-16x16\.png\?v=\d+/g, `/favicon-16x16.png?v=${ICON_VERSION}`);
+html = html.replace(/\/favicon\.ico\?v=\d+/g, `/favicon.ico?v=${ICON_VERSION}`);
+html = html.replace(/\/apple-touch-icon\.png\?v=\d+/g, `/apple-touch-icon.png?v=${ICON_VERSION}`);
 fs.writeFileSync(indexPath, html);
 console.log('ok index.html (favicon inline)');
 
