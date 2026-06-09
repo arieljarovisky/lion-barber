@@ -1,5 +1,6 @@
 /** Secciones de la web pública (ClientView) a las que puede apuntar el botón de una promoción. */
 export const PROMOTION_CTA_LINKS = [
+  { href: '#productos', sectionLabel: 'Tienda de productos', defaultButtonText: 'Ver productos' },
   { href: '#reserva', sectionLabel: 'Reservar turno', defaultButtonText: 'Reservar turno' },
   { href: '#abonos', sectionLabel: 'Abonos mensuales', defaultButtonText: 'Ver abonos' },
   { href: '#servicios', sectionLabel: 'Servicios y precios', defaultButtonText: 'Ver servicios' },

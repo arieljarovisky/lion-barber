@@ -14,7 +14,8 @@ import { InstagramIcon } from '../components/InstagramIcon';
 import ClientMobileNavUserSection from '../components/ClientMobileNavUserSection';
 import { api } from '../store';
 import { ANY_BARBER_ID, ApiError } from '../api';
-import type { Service, Barber, SubscriptionPlan, SitePromotion } from '../api';
+import type { Service, Barber, SubscriptionPlan, SitePromotion, ShopProduct } from '../api';
+import ShopCatalogSection from '../components/ShopCatalogSection';
 import { useAuth } from '../contexts/AuthContext';
 import SitePromotionBanner from '../components/SitePromotionBanner';
 import { SubscriptionPricingCards } from '../components/SubscriptionPricingCards';
@@ -147,6 +148,7 @@ export default function ClientView() {
   const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
   const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
   const [publicPromotions, setPublicPromotions] = useState<SitePromotion[]>([]);
+  const [publicShopProducts, setPublicShopProducts] = useState<ShopProduct[]>([]);
   const [publicSubscriptionPlans, setPublicSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [publicCatalogLoading, setPublicCatalogLoading] = useState(true);
   const [subscriptionCheckoutPlanId, setSubscriptionCheckoutPlanId] = useState<string | null>(null);
@@ -162,10 +164,12 @@ export default function ClientView() {
     Promise.all([
       api.getPublicPromotions().catch(() => ({ promotions: [] as SitePromotion[] })),
       api.getPublicSubscriptionPlans().catch(() => ({ plans: [] as SubscriptionPlan[] })),
+      api.getPublicShopProducts().catch(() => ({ products: [] as ShopProduct[] })),
     ])
-      .then(([promos, plans]) => {
+      .then(([promos, plans, shop]) => {
         setPublicPromotions(promos.promotions);
         setPublicSubscriptionPlans(plans.plans);
+        setPublicShopProducts(shop.products);
       })
       .finally(() => setPublicCatalogLoading(false));
     api
@@ -672,6 +676,7 @@ export default function ClientView() {
   };
 
   const showAbonosSection = publicCatalogLoading || publicSubscriptionPlans.length > 0;
+  const showProductsSection = publicCatalogLoading || publicShopProducts.length > 0;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
@@ -707,6 +712,7 @@ export default function ClientView() {
             {(
               [
                 { href: '#servicios', label: 'Servicios' },
+                ...(showProductsSection ? [{ href: '#productos', label: 'Productos' }] : []),
                 { href: '#barberos', label: 'Barberos' },
                 ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
                 { href: '#contacto', label: 'Contacto' },
@@ -811,6 +817,7 @@ export default function ClientView() {
             {(
               [
                 { href: '#servicios', label: 'Servicios' },
+                ...(showProductsSection ? [{ href: '#productos', label: 'Productos' }] : []),
                 { href: '#barberos', label: 'Barberos' },
                 ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
                 { href: '#contacto', label: 'Contacto' },
@@ -920,6 +927,16 @@ export default function ClientView() {
           )}
         </div>
       </section>
+
+      {showProductsSection && (
+        <ShopCatalogSection
+          products={publicShopProducts}
+          isLoggedIn={Boolean(profile)}
+          onRequireLogin={() =>
+            navigate('/login', { state: { from: { pathname: '/', hash: '#productos' } } })
+          }
+        />
+      )}
 
       {/* Barbers Section */}
       <section id="barberos" className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 bg-zinc-950 border-y border-zinc-900">

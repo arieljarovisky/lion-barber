@@ -34,6 +34,16 @@ import {
   getPromotionById,
 } from '../repositories/promotions.js';
 import {
+  createProductOrder,
+  getProductOrderById,
+  getProductPaymentByMpId,
+  markProductOrderPaid,
+  recordProductPayment,
+} from '../repositories/productOrders.js';
+import { resolveProductOrderLines } from '../services/productCheckout.js';
+import { incrementClientPoints } from '../repositories/users.js';
+import { getShopProductById } from '../repositories/shopProducts.js';
+import {
   calculateBookingDepositArs,
   isPromotionActiveOnDate,
   resolveBookingPromotion,
@@ -225,6 +235,13 @@ interface SubscriptionRefV2 {
   u: string;
 }
 
+interface ProductOrderRefV2 {
+  v: 2;
+  k: 'product_order';
+  o: string;
+  u: string;
+}
+
 function buildSubscriptionRef(input: { planId: string; userId: number }): string {
   const ref: SubscriptionRefV2 = {
     v: 2,
@@ -254,6 +271,74 @@ function parseSubscriptionRef(
     }
   }
   return null;
+}
+
+function buildProductOrderRef(input: { orderId: number; userId: number }): string {
+  const ref: ProductOrderRefV2 = {
+    v: 2,
+    k: 'product_order',
+    o: String(input.orderId),
+    u: String(input.userId),
+  };
+  return JSON.stringify(ref);
+}
+
+function parseProductOrderRef(
+  externalReference: string | undefined,
+  metadata: Record<string, unknown> | undefined
+): ProductOrderRefV2 | null {
+  if (externalReference) {
+    try {
+      const o = JSON.parse(externalReference) as ProductOrderRefV2;
+      if (o.v === 2 && o.k === 'product_order' && o.o && o.u) return o;
+    } catch {
+      /* otro formato */
+    }
+  }
+  if (metadata && typeof metadata === 'object') {
+    const m = metadata as Record<string, string>;
+    if (m.lb_kind === 'product_order' && m.lb_o && m.lb_u) {
+      return { v: 2, k: 'product_order', o: m.lb_o, u: m.lb_u };
+    }
+  }
+  return null;
+}
+
+async function createMercadoPagoProductOrderPreference(
+  config: MercadoPagoConfig,
+  input: { orderId: number; userId: number; items: { id: string; title: string; quantity: number; unitPrice: number }[] }
+): Promise<{ preferenceId: string; url?: string }> {
+  const externalReference = buildProductOrderRef({ orderId: input.orderId, userId: input.userId });
+  const base = getFrontendUrl();
+  const apiPublic = getApiPublicUrl();
+  const preference = new Preference(config);
+  const body = {
+    items: input.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      currency_id: 'ARS',
+    })),
+    external_reference: externalReference,
+    metadata: {
+      lb_kind: 'product_order',
+      lb_o: String(input.orderId),
+      lb_u: String(input.userId),
+    },
+    back_urls: {
+      success: `${base}/perfil?checkout=success&kind=products`,
+      failure: `${base}/perfil?checkout=failure&kind=products`,
+      pending: `${base}/perfil?checkout=pending&kind=products`,
+    },
+    auto_return: 'approved' as const,
+    ...(apiPublic ? { notification_url: `${apiPublic}/api/webhooks/mercadopago` } : {}),
+  };
+  const result = await preference.create({ body });
+  const preferenceId = result.id != null ? String(result.id) : '';
+  if (!preferenceId) throw new Error('Mercado Pago no devolvió el id de preferencia');
+  const url = result.init_point ?? result.sandbox_init_point ?? undefined;
+  return { preferenceId, ...(url ? { url } : {}) };
 }
 
 async function createMercadoPagoSubscriptionPreference(
@@ -780,6 +865,69 @@ router.post('/subscription', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * Checkout de productos (Checkout Pro). Retiro en el local tras pagar online.
+ */
+router.post('/products', requireAuth, async (req, res) => {
+  const config = getMpConfig();
+  if (!config) {
+    return res
+      .status(503)
+      .json({ error: 'Mercado Pago no está configurado (MERCADOPAGO_ACCESS_TOKEN).' });
+  }
+
+  const authReq = req as AuthRequest;
+  const { items } = req.body as { items?: { productId?: string; quantity?: number }[] };
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Agregá al menos un producto al pedido' });
+  }
+
+  let resolved;
+  try {
+    resolved = await resolveProductOrderLines(
+      items.map((i) => ({ productId: String(i.productId ?? ''), quantity: Number(i.quantity) }))
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Pedido inválido';
+    return res.status(400).json({ error: msg });
+  }
+
+  let order;
+  try {
+    order = await createProductOrder({
+      userId: authReq.user!.id,
+      items: resolved.lines,
+      totalArs: resolved.totalArs,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'No se pudo crear el pedido' });
+  }
+
+  try {
+    const pref = await createMercadoPagoProductOrderPreference(config, {
+      orderId: order.id,
+      userId: authReq.user!.id,
+      items: resolved.lines.map((line) => ({
+        id: line.productId,
+        title: line.name,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+      })),
+    });
+    res.json({
+      preferenceId: pref.preferenceId,
+      ...(pref.url ? { url: pref.url } : {}),
+      orderId: order.id,
+      totalArs: resolved.totalArs,
+    });
+  } catch (e) {
+    console.error('Mercado Pago preference.create (products):', e);
+    const msg = e instanceof Error ? e.message : 'No se pudo iniciar el pago';
+    return res.status(502).json({ error: msg });
+  }
+});
+
 export default router;
 
 export async function mercadopagoWebhook(req: Request, res: Response): Promise<void> {
@@ -847,6 +995,45 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
 
   const existingSubPayment = await getSubscriptionPaymentByMpId(paymentId);
   if (existingSubPayment) return;
+
+  const existingProductPayment = await getProductPaymentByMpId(paymentId);
+  if (existingProductPayment) return;
+
+  const productRef = parseProductOrderRef(
+    payment.external_reference,
+    payment.metadata as Record<string, unknown> | undefined
+  );
+  if (productRef) {
+    const userId = parseInt(productRef.u, 10);
+    const orderId = parseInt(productRef.o, 10);
+    if (!Number.isFinite(userId) || userId <= 0 || !Number.isFinite(orderId) || orderId <= 0) {
+      console.error('Webhook MP: pedido de productos sin ids válidos', paymentId);
+      return;
+    }
+    const inserted = await recordProductPayment({
+      mercadopagoPaymentId: paymentId,
+      orderId,
+      userId,
+    });
+    if (!inserted) return;
+    const paid = await markProductOrderPaid(orderId, paymentId);
+    if (paid?.status === 'paid') {
+      let points = 0;
+      for (const line of paid.items) {
+        const product = await getShopProductById(line.productId);
+        if (product?.pointsReward) points += product.pointsReward * line.quantity;
+      }
+      if (points > 0) {
+        try {
+          await incrementClientPoints(userId, points);
+        } catch (e) {
+          console.error('[Webhook MP] no se pudieron sumar puntos por compra', e);
+        }
+      }
+      console.log(`[Webhook MP] pedido productos pagado order=${orderId} user=${userId}`);
+    }
+    return;
+  }
 
   const subRef = parseSubscriptionRef(
     payment.external_reference,

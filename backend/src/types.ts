@@ -180,6 +180,32 @@ export interface ShopProduct {
   /** Precio unitario en ARS (texto como en servicios) para sumar a la factura AFIP. */
   unitPrice?: string | null;
   sortOrder?: number;
+  imageUrl?: string | null;
+  description?: string | null;
+  /** Visible y comprable en la web pública. */
+  webActive?: boolean;
+}
+
+export interface ProductOrderLine {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  imageUrl?: string | null;
+}
+
+export type ProductOrderStatus = 'pending_payment' | 'paid' | 'cancelled';
+
+export interface ProductOrder {
+  id: number;
+  userId: number;
+  status: ProductOrderStatus;
+  items: ProductOrderLine[];
+  totalArs: number;
+  mercadopagoPaymentId?: string | null;
+  paidAt?: string | null;
+  createdAt?: string;
 }
 
 export interface Barber {

@@ -447,6 +447,47 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE shop_products ADD COLUMN image_url VARCHAR(500) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE shop_products ADD COLUMN description TEXT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE shop_products ADD COLUMN web_active TINYINT(1) NOT NULL DEFAULT 1'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS product_orders (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      status ENUM('pending_payment', 'paid', 'cancelled') NOT NULL DEFAULT 'pending_payment',
+      items JSON NOT NULL,
+      total_ars DECIMAL(12,2) NOT NULL,
+      mercadopago_payment_id VARCHAR(64) NULL,
+      paid_at TIMESTAMP NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_product_orders_user (user_id),
+      KEY idx_product_orders_status (status),
+      UNIQUE KEY uq_product_orders_mp (mercadopago_payment_id)
+    )
+  `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS product_payment_events (
+      mercadopago_payment_id VARCHAR(64) PRIMARY KEY,
+      order_id INT NOT NULL,
+      user_id INT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_product_pay_user (user_id)
+    )
+  `);
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS points_redemption_options (
       id VARCHAR(50) PRIMARY KEY,

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Loader2, Pencil, ShoppingBag, Trash2 } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ImagePlus, Loader2, Pencil, ShoppingBag, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api';
 import { useConfirm } from '../contexts/ConfirmContext';
 import type { ShopProduct } from '../api';
@@ -11,7 +11,87 @@ type ShopProductsPanelProps = {
   showToast: (message: string, kind?: 'ok' | 'err') => void;
 };
 
-/** Catálogo de productos de venta (nombre y precio). Los puntos se asignan en Puntos. */
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function ProductImageField({
+  productId,
+  imageUrl,
+  onUploaded,
+  showToast,
+  compact,
+}: {
+  productId: string;
+  imageUrl?: string | null;
+  onUploaded: () => Promise<void>;
+  showToast: (message: string, kind?: 'ok' | 'err') => void;
+  compact?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFile = async (file: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('Elegí una imagen JPG, PNG o WebP', 'err');
+      return;
+    }
+    setUploading(true);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      await api.uploadShopProductImage(productId, dataUrl);
+      showToast('Imagen guardada');
+      await onUploaded();
+    } catch (e) {
+      showToast(e instanceof ApiError ? e.message : 'No se pudo subir la imagen', 'err');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className={compact ? 'flex items-center gap-3' : 'space-y-2'}>
+      <div
+        className={`overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 ${
+          compact ? 'h-14 w-14 shrink-0' : 'mx-auto h-32 w-32'
+        }`}
+      >
+        {imageUrl ? (
+          <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-zinc-300">
+            <ImagePlus size={compact ? 20 : 32} aria-hidden />
+          </div>
+        )}
+      </div>
+      <div className={compact ? 'min-w-0 flex-1' : ''}>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
+        />
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+          className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+        >
+          {uploading ? 'Subiendo…' : imageUrl ? 'Cambiar foto' : 'Subir foto'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Catálogo de productos de venta (nombre, precio, imagen, web). Los puntos se asignan en Puntos. */
 export default function ShopProductsPanel({
   shopProducts,
   loading,
@@ -21,10 +101,16 @@ export default function ShopProductsPanel({
   const confirm = useConfirm();
   const [productName, setProductName] = useState('');
   const [productUnitPrice, setProductUnitPrice] = useState('');
+  const [productDescription, setProductDescription] = useState('');
+  const [productWebActive, setProductWebActive] = useState(true);
+  const [pendingImageData, setPendingImageData] = useState<string | null>(null);
+  const newImageRef = useRef<HTMLInputElement>(null);
   const [savingProduct, setSavingProduct] = useState(false);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editUnitPrice, setEditUnitPrice] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editWebActive, setEditWebActive] = useState(true);
 
   const addProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,13 +122,21 @@ export default function ShopProductsPanel({
     setSavingProduct(true);
     try {
       const up = productUnitPrice.trim();
-      await api.createShopProduct({
+      const created = await api.createShopProduct({
         name,
         pointsReward: 0,
         unitPrice: up ? up : undefined,
+        description: productDescription.trim() || undefined,
+        webActive: productWebActive,
       });
+      if (pendingImageData) {
+        await api.uploadShopProductImage(created.id, pendingImageData);
+      }
       setProductName('');
       setProductUnitPrice('');
+      setProductDescription('');
+      setProductWebActive(true);
+      setPendingImageData(null);
       showToast('Producto agregado');
       await onRefresh();
     } catch (e) {
@@ -56,6 +150,8 @@ export default function ShopProductsPanel({
     setEditingProductId(p.id);
     setEditName(p.name);
     setEditUnitPrice(p.unitPrice ?? '');
+    setEditDescription(p.description ?? '');
+    setEditWebActive(p.webActive !== false);
   };
 
   const saveEditProduct = async (id: string) => {
@@ -69,6 +165,8 @@ export default function ShopProductsPanel({
       await api.updateShopProduct(id, {
         name,
         unitPrice: up ? up : null,
+        description: editDescription.trim() || null,
+        webActive: editWebActive,
       });
       setEditingProductId(null);
       showToast('Producto actualizado');
@@ -112,8 +210,9 @@ export default function ShopProductsPanel({
           <h3 className="text-lg font-black text-zinc-900">Catálogo de productos</h3>
         </div>
         <p className="mb-4 text-sm text-zinc-500">
-          Artículos que vendés en el local (pomadas, shampoos, etc.) y precio de venta para facturación AFIP. Los puntos
-          de fidelidad se configuran en la sección <strong className="font-semibold text-zinc-700">Puntos</strong>.
+          Cargá nombre, precio, foto y descripción. Los productos con «Visible en la web» y precio aparecen en la
+          tienda pública para compra con Mercado Pago. Los puntos se configuran en{' '}
+          <strong className="font-semibold text-zinc-700">Puntos</strong>.
         </p>
 
         <ul className="mb-6 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
@@ -121,28 +220,49 @@ export default function ShopProductsPanel({
             <li className="px-4 py-8 text-center text-sm text-zinc-500">Todavía no cargaste productos.</li>
           ) : (
             shopProducts.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <li key={p.id} className="flex flex-col gap-3 px-4 py-4">
                 {editingProductId === p.id ? (
-                  <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <ProductImageField
+                      productId={p.id}
+                      imageUrl={p.imageUrl}
+                      onUploaded={onRefresh}
+                      showToast={showToast}
+                    />
                     <input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
-                      className="min-w-[8rem] flex-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                      className="rounded-lg border border-zinc-200 px-3 py-2 text-sm sm:col-span-2"
+                      placeholder="Nombre"
                     />
                     <input
                       value={editUnitPrice}
                       onChange={(e) => setEditUnitPrice(e.target.value)}
                       placeholder="Precio venta"
-                      className="w-32 rounded-lg border border-zinc-200 px-2 py-2 text-sm"
-                      title="Precio venta unitario (ARS)"
+                      className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                     />
-                    <div className="flex gap-2">
+                    <label className="flex items-center gap-2 text-sm text-zinc-600">
+                      <input
+                        type="checkbox"
+                        checked={editWebActive}
+                        onChange={(e) => setEditWebActive(e.target.checked)}
+                      />
+                      Visible en la web
+                    </label>
+                    <textarea
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      placeholder="Descripción (opcional)"
+                      rows={2}
+                      className="rounded-lg border border-zinc-200 px-3 py-2 text-sm sm:col-span-2"
+                    />
+                    <div className="flex gap-2 sm:col-span-2">
                       <button
                         type="button"
                         onClick={() => void saveEditProduct(p.id)}
                         className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-bold text-white"
                       >
-                        OK
+                        Guardar
                       </button>
                       <button
                         type="button"
@@ -152,15 +272,32 @@ export default function ShopProductsPanel({
                         Cancelar
                       </button>
                     </div>
-                  </>
+                  </div>
                 ) : (
-                  <>
-                    <span className="font-medium text-zinc-900">{p.name}</span>
-                    {p.unitPrice ? (
-                      <span className="text-sm text-zinc-600">Venta: {p.unitPrice}</span>
-                    ) : (
-                      <span className="text-xs text-zinc-400">Sin precio venta</span>
-                    )}
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
+                        {p.imageUrl ? (
+                          <img src={p.imageUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-zinc-300">
+                            <ShoppingBag size={20} aria-hidden />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-zinc-900">{p.name}</p>
+                        {p.description && (
+                          <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{p.description}</p>
+                        )}
+                        <p className="mt-1 text-sm text-zinc-600">
+                          {p.unitPrice ? `Venta: ${p.unitPrice}` : 'Sin precio venta'}
+                          {p.webActive === false && (
+                            <span className="ml-2 text-xs text-zinc-400">· Oculto en web</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
                     <div className="flex gap-1">
                       <button
                         type="button"
@@ -179,15 +316,15 @@ export default function ShopProductsPanel({
                         <Trash2 size={16} />
                       </button>
                     </div>
-                  </>
+                  </div>
                 )}
               </li>
             ))
           )}
         </ul>
 
-        <form onSubmit={addProduct} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="min-w-0 flex-1">
+        <form onSubmit={addProduct} className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
             <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Nuevo producto</label>
             <input
               value={productName}
@@ -196,7 +333,7 @@ export default function ShopProductsPanel({
               className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
             />
           </div>
-          <div className="sm:min-w-[7rem]">
+          <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Precio venta</label>
             <input
               value={productUnitPrice}
@@ -205,12 +342,64 @@ export default function ShopProductsPanel({
               className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
             />
           </div>
+          <label className="flex items-end gap-2 pb-2.5 text-sm text-zinc-600">
+            <input
+              type="checkbox"
+              checked={productWebActive}
+              onChange={(e) => setProductWebActive(e.target.checked)}
+            />
+            Visible en la web
+          </label>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Descripción</label>
+            <textarea
+              value={productDescription}
+              onChange={(e) => setProductDescription(e.target.value)}
+              placeholder="Breve descripción para la tienda online"
+              rows={2}
+              className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Foto</label>
+            <div className="mt-1 flex items-center gap-3">
+              <div className="h-16 w-16 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
+                {pendingImageData ? (
+                  <img src={pendingImageData} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-zinc-300">
+                    <ImagePlus size={24} aria-hidden />
+                  </div>
+                )}
+              </div>
+              <input
+                ref={newImageRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  void readFileAsDataUrl(file)
+                    .then(setPendingImageData)
+                    .catch(() => showToast('No se pudo leer la imagen', 'err'));
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => newImageRef.current?.click()}
+                className="rounded-lg border border-zinc-200 px-3 py-2 text-xs font-bold text-zinc-700"
+              >
+                Elegir imagen
+              </button>
+            </div>
+          </div>
           <button
             type="submit"
             disabled={savingProduct}
-            className="rounded-xl bg-[#e5c185] px-5 py-2.5 text-sm font-bold text-zinc-950 hover:bg-[#d4b074] disabled:opacity-50"
+            className="rounded-xl bg-[#e5c185] px-5 py-2.5 text-sm font-bold text-zinc-950 hover:bg-[#d4b074] disabled:opacity-50 sm:col-span-2"
           >
-            {savingProduct ? 'Agregando…' : 'Agregar'}
+            {savingProduct ? 'Agregando…' : 'Agregar producto'}
           </button>
         </form>
       </div>

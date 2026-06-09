@@ -399,6 +399,16 @@ export async function createManualClient(data: {
   return user;
 }
 
+/** Suma puntos de fidelidad a un cliente (p. ej. compra web de productos). */
+export async function incrementClientPoints(userId: number, delta: number): Promise<void> {
+  const add = Math.floor(Number(delta));
+  if (!Number.isFinite(add) || add <= 0) return;
+  await query(
+    'UPDATE users SET points = LEAST(999999, points + ?) WHERE id = ? AND role = ?',
+    [add, userId, 'client']
+  );
+}
+
 /** Elimina un cliente y desvincula sus turnos (mantiene historial en agenda). */
 export async function deleteClientById(userId: number): Promise<boolean> {
   const existing = await findUserById(userId);

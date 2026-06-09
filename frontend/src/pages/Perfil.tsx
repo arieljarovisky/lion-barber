@@ -11,12 +11,12 @@ import {
   X,
   ChevronDown,
   Info,
-  Scissors,
+  ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { api } from '../api';
-import type { Appointment } from '../api';
+import type { Appointment, ProductOrder } from '../api';
 import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
 import { formatAppointmentProductsSummary } from '../utils/appointmentProducts';
 import { Wallet } from '@mercadopago/sdk-react';
@@ -177,6 +177,7 @@ export default function Perfil() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [productOrders, setProductOrders] = useState<ProductOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [shopCutoffHours, setShopCutoffHours] = useState(12);
   const [actionError, setActionError] = useState('');
@@ -204,10 +205,14 @@ export default function Perfil() {
 
   const reload = useCallback(() => {
     setLoading(true);
-    api
-      .getMyAppointments()
-      .then(setAppointments)
-      .catch(() => setAppointments([]))
+    Promise.all([
+      api.getMyAppointments().catch(() => [] as Appointment[]),
+      api.getMyProductOrders().catch(() => ({ orders: [] as ProductOrder[] })),
+    ])
+      .then(([apps, ordersRes]) => {
+        setAppointments(apps);
+        setProductOrders(ordersRes.orders.filter((o) => o.status === 'paid'));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -240,22 +245,34 @@ export default function Perfil() {
 
   useEffect(() => {
     const checkout = searchParams.get('checkout');
+    const kind = searchParams.get('kind');
     if (checkout === 'success') {
       setActionError('');
       setSenaWallet(null);
-      setActionSuccess('¡Pago registrado! Tu turno quedó confirmado.');
+      setActionSuccess(
+        kind === 'products'
+          ? '¡Pago registrado! Tu pedido quedó confirmado. Retiralo en el local.'
+          : '¡Pago registrado! Tu turno quedó confirmado.'
+      );
       setSearchParams({}, { replace: true });
       reload();
+      void refreshProfile();
     } else if (checkout === 'cancel' || checkout === 'failure') {
-      setActionError('Pago cancelado o rechazado. Podés intentar de nuevo con «Pagar seña».');
+      setActionError(
+        kind === 'products'
+          ? 'Pago cancelado o rechazado. Podés volver a la tienda e intentar de nuevo.'
+          : 'Pago cancelado o rechazado. Podés intentar de nuevo con «Pagar seña».'
+      );
       setSearchParams({}, { replace: true });
     } else if (checkout === 'pending') {
       setActionError(
-        'Pago pendiente (ej. efectivo). Cuando Mercado Pago lo acredite, el turno se confirmará solo.'
+        kind === 'products'
+          ? 'Pago pendiente. Cuando Mercado Pago lo acredite, verás el pedido confirmado acá.'
+          : 'Pago pendiente (ej. efectivo). Cuando Mercado Pago lo acredite, el turno se confirmará solo.'
       );
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, setSearchParams, reload]);
+  }, [searchParams, setSearchParams, reload, refreshProfile]);
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -601,6 +618,46 @@ export default function Perfil() {
           <p className="text-3xl sm:text-4xl font-black text-[#e5c185]">{profile.points}</p>
           <p className="text-zinc-500 text-xs sm:text-sm mt-2">Acumulás puntos en cada visita. Pronto podrás canjearlos.</p>
         </section>
+
+        {productOrders.length > 0 && (
+          <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                <ShoppingBag size={20} className="sm:w-[22px] sm:h-[22px] text-emerald-400" />
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-white">Mis compras</h2>
+                <p className="text-[11px] text-zinc-500">Retirá en el local con tu nombre.</p>
+              </div>
+            </div>
+            <ul className="divide-y divide-zinc-800/80 rounded-lg border border-zinc-800/70">
+              {productOrders.map((order) => (
+                <li key={order.id} className="px-3 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-white">
+                      Pedido #{order.id}
+                      {order.paidAt && (
+                        <span className="ml-2 text-xs font-normal text-zinc-500">
+                          {format(new Date(order.paidAt), 'dd/MM/yyyy', { locale: es })}
+                        </span>
+                      )}
+                    </p>
+                    <span className="text-sm font-black text-[#e5c185] tabular-nums">
+                      ${order.totalArs.toLocaleString('es-AR')}
+                    </span>
+                  </div>
+                  <ul className="mt-2 space-y-1">
+                    {order.items.map((line) => (
+                      <li key={`${order.id}-${line.productId}`} className="text-xs text-zinc-400">
+                        {line.quantity}× {line.name}
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">

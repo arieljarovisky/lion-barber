@@ -204,6 +204,32 @@ export interface ShopProduct {
   /** Precio unitario (texto) para sumar a la factura AFIP. */
   unitPrice?: string | null;
   sortOrder?: number;
+  imageUrl?: string | null;
+  description?: string | null;
+  /** Visible y comprable en la web pública. */
+  webActive?: boolean;
+}
+
+export interface ProductOrderLine {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  imageUrl?: string | null;
+}
+
+export type ProductOrderStatus = 'pending_payment' | 'paid' | 'cancelled';
+
+export interface ProductOrder {
+  id: number;
+  userId: number;
+  status: ProductOrderStatus;
+  items: ProductOrderLine[];
+  totalArs: number;
+  mercadopagoPaymentId?: string | null;
+  paidAt?: string | null;
+  createdAt?: string;
 }
 
 /** Beneficios canjeables con puntos (visible para clientes en el futuro; se configura en Puntos). */
@@ -516,6 +542,17 @@ export const api = {
       body: JSON.stringify({ planId }),
     }),
 
+  createCheckoutProducts: (items: { productId: string; quantity: number }[]) =>
+    fetchApi<{ preferenceId: string; url?: string; orderId: number; totalArs: number }>(
+      '/api/checkout/products',
+      {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+      }
+    ),
+
+  getMyProductOrders: () => fetchApi<{ orders: ProductOrder[] }>('/api/product-orders/mine'),
+
   getPublicSubscriptionPlans: () =>
     fetchApi<{ plans: SubscriptionPlan[] }>('/api/subscription-plans/public'),
 
@@ -693,18 +730,41 @@ export const api = {
     }),
 
   getShopProducts: () => fetchApi<ShopProduct[]>('/api/shop-products'),
-  createShopProduct: (data: { name: string; pointsReward: number; unitPrice?: string | null }) =>
+
+  getPublicShopProducts: () =>
+    fetchApi<{ products: ShopProduct[] }>('/api/shop-products/public'),
+
+  createShopProduct: (data: {
+    name: string;
+    pointsReward: number;
+    unitPrice?: string | null;
+    description?: string | null;
+    imageUrl?: string | null;
+    webActive?: boolean;
+  }) =>
     fetchApi<ShopProduct>('/api/shop-products', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   updateShopProduct: (
     id: string,
-    data: Partial<{ name: string; pointsReward: number; unitPrice: string | null }>
+    data: Partial<{
+      name: string;
+      pointsReward: number;
+      unitPrice: string | null;
+      description: string | null;
+      imageUrl: string | null;
+      webActive: boolean;
+    }>
   ) =>
     fetchApi<ShopProduct>(`/api/shop-products/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }),
+  uploadShopProductImage: (id: string, imageData: string) =>
+    fetchApi<ShopProduct>(`/api/shop-products/${encodeURIComponent(id)}/image`, {
+      method: 'POST',
+      body: JSON.stringify({ imageData }),
     }),
   deleteShopProduct: (id: string) =>
     fetchApi<void>(`/api/shop-products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
