@@ -11,6 +11,7 @@ interface DbShopProduct {
   unit_price?: string | null;
   image_url?: string | null;
   image_data?: string | null;
+  has_image?: number | boolean | null;
   description?: string | null;
   web_active?: number | boolean | null;
 }
@@ -19,8 +20,13 @@ export function productImageApiPath(productId: string): string {
   return `/api/shop-products/${encodeURIComponent(productId)}/image`;
 }
 
+function productRowHasImage(r: DbShopProduct): boolean {
+  if (r.has_image != null) return Boolean(r.has_image);
+  return r.image_data != null && String(r.image_data).trim() !== '';
+}
+
 function resolvePublicImageUrl(r: DbShopProduct): string | undefined {
-  if (r.image_data && String(r.image_data).trim()) {
+  if (productRowHasImage(r)) {
     return productImageApiPath(r.id);
   }
   return undefined;
@@ -67,16 +73,22 @@ export function parseProductImageDataUrl(dataUrl: string): { mime: string; buffe
   return { mime: `image/${subtype}`, buffer };
 }
 
+/** Columnas de listado sin cargar el blob completo de la imagen. */
+const PRODUCT_LIST_COLUMNS = `
+  id, name, points_reward, sort_order, unit_price, image_url, description, web_active,
+  (image_data IS NOT NULL AND CHAR_LENGTH(image_data) > 0) AS has_image
+`;
+
 export async function getAllShopProducts(): Promise<ShopProduct[]> {
   const rows = await query<DbShopProduct[]>(
-    'SELECT id, name, points_reward, sort_order, unit_price, image_url, description, web_active FROM shop_products ORDER BY sort_order ASC, name ASC'
+    `SELECT ${PRODUCT_LIST_COLUMNS} FROM shop_products ORDER BY sort_order ASC, name ASC`
   );
   return rows.map(rowToProduct);
 }
 
 export async function getWebShopProducts(): Promise<ShopProduct[]> {
   const rows = await query<DbShopProduct[]>(
-    `SELECT id, name, points_reward, sort_order, unit_price, image_url, description, web_active
+    `SELECT ${PRODUCT_LIST_COLUMNS}
      FROM shop_products
      WHERE web_active = 1 AND unit_price IS NOT NULL AND TRIM(unit_price) <> ''
      ORDER BY sort_order ASC, name ASC`
@@ -86,7 +98,7 @@ export async function getWebShopProducts(): Promise<ShopProduct[]> {
 
 export async function getShopProductById(id: string): Promise<ShopProduct | null> {
   const rows = await query<DbShopProduct[]>(
-    'SELECT id, name, points_reward, sort_order, unit_price, image_url, description, web_active FROM shop_products WHERE id = ? LIMIT 1',
+    `SELECT ${PRODUCT_LIST_COLUMNS} FROM shop_products WHERE id = ? LIMIT 1`,
     [id]
   );
   const r = rows[0];
