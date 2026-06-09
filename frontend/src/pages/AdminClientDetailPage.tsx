@@ -184,9 +184,13 @@ export default function AdminClientDetailPage() {
         points: pts,
         accountBalanceArs: balanceParsed,
         depositExempt: client.subscription ? undefined : formExempt,
-        subscriptionPlanId: formSubscriptionPlanId || null,
         adminNotes: formNotes.trim() || null,
       };
+      const currentPlanId = client.subscription?.planId ?? '';
+      const nextPlanId = formSubscriptionPlanId.trim();
+      if (nextPlanId !== currentPlanId) {
+        payload.subscriptionPlanId = nextPlanId || null;
+      }
       if (!emailLocked) {
         payload.email = email;
       }

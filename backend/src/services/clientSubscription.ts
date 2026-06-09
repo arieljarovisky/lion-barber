@@ -171,17 +171,33 @@ export async function isClientDepositExempt(userId: number): Promise<boolean> {
 export async function assignSubscriptionPlanToClient(
   userId: number,
   planId: string | null
-): Promise<void> {
+): Promise<boolean> {
   await assertClientRole(userId);
 
   if (planId == null || planId === '') {
+    const hadSubscription = await groups.userHasAnySubscriptionLink(userId);
     await removeClientFromSubscription(userId);
-    return;
+    return hadSubscription;
   }
 
   const plan = await getSubscriptionPlanById(planId);
   if (!plan || !plan.active) {
     throw new Error('Plan de abono no encontrado o inactivo');
+  }
+
+  const existingGroupId = await resolveGroupIdForUser(userId);
+  if (existingGroupId != null) {
+    const group = await groups.getSubscriptionGroupById(existingGroupId);
+    if (group?.subscription_plan_id === planId) {
+      const cutsUsed = Math.max(0, Number(group.cuts_used ?? 0));
+      const activatedAt =
+        groups.periodStartYmd(group.period_start) ?? currentArgentinaYmd();
+      const expiredByDate = isSubscriptionExpiredByDate(activatedAt, plan.validityDays);
+      const exhausted = cutsUsed >= plan.cutsPerMonth;
+      if (!expiredByDate && !exhausted) {
+        return false;
+      }
+    }
   }
 
   await removeClientFromSubscription(userId, { skipExpireGroup: false });
@@ -194,6 +210,7 @@ export async function assignSubscriptionPlanToClient(
     cutsUsed: 0,
   });
   await groups.linkUserToGroup(userId, groupId);
+  return true;
 }
 
 /** Vincula un cliente al abono compartido de otro (mismo cupo de cortes). */

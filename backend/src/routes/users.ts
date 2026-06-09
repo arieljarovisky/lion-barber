@@ -210,8 +210,8 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
       });
     }
     if (subscriptionPlanIdPatch !== undefined) {
-      await assignSubscriptionPlanToClient(id, subscriptionPlanIdPatch);
-      if (subscriptionPlanIdPatch != null) {
+      const assigned = await assignSubscriptionPlanToClient(id, subscriptionPlanIdPatch);
+      if (assigned && subscriptionPlanIdPatch != null) {
         void notifyClientSubscriptionActivated(id);
       }
     }
