@@ -5,6 +5,7 @@ import { Wallet } from '@mercadopago/sdk-react';
 import { api, ApiError } from '../api';
 import type { ShopProduct } from '../api';
 import { parseArsAmount } from '../utils/money';
+import { resolveUploadUrl } from '../utils/mediaUrl';
 
 type CartLine = { product: ShopProduct; quantity: number };
 
@@ -102,15 +103,16 @@ export default function ShopCatalogSection({
           {products.map((product) => {
             const price = productUnitPriceArs(product);
             const qty = cart[product.id] ?? 0;
+            const imageSrc = resolveUploadUrl(product.imageUrl);
             return (
               <article
                 key={product.id}
                 className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 sm:rounded-2xl"
               >
                 <div className="aspect-square overflow-hidden bg-zinc-950">
-                  {product.imageUrl ? (
+                  {imageSrc ? (
                     <img
-                      src={product.imageUrl}
+                      src={imageSrc}
                       alt={product.name}
                       className="h-full w-full object-cover"
                       loading="lazy"
