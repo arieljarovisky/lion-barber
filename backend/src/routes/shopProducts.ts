@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as repo from '../repositories/shopProducts.js';
+import { getProductImagePayload } from '../repositories/shopProducts.js';
 import { saveProductImageFromDataUrl } from '../services/productImageUpload.js';
 import { requireAuth, requireStaffOrAdmin } from '../middleware/auth.js';
 
@@ -15,6 +16,24 @@ router.get('/public', async (_req, res) => {
   }
 });
 
+/** Imagen del producto (persistida en DB). Público para la tienda web. */
+router.get('/:id/image', async (req, res) => {
+  try {
+    const payload = await getProductImagePayload(req.params.id);
+    if (!payload) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(404).send('Imagen no encontrada');
+    }
+    res.setHeader('Content-Type', payload.mime);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('ETag', `"${payload.buffer.length}-${payload.buffer[0] ?? 0}"`);
+    res.send(payload.buffer);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error al obtener imagen');
+  }
+});
+
 router.get('/', requireAuth, requireStaffOrAdmin, async (_req, res) => {
   try {
     const products = await repo.getAllShopProducts();
@@ -26,12 +45,11 @@ router.get('/', requireAuth, requireStaffOrAdmin, async (_req, res) => {
 });
 
 router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
-  const { name, pointsReward, unitPrice, description, imageUrl, webActive } = req.body as {
+  const { name, pointsReward, unitPrice, description, webActive } = req.body as {
     name?: string;
     pointsReward?: unknown;
     unitPrice?: unknown;
     description?: unknown;
-    imageUrl?: unknown;
     webActive?: boolean;
   };
   if (!name || typeof name !== 'string' || !name.trim()) {
@@ -49,7 +67,6 @@ router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
       pointsReward: pr,
       unitPrice: up,
       description: description != null ? String(description) : undefined,
-      imageUrl: imageUrl != null ? String(imageUrl) : undefined,
       webActive,
     });
     res.status(201).json(p);
@@ -83,8 +100,8 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   if (description !== undefined) {
     updates.description = description != null ? String(description) : null;
   }
-  if (imageUrl !== undefined) {
-    updates.imageUrl = imageUrl != null && String(imageUrl).trim() !== '' ? String(imageUrl).trim() : null;
+  if (imageUrl === null) {
+    updates.imageUrl = null;
   }
   if (webActive !== undefined) updates.webActive = Boolean(webActive);
   if (Object.keys(updates).length === 0) {
@@ -108,8 +125,8 @@ router.post('/:id/image', requireAuth, requireStaffOrAdmin, async (req, res) => 
   try {
     const existing = await repo.getShopProductById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Producto no encontrado' });
-    const imageUrl = await saveProductImageFromDataUrl(req.params.id, imageData);
-    const updated = await repo.updateShopProduct(req.params.id, { imageUrl });
+    await saveProductImageFromDataUrl(req.params.id, imageData);
+    const updated = await repo.getShopProductById(req.params.id);
     res.json(updated);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'No se pudo guardar la imagen';

@@ -36,7 +36,8 @@ function ProductImageField({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const resolvedImage = resolveUploadUrl(imageUrl);
+  const [imageVersion, setImageVersion] = useState(0);
+  const resolvedImage = resolveUploadUrl(imageUrl, imageVersion);
 
   const handleFile = async (file: File | null) => {
     if (!file) return;
@@ -48,6 +49,7 @@ function ProductImageField({
     try {
       const dataUrl = await readFileAsDataUrl(file);
       await api.uploadShopProductImage(productId, dataUrl);
+      setImageVersion(Date.now());
       showToast('Imagen guardada');
       await onUploaded();
     } catch (e) {
@@ -279,8 +281,12 @@ export default function ShopProductsPanel({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex min-w-0 flex-1 items-start gap-3">
                       <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
-                        {resolveUploadUrl(p.imageUrl) ? (
-                          <img src={resolveUploadUrl(p.imageUrl)} alt="" className="h-full w-full object-cover" />
+                        {resolveUploadUrl(p.imageUrl, p.id) ? (
+                          <img
+                            src={resolveUploadUrl(p.imageUrl, p.id)}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
                         ) : (
                           <div className="flex h-full w-full items-center justify-center text-zinc-300">
                             <ShoppingBag size={20} aria-hidden />
