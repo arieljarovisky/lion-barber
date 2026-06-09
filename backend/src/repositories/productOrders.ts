@@ -84,6 +84,13 @@ export async function markProductOrderPaid(
   return getProductOrderById(orderId);
 }
 
+export async function markProductOrderCancelled(orderId: number): Promise<void> {
+  await query(
+    `UPDATE product_orders SET status = 'cancelled' WHERE id = ? AND status = 'pending_payment'`,
+    [orderId]
+  );
+}
+
 export async function getProductPaymentByMpId(
   mercadopagoPaymentId: string
 ): Promise<{ orderId: number; userId: number } | null> {

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, ChevronDown, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, ChevronDown, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle, ExternalLink, ShoppingCart } from 'lucide-react';
 import { BOOKING_FALLBACK_WHATSAPP_URL, checkBackendHealth } from '../utils/backendHealth';
 import {
   SHOP_ADDRESS,
@@ -16,6 +16,7 @@ import { api } from '../store';
 import { ANY_BARBER_ID, ApiError } from '../api';
 import type { Service, Barber, SubscriptionPlan, SitePromotion, ShopProduct } from '../api';
 import ShopCatalogSection from '../components/ShopCatalogSection';
+import { useShopCart } from '../hooks/useShopCart';
 import { useAuth } from '../contexts/AuthContext';
 import SitePromotionBanner from '../components/SitePromotionBanner';
 import { SubscriptionPricingCards } from '../components/SubscriptionPricingCards';
@@ -149,6 +150,15 @@ export default function ClientView() {
   const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
   const [publicPromotions, setPublicPromotions] = useState<SitePromotion[]>([]);
   const [publicShopProducts, setPublicShopProducts] = useState<ShopProduct[]>([]);
+  const {
+    cart: shopCart,
+    cartLines: shopCartLines,
+    cartTotal: shopCartTotal,
+    cartCount: shopCartCount,
+    setQty: setShopCartQty,
+    clearCart: clearShopCart,
+    cartItemsPayload: shopCartItemsPayload,
+  } = useShopCart(publicShopProducts);
   const [publicSubscriptionPlans, setPublicSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [publicCatalogLoading, setPublicCatalogLoading] = useState(true);
   const [subscriptionCheckoutPlanId, setSubscriptionCheckoutPlanId] = useState<string | null>(null);
@@ -405,6 +415,7 @@ export default function ClientView() {
     const checkout = searchParams.get('checkout');
     if (checkout === 'success') {
       setPendingCheckoutSuccess(true);
+      clearShopCart();
       setSearchParams({}, { replace: true });
     } else if (checkout === 'subscription_success') {
       setSubscriptionMessage({
@@ -605,6 +616,7 @@ export default function ClientView() {
     }
     setSenaCheckoutLoading(true);
     try {
+      const productItems = shopCartItemsPayload.length > 0 ? shopCartItemsPayload : undefined;
       const data = await api.createCheckoutSena({
         name: name.trim(),
         phone: phone.trim(),
@@ -614,14 +626,22 @@ export default function ClientView() {
         date: selectedDate,
         time: selectedTime,
         userId: profile.id,
+        productItems,
       });
       if ('exempt' in data && data.exempt) {
-        setBookingSuccess(true);
-        setSenaCheckoutPreferenceId(null);
-        window.requestAnimationFrame(() => {
-          document.getElementById('reserva')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
+        if ('preferenceId' in data && data.preferenceId) {
+          setSenaCheckoutPreferenceId(data.preferenceId);
+          if (productItems?.length) clearShopCart();
+        } else {
+          setBookingSuccess(true);
+          setSenaCheckoutPreferenceId(null);
+          if (productItems?.length) clearShopCart();
+          window.requestAnimationFrame(() => {
+            document.getElementById('reserva')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        }
       } else if ('preferenceId' in data) {
+        if (productItems?.length) clearShopCart();
         setSenaCheckoutPreferenceId(data.preferenceId);
       }
     } catch (err) {
@@ -932,6 +952,12 @@ export default function ClientView() {
         <ShopCatalogSection
           products={publicShopProducts}
           isLoggedIn={Boolean(profile)}
+          cart={shopCart}
+          cartLines={shopCartLines}
+          cartTotal={shopCartTotal}
+          cartCount={shopCartCount}
+          onSetQty={setShopCartQty}
+          onProductsPurchased={clearShopCart}
           onRequireLogin={() =>
             navigate('/login', { state: { from: { pathname: '/', hash: '#productos' } } })
           }
@@ -1418,6 +1444,48 @@ export default function ClientView() {
                   </div>
 
                   <div className={`flex flex-col gap-3 mt-4 transition-opacity ${serviceSelected ? '' : 'opacity-40 pointer-events-none'}`}>
+                    {shopCartCount > 0 && (
+                      <div className="rounded-xl border border-[#e5c185]/25 bg-zinc-900/60 p-4">
+                        <div className="mb-2 flex items-center gap-2 text-sm font-bold text-white">
+                          <ShoppingCart size={16} className="text-[#e5c185]" aria-hidden />
+                          Productos en el carrito
+                        </div>
+                        <ul className="space-y-1 text-xs text-zinc-400">
+                          {shopCartLines.map((line) => (
+                            <li key={line.product.id} className="flex justify-between gap-2">
+                              <span className="truncate">
+                                {line.quantity}× {line.product.name}
+                              </span>
+                              <span className="shrink-0 tabular-nums text-zinc-300">
+                                $
+                                {Math.round(
+                                  (parseArsAmount(line.product.unitPrice ?? undefined) ?? 0) *
+                                    line.quantity
+                                ).toLocaleString('es-AR')}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-2 text-center text-sm text-zinc-300">
+                          Productos:{' '}
+                          <strong className="text-[#e5c185] tabular-nums">
+                            ${Math.round(shopCartTotal).toLocaleString('es-AR')}
+                          </strong>
+                          {depositPreview != null && !profile?.depositExempt && (
+                            <>
+                              {' '}
+                              + seña{' '}
+                              <strong className="text-[#e5c185] tabular-nums">
+                                ${depositPreview.amountArs.toLocaleString('es-AR')}
+                              </strong>
+                            </>
+                          )}
+                        </p>
+                        <p className="mt-1 text-center text-[11px] text-zinc-500">
+                          Se cobran juntos en un solo pago con Mercado Pago.
+                        </p>
+                      </div>
+                    )}
                     {depositPreview != null && (
                       <p className="text-center text-sm text-zinc-400">
                         {depositPreview.fullyPaidOnDeposit ? (
@@ -1467,11 +1535,13 @@ export default function ClientView() {
                         )
                       ) : profile ? (
                         profile.depositExempt ? (
-                          'Confirmar turno'
+                          shopCartCount > 0 ? 'Pagar productos y confirmar turno' : 'Confirmar turno'
                         ) : (
                           senaCheckoutPreferenceId
                             ? 'Preferencia lista — pagá abajo'
-                            : 'Pagar seña y confirmar turno'
+                            : shopCartCount > 0
+                              ? 'Pagar seña + productos'
+                              : 'Pagar seña y confirmar turno'
                         )
                       ) : (
                         'Iniciar sesión para confirmar'

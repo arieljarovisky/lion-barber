@@ -37,12 +37,14 @@ import {
   createProductOrder,
   getProductOrderById,
   getProductPaymentByMpId,
+  markProductOrderCancelled,
   markProductOrderPaid,
   recordProductPayment,
 } from '../repositories/productOrders.js';
 import { resolveProductOrderLines } from '../services/productCheckout.js';
 import { incrementClientPoints } from '../repositories/users.js';
 import { getShopProductById, decrementProductStock } from '../repositories/shopProducts.js';
+import type { ProductOrderLine } from '../types.js';
 import {
   calculateBookingDepositArs,
   isPromotionActiveOnDate,
@@ -109,6 +111,48 @@ function getApiPublicUrl(): string | null {
   return u.replace(/\/$/, '');
 }
 
+async function fulfillProductOrderFromPayment(
+  orderId: number,
+  userId: number,
+  paymentId: string
+): Promise<void> {
+  const inserted = await recordProductPayment({
+    mercadopagoPaymentId: paymentId,
+    orderId,
+    userId,
+  });
+  if (!inserted) return;
+  const paid = await markProductOrderPaid(orderId, paymentId);
+  if (paid?.status !== 'paid') return;
+
+  let points = 0;
+  for (const line of paid.items) {
+    try {
+      await decrementProductStock(line.productId, line.quantity);
+    } catch (e) {
+      console.error('[Webhook MP] no se pudo descontar stock', line.productId, e);
+    }
+    const product = await getShopProductById(line.productId);
+    if (product?.pointsReward) points += product.pointsReward * line.quantity;
+  }
+  if (points > 0) {
+    try {
+      await incrementClientPoints(userId, points);
+    } catch (e) {
+      console.error('[Webhook MP] no se pudieron sumar puntos por compra', e);
+    }
+  }
+  console.log(`[Webhook MP] pedido productos pagado order=${orderId} user=${userId}`);
+}
+
+function parseLinkedProductOrderId(metadata: Record<string, unknown> | undefined): number | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const raw = (metadata as Record<string, unknown>).lb_po;
+  if (raw == null || raw === '') return null;
+  const n = parseInt(String(raw), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 async function createMercadoPagoSenaPreference(
   config: MercadoPagoConfig,
   input: {
@@ -124,6 +168,10 @@ async function createMercadoPagoSenaPreference(
     userId: number;
     /** Si true, MP redirige a /perfil tras el pago (flujo desde el perfil). */
     returnToProfile?: boolean;
+    productOrderId?: number;
+    productLines?: ProductOrderLine[];
+    /** Solo productos (cliente exento de seña). */
+    productsOnly?: boolean;
   }
 ): Promise<{ preferenceId: string; url?: string }> {
   const serviceEntity = input.serviceId ? await getServiceById(input.serviceId) : null;
@@ -157,6 +205,40 @@ async function createMercadoPagoSenaPreference(
     itemTitle = `Seña — Lion Barber (promo ${promo.discountPercent}%)`;
   }
 
+  const mpItems: {
+    id: string;
+    title: string;
+    quantity: number;
+    unit_price: number;
+    currency_id: 'ARS';
+  }[] = [];
+
+  if (!input.productsOnly && amountArs > 0) {
+    mpItems.push({
+      id: 'lion-sena',
+      title: itemTitle,
+      quantity: 1,
+      unit_price: amountArs,
+      currency_id: 'ARS',
+    });
+  }
+
+  if (input.productLines?.length) {
+    for (const line of input.productLines) {
+      mpItems.push({
+        id: `prod-${line.productId}`,
+        title: line.name,
+        quantity: line.quantity,
+        unit_price: line.unitPrice,
+        currency_id: 'ARS',
+      });
+    }
+  }
+
+  if (mpItems.length === 0) {
+    throw new Error('No hay ítems para cobrar con Mercado Pago.');
+  }
+
   const externalReference = buildBookingRef({
     appointmentId: input.appointmentId,
     name: input.name,
@@ -174,15 +256,7 @@ async function createMercadoPagoSenaPreference(
   const checkoutBase = input.returnToProfile ? `${base}/perfil` : `${base}/`;
   const preference = new Preference(config);
   const body = {
-    items: [
-      {
-        id: 'lion-sena',
-        title: itemTitle,
-        quantity: 1,
-        unit_price: amountArs,
-        currency_id: 'ARS',
-      },
-    ],
+    items: mpItems,
     external_reference: externalReference,
     metadata: {
       lb_a: input.appointmentId,
@@ -195,6 +269,7 @@ async function createMercadoPagoSenaPreference(
       lb_t: input.time,
       lb_m: String(input.durationMinutes),
       lb_u: String(input.userId),
+      ...(input.productOrderId != null ? { lb_po: String(input.productOrderId) } : {}),
     },
     back_urls: {
       success: `${checkoutBase}?checkout=success`,
@@ -449,6 +524,14 @@ function parseBookingRef(
   return null;
 }
 
+function parseProductItemsBody(raw: unknown): { productId: string; quantity: number }[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  return raw.map((item) => ({
+    productId: String((item as { productId?: string }).productId ?? '').trim(),
+    quantity: Math.floor(Number((item as { quantity?: number }).quantity)),
+  }));
+}
+
 function extractPaymentId(req: Request): string | undefined {
   const q = req.query as Record<string, string | undefined>;
   const body = req.body as Record<string, unknown> | null | undefined;
@@ -535,7 +618,7 @@ router.post('/sena', async (req, res) => {
   const t = (process.env.MERCADOPAGO_ACCESS_TOKEN ?? '').trim();
   console.log(`[MP] preference.create usando token last6: ${t.slice(-6)}`);
 
-  const { name, phone, service, serviceId, barberId, date, time, userId } = req.body as {
+  const { name, phone, service, serviceId, barberId, date, time, userId, productItems } = req.body as {
     name?: string;
     phone?: string;
     service?: string;
@@ -544,7 +627,19 @@ router.post('/sena', async (req, res) => {
     date?: string;
     time?: string;
     userId?: number;
+    productItems?: { productId?: string; quantity?: number }[];
   };
+
+  let resolvedProducts: Awaited<ReturnType<typeof resolveProductOrderLines>> | null = null;
+  const productItemsParsed = parseProductItemsBody(productItems);
+  if (productItemsParsed.length > 0) {
+    try {
+      resolvedProducts = await resolveProductOrderLines(productItemsParsed);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Productos del carrito inválidos';
+      return res.status(400).json({ error: msg });
+    }
+  }
 
   if (!name || !phone || !service || !barberId || !date || !time) {
     return res.status(400).json({ error: 'Faltan datos para la reserva con seña' });
@@ -614,6 +709,66 @@ router.post('/sena', async (req, res) => {
       return res.status(409).json({ error: msg });
     }
 
+    if (resolvedProducts) {
+      let productOrder;
+      try {
+        productOrder = await createProductOrder({
+          userId: uid,
+          items: resolvedProducts.lines,
+          totalArs: resolvedProducts.totalArs,
+        });
+      } catch (e) {
+        console.error(e);
+        return res.status(500).json({ error: 'No se pudo crear el pedido de productos' });
+      }
+
+      let pref: { preferenceId: string; url?: string };
+      try {
+        pref = await createMercadoPagoSenaPreference(config, {
+          appointmentId: confirmed.id,
+          name,
+          phone,
+          service,
+          serviceId: serviceId ?? '',
+          barberId,
+          date,
+          time,
+          durationMinutes,
+          userId: uid,
+          productOrderId: productOrder.id,
+          productLines: resolvedProducts.lines,
+          productsOnly: true,
+        });
+      } catch (e) {
+        console.error('Mercado Pago preference.create (exempt+products):', e);
+        await markProductOrderCancelled(productOrder.id);
+        return res.status(502).json({
+          error: 'Turno confirmado, pero no se pudo iniciar el pago de los productos.',
+        });
+      }
+
+      res.status(201).json({
+        exempt: true,
+        appointmentId: confirmed.id,
+        preferenceId: pref.preferenceId,
+        ...(pref.url ? { url: pref.url } : {}),
+        productOrderId: productOrder.id,
+        productsTotalArs: resolvedProducts.totalArs,
+      });
+
+      void notifyShopPhoneAppointmentCreated(confirmed);
+      void (async () => {
+        try {
+          if (isRealClientEmail(requesterUser.email)) {
+            await sendAppointmentScheduledEmail(requesterUser.email, confirmed);
+          }
+        } catch (err) {
+          console.error('[Email] No se pudo enviar confirmación a cliente exento', err);
+        }
+      })();
+      return;
+    }
+
     res.status(201).json({
       exempt: true,
       appointmentId: confirmed.id,
@@ -645,6 +800,21 @@ router.post('/sena', async (req, res) => {
     servicePriceArs != null
       ? calculateBookingDepositArs(servicePriceArs, DEPOSIT_PERCENT, bookingPromo)
       : null;
+
+  let productOrderId: number | undefined;
+  if (resolvedProducts) {
+    try {
+      const productOrder = await createProductOrder({
+        userId: uid,
+        items: resolvedProducts.lines,
+        totalArs: resolvedProducts.totalArs,
+      });
+      productOrderId = productOrder.id;
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: 'No se pudo crear el pedido de productos' });
+    }
+  }
 
   try {
     pending = await repo.createAppointment({
@@ -681,10 +851,13 @@ router.post('/sena', async (req, res) => {
       time,
       durationMinutes,
       userId: uid,
+      productOrderId,
+      productLines: resolvedProducts?.lines,
     });
   } catch (e) {
     console.error('Mercado Pago preference.create:', e);
     await repo.updateAppointment(pending.id, { status: 'cancelled' });
+    if (productOrderId != null) await markProductOrderCancelled(productOrderId);
     return res.status(502).json({
       error: 'No se pudo iniciar el pago con Mercado Pago. Revisá credenciales y montos.',
     });
@@ -695,6 +868,9 @@ router.post('/sena', async (req, res) => {
     ...(pref.url ? { url: pref.url } : {}),
     appointmentId: pending.id,
     paymentDueAt,
+    ...(resolvedProducts
+      ? { productOrderId, productsTotalArs: resolvedProducts.totalArs }
+      : {}),
   });
 
   void (async () => {
@@ -1016,27 +1192,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       userId,
     });
     if (!inserted) return;
-    const paid = await markProductOrderPaid(orderId, paymentId);
-    if (paid?.status === 'paid') {
-      let points = 0;
-      for (const line of paid.items) {
-        try {
-          await decrementProductStock(line.productId, line.quantity);
-        } catch (e) {
-          console.error('[Webhook MP] no se pudo descontar stock', line.productId, e);
-        }
-        const product = await getShopProductById(line.productId);
-        if (product?.pointsReward) points += product.pointsReward * line.quantity;
-      }
-      if (points > 0) {
-        try {
-          await incrementClientPoints(userId, points);
-        } catch (e) {
-          console.error('[Webhook MP] no se pudieron sumar puntos por compra', e);
-        }
-      }
-      console.log(`[Webhook MP] pedido productos pagado order=${orderId} user=${userId}`);
-    }
+    await fulfillProductOrderFromPayment(orderId, userId, paymentId);
     return;
   }
 
@@ -1092,17 +1248,25 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
 
   const userId = ref.u ? parseInt(ref.u, 10) : undefined;
 
+  const paymentMetadata = payment.metadata as Record<string, unknown> | undefined;
+  const linkedProductOrderId = parseLinkedProductOrderId(paymentMetadata);
+
   const existingByRefId = ref.a ? await repo.getAppointmentById(ref.a) : null;
   if (existingByRefId) {
-    const updated = await repo.markAppointmentPaidAndScheduled(
-      existingByRefId.id,
-      paymentId,
-      depositAmountArs
-    );
-    if (updated) {
-      void notifyBarberByWhatsappOnDepositPaid(updated);
-      void notifyShopPhoneAppointmentCreated(updated);
-      void notifyClientDepositConfirmed(updated);
+    if (existingByRefId.status === 'pending_payment') {
+      const updated = await repo.markAppointmentPaidAndScheduled(
+        existingByRefId.id,
+        paymentId,
+        depositAmountArs
+      );
+      if (updated) {
+        void notifyBarberByWhatsappOnDepositPaid(updated);
+        void notifyShopPhoneAppointmentCreated(updated);
+        void notifyClientDepositConfirmed(updated);
+      }
+    }
+    if (linkedProductOrderId != null && userId != null && Number.isFinite(userId)) {
+      await fulfillProductOrderFromPayment(linkedProductOrderId, userId, paymentId);
     }
     return;
   }
@@ -1136,6 +1300,9 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     void notifyBarberByWhatsappOnDepositPaid(created);
     void notifyShopPhoneAppointmentCreated(created);
     void notifyClientDepositConfirmed(created);
+    if (linkedProductOrderId != null && userId != null && Number.isFinite(userId)) {
+      await fulfillProductOrderFromPayment(linkedProductOrderId, userId, paymentId);
+    }
   } catch (e) {
     const code = (e as { code?: string }).code;
     if (code === 'ER_DUP_ENTRY') return;

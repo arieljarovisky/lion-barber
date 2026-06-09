@@ -1,70 +1,46 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Minus, Plus, ShoppingBag, ShoppingCart } from 'lucide-react';
 import { Wallet } from '@mercadopago/sdk-react';
 import { api, ApiError } from '../api';
 import type { ShopProduct } from '../api';
+import type { ShopCartLine } from '../hooks/useShopCart';
 import { parseArsAmount } from '../utils/money';
 import { resolveUploadUrl } from '../utils/mediaUrl';
-
-type CartLine = { product: ShopProduct; quantity: number };
 
 type ShopCatalogSectionProps = {
   products: ShopProduct[];
   isLoggedIn: boolean;
   onRequireLogin: () => void;
+  cart: Record<string, number>;
+  cartLines: ShopCartLine[];
+  cartTotal: number;
+  cartCount: number;
+  onSetQty: (productId: string, quantity: number) => void;
+  onProductsPurchased?: () => void;
+  /** Oculta el checkout de solo productos (p. ej. si el pago va junto con la reserva). */
+  hideProductCheckout?: boolean;
 };
 
 function productUnitPriceArs(product: ShopProduct): number | null {
   return parseArsAmount(product.unitPrice ?? undefined);
 }
 
-function productMaxQty(product: ShopProduct): number {
-  if (product.stock == null) return 99;
-  return Math.min(99, Math.max(0, product.stock));
-}
-
 export default function ShopCatalogSection({
   products,
   isLoggedIn,
   onRequireLogin,
+  cart,
+  cartLines,
+  cartTotal,
+  cartCount,
+  onSetQty,
+  onProductsPurchased,
+  hideProductCheckout = false,
 }: ShopCatalogSectionProps) {
-  const [cart, setCart] = useState<Record<string, number>>({});
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState('');
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
-
-  const cartLines = useMemo(() => {
-    const lines: CartLine[] = [];
-    for (const product of products) {
-      const qty = cart[product.id] ?? 0;
-      if (qty > 0) lines.push({ product, quantity: qty });
-    }
-    return lines;
-  }, [cart, products]);
-
-  const cartTotal = useMemo(() => {
-    return cartLines.reduce((sum, line) => {
-      const price = productUnitPriceArs(line.product);
-      if (price == null) return sum;
-      return sum + price * line.quantity;
-    }, 0);
-  }, [cartLines]);
-
-  const cartCount = cartLines.reduce((n, l) => n + l.quantity, 0);
-
-  const setQty = (productId: string, quantity: number) => {
-    const product = products.find((p) => p.id === productId);
-    const max = product ? productMaxQty(product) : 99;
-    setCart((prev) => {
-      const next = { ...prev };
-      if (quantity <= 0) delete next[productId];
-      else next[productId] = Math.min(max, quantity);
-      return next;
-    });
-    setPreferenceId(null);
-    setCheckoutError('');
-  };
 
   const handleCheckout = async () => {
     if (cartLines.length === 0) return;
@@ -80,6 +56,7 @@ export default function ShopCatalogSection({
         cartLines.map((l) => ({ productId: l.product.id, quantity: l.quantity }))
       );
       if (result.url) {
+        onProductsPurchased?.();
         window.location.href = result.url;
         return;
       }
@@ -102,7 +79,7 @@ export default function ShopCatalogSection({
           </h2>
           <div className="mx-auto h-1 w-20 rounded-full bg-[#e5c185] sm:w-24" />
           <p className="mx-auto mt-4 max-w-xl text-sm text-zinc-400 sm:text-base">
-            Comprá online con Mercado Pago y retirá en Lion Barber.
+            Comprá online con Mercado Pago y retirá en Lion Barber. También podés sumarlos al reservar un turno.
           </p>
         </div>
 
@@ -151,7 +128,7 @@ export default function ShopCatalogSection({
                     {qty === 0 ? (
                       <button
                         type="button"
-                        onClick={() => setQty(product.id, 1)}
+                        onClick={() => onSetQty(product.id, 1)}
                         className="w-full rounded-md bg-[#e5c185] px-2 py-1.5 text-[10px] font-black uppercase tracking-wide text-zinc-950 hover:bg-[#d4b074] sm:w-auto sm:rounded-lg sm:px-4 sm:py-2 sm:text-xs sm:tracking-wider"
                       >
                         Agregar
@@ -160,7 +137,7 @@ export default function ShopCatalogSection({
                       <div className="flex w-full items-center justify-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 sm:w-auto sm:gap-2 sm:rounded-lg sm:px-2 sm:py-1">
                         <button
                           type="button"
-                          onClick={() => setQty(product.id, qty - 1)}
+                          onClick={() => onSetQty(product.id, qty - 1)}
                           className="rounded p-0.5 text-zinc-400 hover:text-white sm:p-1"
                           aria-label="Quitar uno"
                         >
@@ -171,7 +148,7 @@ export default function ShopCatalogSection({
                         </span>
                         <button
                           type="button"
-                          onClick={() => setQty(product.id, qty + 1)}
+                          onClick={() => onSetQty(product.id, qty + 1)}
                           className="rounded p-0.5 text-zinc-400 hover:text-white sm:p-1"
                           aria-label="Agregar uno"
                         >
@@ -186,7 +163,7 @@ export default function ShopCatalogSection({
           })}
         </div>
 
-        {cartCount > 0 && (
+        {cartCount > 0 && !hideProductCheckout && (
           <div className="sticky bottom-4 z-30 mx-auto mt-8 max-w-lg rounded-2xl border border-[#e5c185]/30 bg-zinc-950/95 p-4 shadow-2xl backdrop-blur sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-3">
               <span className="flex items-center gap-2 text-sm font-bold text-white">
@@ -204,14 +181,22 @@ export default function ShopCatalogSection({
                 </button>{' '}
                 para pagar con Mercado Pago.
               </p>
-            ) : null}
+            ) : (
+              <p className="mb-3 text-center text-[11px] text-zinc-500">
+                Pagá solo los productos acá, o bajá a{' '}
+                <a href="#reserva" className="font-bold text-[#e5c185] underline">
+                  Reservar turno
+                </a>{' '}
+                para sumarlos con la seña en un solo pago.
+              </p>
+            )}
             <button
               type="button"
               onClick={() => void handleCheckout()}
               disabled={checkoutLoading}
               className="w-full rounded-xl bg-[#e5c185] py-3.5 text-sm font-black uppercase tracking-wider text-zinc-950 hover:bg-[#d4b074] disabled:opacity-60"
             >
-              {checkoutLoading ? 'Preparando pago…' : 'Pagar con Mercado Pago'}
+              {checkoutLoading ? 'Preparando pago…' : 'Comprar productos (sin turno)'}
             </button>
             {checkoutError && <p className="mt-2 text-center text-xs text-red-400">{checkoutError}</p>}
             {preferenceId && (

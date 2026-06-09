@@ -522,10 +522,11 @@ export const api = {
     date: string;
     time: string;
     userId?: number;
+    productItems?: { productId: string; quantity: number }[];
   }) =>
     fetchApi<
-      | { exempt: true; appointmentId: string }
-      | { preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }
+      | { exempt: true; appointmentId: string; preferenceId?: string; url?: string; productsTotalArs?: number }
+      | { preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string; productsTotalArs?: number }
     >('/api/checkout/sena', { method: 'POST', body: JSON.stringify(data) }),
 
   /**
