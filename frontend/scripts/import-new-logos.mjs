@@ -16,6 +16,13 @@ const publicDir = path.join(root, 'public');
 /** Logo oficial Lion Barber (cabezal + tipografía). */
 const PRIMARY_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.01 (3).jpeg';
 
+/** Cabezal circular para favicons (legible a 16px). */
+const CIRCLE_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.00 (1).jpeg';
+const HEAD_LOGO = 'WhatsApp Image 2026-06-08 at 17.51.01 (1).jpeg';
+
+const ICON_VERSION = 5;
+const TRANSPARENT = { r: 0, g: 0, b: 0, alpha: 0 };
+
 const BG_TOLERANCE = 48;
 
 function sourcePath() {
@@ -135,21 +142,66 @@ async function writeMainLogo() {
   }
 }
 
+async function loadHeadLogoForIcon(targetPx) {
+  const input = path.join(srcDir, HEAD_LOGO);
+  if (!fs.existsSync(input)) {
+    throw new Error(`No se encontró el logo de cabeza: ${input}`);
+  }
+
+  const { data, info } = await sharp(input)
+    .resize({ width: Math.max(targetPx * 4, 256), withoutEnlargement: false })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const rgba = makeEdgeBackgroundTransparent(data, info.width, info.height, 36);
+  return sharp(rgba, { raw: { width: info.width, height: info.height, channels: 4 } }).trim({
+    threshold: 12,
+  });
+}
+
 async function writeSquareIcon(destName, px) {
-  const meta = await sharp(sourcePath()).metadata();
-  const targetW = Math.min(640, meta.width ?? 640);
-  await (await loadTransparentLogo(targetW))
-    .resize(px, px, {
+  const head = await loadHeadLogoForIcon(px);
+  const inner = Math.max(12, Math.round(px * (px <= 48 ? 0.94 : 0.88)));
+  const pad = Math.max(0, Math.round((px - inner) / 2));
+
+  await head
+    .resize(inner, inner, {
       fit: 'contain',
-      position: 'centre',
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      background: TRANSPARENT,
     })
-    .png()
+    .extend({
+      top: pad,
+      bottom: px - inner - pad,
+      left: pad,
+      right: px - inner - pad,
+      background: TRANSPARENT,
+    })
+    .png({ compressionLevel: 9, force: true })
     .toFile(path.join(publicDir, destName));
+
   console.log('ok', destName);
 }
 
+async function writeCircleAssets() {
+  for (const [sourceName, destName, size] of [
+    [CIRCLE_LOGO, 'lion-logo-circle.png', 512],
+    [HEAD_LOGO, 'lion-logo-head.png', 512],
+  ]) {
+    const input = path.join(srcDir, sourceName);
+    if (!fs.existsSync(input)) {
+      throw new Error(`No se encontró: ${input}`);
+    }
+    await sharp(input)
+      .resize(size, size, { fit: 'cover', position: 'centre' })
+      .png({ quality: 92 })
+      .toFile(path.join(publicDir, destName));
+    console.log('ok', destName);
+  }
+}
+
 await writeMainLogo();
+await writeCircleAssets();
 
 for (const [name, px] of [
   ['favicon-16x16.png', 16],
@@ -167,4 +219,21 @@ const icoBuf = await toIco([
 ]);
 fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuf);
 console.log('ok favicon.ico');
+
+const png32 = fs.readFileSync(path.join(publicDir, 'favicon-32x32.png'));
+const dataUri = `data:image/png;base64,${png32.toString('base64')}`;
+const indexPath = path.join(root, 'index.html');
+let html = fs.readFileSync(indexPath, 'utf8');
+html = html.replace(/\n\s*<link rel="icon" type="image\/png" href="data:image\/png;base64,[^"]+" sizes="32x32" \/>/g, '');
+html = html.replace(
+  '<title>Lion Barber</title>',
+  `<title>Lion Barber</title>\n    <link rel="icon" type="image/png" href="${dataUri}" sizes="32x32" />`
+);
+html = html.replace(/\/favicon-32x32\.png\?v=\d+/g, `/favicon-32x32.png?v=${ICON_VERSION}`);
+html = html.replace(/\/favicon-16x16\.png\?v=\d+/g, `/favicon-16x16.png?v=${ICON_VERSION}`);
+html = html.replace(/\/favicon\.ico\?v=\d+/g, `/favicon.ico?v=${ICON_VERSION}`);
+html = html.replace(/\/apple-touch-icon\.png\?v=\d+/g, `/apple-touch-icon.png?v=${ICON_VERSION}`);
+fs.writeFileSync(indexPath, html);
+console.log('ok index.html (favicon inline)');
+
 console.log('Logo importado (fondo transparente) desde', PRIMARY_LOGO);

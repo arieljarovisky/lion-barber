@@ -1,8 +1,24 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/((?!assets/|favicon\\.ico|favicon-.*\\.png|apple-touch-icon\\.png|android-chrome-.*\\.png|site\\.webmanifest|lion-.*\\.png|barbers/|products/).*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
+    {
+      "source": "/favicon.ico",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400, must-revalidate" },
+        { "key": "Content-Type", "value": "image/x-icon" }
+      ]
+    },
+    {
+      "source": "/favicon-(.*)\\.png",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400, must-revalidate" }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [

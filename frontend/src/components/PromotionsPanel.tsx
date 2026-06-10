@@ -3,6 +3,18 @@ import { Loader2, Megaphone, Pencil, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api';
 import { useConfirm } from '../contexts/ConfirmContext';
 import type { SitePromotion } from '../api';
+import {
+  formatActiveWeekdays,
+  toggleWeekdayInList,
+  WEEKDAY_OPTIONS,
+} from '../utils/sitePromotions';
+import {
+  defaultButtonTextForHref,
+  isKnownPromotionCtaHref,
+  normalizePromotionCtaHref,
+  PROMOTION_CTA_LINKS,
+  promotionSectionLabel,
+} from '../constants/promotionCtaLinks';
 
 type PromotionsPanelProps = {
   promotions: SitePromotion[];
@@ -10,6 +22,163 @@ type PromotionsPanelProps = {
   onRefresh: () => Promise<void>;
   showToast: (message: string, kind?: 'ok' | 'err') => void;
 };
+
+function WeekdayPicker({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (days: number[]) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {WEEKDAY_OPTIONS.map(({ value: day, label }) => {
+        const selected = value.includes(day);
+        return (
+          <button
+            key={day}
+            type="button"
+            onClick={() => onChange(toggleWeekdayInList(value, day))}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+              selected
+                ? 'bg-zinc-900 text-white'
+                : 'border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+            }`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PromotionScheduleFields({
+  activeWeekdays,
+  onActiveWeekdaysChange,
+  discountPercent,
+  onDiscountPercentChange,
+  depositCoversFull,
+  onDepositCoversFullChange,
+}: {
+  activeWeekdays: number[];
+  onActiveWeekdaysChange: (days: number[]) => void;
+  discountPercent: string;
+  onDiscountPercentChange: (v: string) => void;
+  depositCoversFull: boolean;
+  onDepositCoversFullChange: (v: boolean) => void;
+}) {
+  const hasDiscount = discountPercent.trim() !== '' && Number(discountPercent) > 0;
+
+  return (
+    <div className="grid gap-3 sm:col-span-2">
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-500">
+          Días activos
+        </p>
+        <WeekdayPicker value={activeWeekdays} onChange={onActiveWeekdaysChange} />
+        <p className="mt-1.5 text-[11px] text-zinc-400">
+          Sin selección = el descuento aplica todos los días. Con días elegidos, el banner se ve
+          siempre pero el beneficio solo al reservar esos días.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-zinc-500">
+            Precio promocional (% del servicio)
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={discountPercent}
+            onChange={(e) => onDiscountPercentChange(e.target.value)}
+            placeholder="Ej. 50 = pagás la mitad"
+            className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+          />
+        </div>
+        <label
+          className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${
+            hasDiscount ? 'border-zinc-200 text-zinc-700' : 'border-zinc-100 text-zinc-400'
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={depositCoversFull}
+            disabled={!hasDiscount}
+            onChange={(e) => onDepositCoversFullChange(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-bold">La seña cubre todo</span>
+            <span className="mt-0.5 block text-xs text-zinc-500">
+              El cliente paga online el % promocional y no debe nada en el local.
+            </span>
+          </span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function PromotionCtaFields({
+  ctaHref,
+  ctaLabel,
+  onCtaHrefChange,
+  onCtaLabelChange,
+}: {
+  ctaHref: string;
+  ctaLabel: string;
+  onCtaHrefChange: (href: string) => void;
+  onCtaLabelChange: (label: string) => void;
+}) {
+  const knownHref = isKnownPromotionCtaHref(ctaHref);
+  const selectValue = knownHref ? ctaHref : PROMOTION_CTA_LINKS[0].href;
+
+  const handleSectionChange = (href: string) => {
+    onCtaHrefChange(href);
+    const prevDefault = defaultButtonTextForHref(ctaHref);
+    if (!ctaLabel.trim() || ctaLabel.trim() === prevDefault) {
+      onCtaLabelChange(defaultButtonTextForHref(href));
+    }
+  };
+
+  return (
+    <>
+      <div>
+        <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-zinc-500">
+          ¿A dónde va el botón?
+        </label>
+        <select
+          value={selectValue}
+          onChange={(e) => handleSectionChange(e.target.value)}
+          className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+        >
+          {PROMOTION_CTA_LINKS.map((link) => (
+            <option key={link.href} value={link.href}>
+              {link.sectionLabel}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1.5 text-[11px] text-zinc-400">
+          Al tocar el botón en la web, el cliente baja a esa sección de la página principal.
+        </p>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-zinc-500">
+          Texto del botón
+        </label>
+        <input
+          type="text"
+          value={ctaLabel}
+          onChange={(e) => onCtaLabelChange(e.target.value)}
+          placeholder={defaultButtonTextForHref(selectValue)}
+          className="w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+        />
+      </div>
+    </>
+  );
+}
 
 export default function PromotionsPanel({
   promotions,
@@ -21,8 +190,11 @@ export default function PromotionsPanel({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [badgeText, setBadgeText] = useState('');
-  const [ctaLabel, setCtaLabel] = useState('Ver abonos');
-  const [ctaHref, setCtaHref] = useState('#abonos');
+  const [ctaLabel, setCtaLabel] = useState('Reservar turno');
+  const [ctaHref, setCtaHref] = useState('#reserva');
+  const [activeWeekdays, setActiveWeekdays] = useState<number[]>([]);
+  const [discountPercent, setDiscountPercent] = useState('');
+  const [depositCoversFull, setDepositCoversFull] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -31,6 +203,17 @@ export default function PromotionsPanel({
   const [editCtaLabel, setEditCtaLabel] = useState('');
   const [editCtaHref, setEditCtaHref] = useState('');
   const [editActive, setEditActive] = useState(true);
+  const [editActiveWeekdays, setEditActiveWeekdays] = useState<number[]>([]);
+  const [editDiscountPercent, setEditDiscountPercent] = useState('');
+  const [editDepositCoversFull, setEditDepositCoversFull] = useState(false);
+
+  const parseDiscount = (raw: string): number | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return Math.min(100, Math.max(1, Math.round(n)));
+  };
 
   const addPromotion = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,12 +230,18 @@ export default function PromotionsPanel({
         badgeText: badgeText.trim(),
         ctaLabel: ctaLabel.trim() || undefined,
         ctaHref: ctaHref.trim() || undefined,
+        activeWeekdays,
+        discountPercent: parseDiscount(discountPercent),
+        depositCoversFull: depositCoversFull && parseDiscount(discountPercent) != null,
       });
       setTitle('');
       setDescription('');
       setBadgeText('');
-      setCtaLabel('Ver abonos');
-      setCtaHref('#abonos');
+      setCtaLabel('Reservar turno');
+      setCtaHref('#reserva');
+      setActiveWeekdays([]);
+      setDiscountPercent('');
+      setDepositCoversFull(false);
       showToast('Promoción creada');
       await onRefresh();
     } catch (e) {
@@ -67,9 +256,14 @@ export default function PromotionsPanel({
     setEditTitle(p.title);
     setEditDescription(p.description);
     setEditBadgeText(p.badgeText);
-    setEditCtaLabel(p.ctaLabel || 'Ver abonos');
-    setEditCtaHref(p.ctaHref || '#abonos');
+    setEditCtaHref(normalizePromotionCtaHref(p.ctaHref));
+    setEditCtaLabel(
+      p.ctaLabel || defaultButtonTextForHref(normalizePromotionCtaHref(p.ctaHref))
+    );
     setEditActive(p.active);
+    setEditActiveWeekdays(p.activeWeekdays ?? []);
+    setEditDiscountPercent(p.discountPercent != null ? String(p.discountPercent) : '');
+    setEditDepositCoversFull(Boolean(p.depositCoversFull));
   };
 
   const saveEdit = async (id: string) => {
@@ -86,6 +280,10 @@ export default function PromotionsPanel({
         ctaLabel: editCtaLabel.trim(),
         ctaHref: editCtaHref.trim(),
         active: editActive,
+        activeWeekdays: editActiveWeekdays,
+        discountPercent: parseDiscount(editDiscountPercent),
+        depositCoversFull:
+          editDepositCoversFull && parseDiscount(editDiscountPercent) != null,
       });
       setEditingId(null);
       showToast('Promoción actualizada');
@@ -119,7 +317,8 @@ export default function PromotionsPanel({
         <div>
           <h2 className="text-lg font-black text-zinc-900">Promociones del sitio</h2>
           <p className="text-sm text-zinc-500">
-            Las promociones activas se muestran en la web pública. Podés enlazar a abonos, reservas u otra sección.
+            Las promociones activas se muestran siempre en la web. El descuento y la seña promocional
+            solo aplican si el cliente reserva en los días que elijas abajo.
           </p>
         </div>
       </div>
@@ -129,7 +328,7 @@ export default function PromotionsPanel({
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Título (ej. 20% off en abonos)"
+          placeholder="Título (ej. 50% los lunes)"
           className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm sm:col-span-2"
         />
         <textarea
@@ -144,21 +343,21 @@ export default function PromotionsPanel({
           value={badgeText}
           onChange={(e) => setBadgeText(e.target.value)}
           placeholder="Etiqueta (ej. OFERTA)"
-          className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
-        />
-        <input
-          type="text"
-          value={ctaLabel}
-          onChange={(e) => setCtaLabel(e.target.value)}
-          placeholder="Texto del botón"
-          className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
-        />
-        <input
-          type="text"
-          value={ctaHref}
-          onChange={(e) => setCtaHref(e.target.value)}
-          placeholder="Enlace (ej. #abonos)"
           className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm sm:col-span-2"
+        />
+        <PromotionCtaFields
+          ctaHref={ctaHref}
+          ctaLabel={ctaLabel}
+          onCtaHrefChange={setCtaHref}
+          onCtaLabelChange={setCtaLabel}
+        />
+        <PromotionScheduleFields
+          activeWeekdays={activeWeekdays}
+          onActiveWeekdaysChange={setActiveWeekdays}
+          discountPercent={discountPercent}
+          onDiscountPercentChange={setDiscountPercent}
+          depositCoversFull={depositCoversFull}
+          onDepositCoversFullChange={setDepositCoversFull}
         />
         <button
           type="submit"
@@ -197,19 +396,21 @@ export default function PromotionsPanel({
                     value={editBadgeText}
                     onChange={(e) => setEditBadgeText(e.target.value)}
                     placeholder="Etiqueta"
-                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                  />
-                  <input
-                    value={editCtaLabel}
-                    onChange={(e) => setEditCtaLabel(e.target.value)}
-                    placeholder="Texto botón"
-                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                  />
-                  <input
-                    value={editCtaHref}
-                    onChange={(e) => setEditCtaHref(e.target.value)}
-                    placeholder="Enlace"
                     className="rounded-lg border border-zinc-200 px-3 py-2 text-sm sm:col-span-2"
+                  />
+                  <PromotionCtaFields
+                    ctaHref={editCtaHref}
+                    ctaLabel={editCtaLabel}
+                    onCtaHrefChange={setEditCtaHref}
+                    onCtaLabelChange={setEditCtaLabel}
+                  />
+                  <PromotionScheduleFields
+                    activeWeekdays={editActiveWeekdays}
+                    onActiveWeekdaysChange={setEditActiveWeekdays}
+                    discountPercent={editDiscountPercent}
+                    onDiscountPercentChange={setEditDiscountPercent}
+                    depositCoversFull={editDepositCoversFull}
+                    onDepositCoversFullChange={setEditDepositCoversFull}
                   />
                   <label className="flex items-center gap-2 text-sm text-zinc-600 sm:col-span-2">
                     <input
@@ -236,9 +437,19 @@ export default function PromotionsPanel({
                     )}
                   </p>
                   {p.description && <p className="mt-1 text-sm text-zinc-500">{p.description}</p>}
+                  <p className="mt-1 text-xs text-zinc-400">
+                    Días: {formatActiveWeekdays(p.activeWeekdays ?? [])}
+                    {p.discountPercent != null && p.discountPercent > 0 && (
+                      <>
+                        {' · '}
+                        Precio {p.discountPercent}% del servicio
+                        {p.depositCoversFull ? ' · seña = todo pago' : ''}
+                      </>
+                    )}
+                  </p>
                   {(p.ctaLabel || p.ctaHref) && (
                     <p className="mt-1 text-xs text-zinc-400">
-                      CTA: {p.ctaLabel || '—'} → {p.ctaHref || '—'}
+                      Botón: «{p.ctaLabel || 'Ver más'}» → {promotionSectionLabel(p.ctaHref)}
                     </p>
                   )}
                 </div>

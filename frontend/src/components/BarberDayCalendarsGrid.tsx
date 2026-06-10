@@ -24,6 +24,8 @@ type Props = {
   getBlockedSlotsForBarber: (barberId: string) => Set<string>;
   adminClients: AdminClientWithHistory[];
   shopWhatsappMessageTemplate: string | null;
+  /** Si se define, solo esa columna permite crear/editar/eliminar (cuentas barbero). */
+  manageBarberId?: string | null;
   onCreateSlot: (dateStr: string, slot: string, barberId: string) => void;
   onEdit: (app: Appointment) => void;
   onDelete: (id: string) => void;
@@ -51,6 +53,7 @@ function renderTimelineRow(
     onCreateSlot: Props['onCreateSlot'];
     onEdit: Props['onEdit'];
     onDelete: Props['onDelete'];
+    canManage: boolean;
   }
 ) {
   const {
@@ -62,9 +65,25 @@ function renderTimelineRow(
     onCreateSlot,
     onEdit,
     onDelete,
+    canManage,
   } = ctx;
 
   if (row.kind === 'free') {
+    if (!canManage) {
+      return (
+        <div
+          key={row.slot}
+          className="flex w-full items-center gap-2 rounded-lg py-2.5 text-left text-sm min-h-[2.75rem] opacity-60"
+        >
+          <span className="w-14 font-mono text-zinc-400 flex-shrink-0 text-xs font-semibold">
+            {row.slot}
+          </span>
+          <span className="flex flex-1 items-center gap-1.5 border border-dashed border-zinc-200/60 rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-400">
+            Libre
+          </span>
+        </div>
+      );
+    }
     return (
       <button
         key={row.slot}
@@ -146,22 +165,26 @@ function renderTimelineRow(
               </a>
             );
           })()}
-          <button
-            type="button"
-            onClick={() => onEdit(app)}
-            className="p-1.5 text-zinc-400 hover:text-[#e5c185] hover:bg-amber-50 rounded-lg transition-colors"
-            title="Editar"
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={() => void onDelete(app.id)}
-            className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-            title="Eliminar"
-          >
-            <Trash2 size={14} />
-          </button>
+          {canManage ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onEdit(app)}
+                className="p-1.5 text-zinc-400 hover:text-[#e5c185] hover:bg-amber-50 rounded-lg transition-colors"
+                title="Editar"
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void onDelete(app.id)}
+                className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                title="Eliminar"
+              >
+                <Trash2 size={14} />
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
@@ -178,6 +201,7 @@ export default function BarberDayCalendarsGrid({
   onCreateSlot,
   onEdit,
   onDelete,
+  manageBarberId = null,
   scrollMaxHeight = 'calc(100vh - 280px)',
   scrollMinHeight = 'min(72vh, 720px)',
   fillAvailableHeight = false,
@@ -216,6 +240,11 @@ export default function BarberDayCalendarsGrid({
               />
               <p className={`font-bold leading-tight ${compact ? 'text-sm' : 'text-base'}`}>
                 {barber.name}
+                {manageBarberId && manageBarberId === barber.id ? (
+                  <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-[#e5c185]">
+                    Tu agenda
+                  </span>
+                ) : null}
               </p>
             </div>
           </div>
@@ -254,6 +283,7 @@ export default function BarberDayCalendarsGrid({
                   onCreateSlot,
                   onEdit,
                   onDelete,
+                  canManage: !manageBarberId || manageBarberId === barber.id,
                 })
               )}
             </div>

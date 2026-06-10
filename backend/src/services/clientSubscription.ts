@@ -1,10 +1,16 @@
-import pool, { query } from '../db.js';
-import type { DbUser } from '../repositories/users.js';
+import { query } from '../db.js';
 import type { Appointment, ServicePaymentSplit } from '../types.js';
 import {
   getSubscriptionPlanById,
   type SubscriptionPlan,
 } from '../repositories/subscriptionPlans.js';
+import * as groups from '../repositories/clientSubscriptionGroups.js';
+
+export interface ClientSubscriptionMember {
+  id: number;
+  name: string;
+  email: string;
+}
 
 export interface ClientSubscriptionStatus {
   planId: string;
@@ -18,6 +24,10 @@ export interface ClientSubscriptionStatus {
   periodEnd: string | null;
   validityDays: number | null;
   monthlyPrice: string;
+  /** Grupo compartido (padre/hijos, hermanos, etc.). */
+  groupId?: number;
+  ownerUserId?: number | null;
+  sharedMembers?: ClientSubscriptionMember[];
 }
 
 /** Fecha calendario actual en Argentina (YYYY-MM-DD). */
@@ -62,75 +72,59 @@ export function isSubscriptionExpiredByDate(
   return currentArgentinaYmd() > expiresAt;
 }
 
-type DbUserSubscription = Pick<
-  DbUser,
-  | 'id'
-  | 'deposit_exempt'
-  | 'subscription_plan_id'
-  | 'subscription_period_start'
-  | 'subscription_cuts_used'
->;
-
-function rowPeriodStartYmd(u: DbUserSubscription): string | null {
-  const raw = u.subscription_period_start;
-  if (raw == null || raw === '') return null;
-  if (typeof raw === 'string') return raw.slice(0, 10);
-  if (raw instanceof Date) {
-    const y = raw.getUTCFullYear();
-    const m = String(raw.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(raw.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-  return String(raw).slice(0, 10);
+async function expireSubscriptionGroup(groupId: number): Promise<void> {
+  await groups.deleteSubscriptionGroup(groupId);
 }
 
-async function expireClientSubscription(userId: number): Promise<void> {
-  await query(
-    `UPDATE users SET subscription_plan_id = NULL, subscription_period_start = NULL,
-     subscription_cuts_used = 0, deposit_exempt = 0 WHERE id = ? AND role = 'client'`,
-    [userId]
-  );
-}
-
-async function maybeExpireClientSubscription(
-  userId: number,
+async function maybeExpireSubscriptionGroup(
+  groupId: number,
   plan: SubscriptionPlan,
   activatedAt: string,
   cutsUsed: number
 ): Promise<boolean> {
   if (isSubscriptionExpiredByDate(activatedAt, plan.validityDays)) {
-    await expireClientSubscription(userId);
+    await expireSubscriptionGroup(groupId);
     return true;
   }
   if (cutsUsed >= plan.cutsPerMonth) {
-    await expireClientSubscription(userId);
+    await expireSubscriptionGroup(groupId);
     return true;
   }
   return false;
 }
 
-export async function getClientSubscriptionStatus(
-  userId: number
+async function resolveGroupIdForUser(userId: number): Promise<number | null> {
+  let groupId = await groups.getSubscriptionGroupIdForUser(userId);
+  if (groupId != null) return groupId;
+  return groups.migrateLegacyUserSubscriptionToGroup(userId);
+}
+
+async function buildStatusFromGroup(
+  groupId: number,
+  viewerUserId: number
 ): Promise<ClientSubscriptionStatus | null> {
-  const rows = await query<DbUserSubscription[]>(
-    `SELECT id, subscription_plan_id, subscription_period_start, subscription_cuts_used
-     FROM users WHERE id = ? AND role = 'client' LIMIT 1`,
-    [userId]
-  );
-  const u = rows[0];
-  if (!u?.subscription_plan_id) return null;
+  const group = await groups.getSubscriptionGroupById(groupId);
+  if (!group) {
+    await groups.unlinkUserFromGroup(viewerUserId);
+    return null;
+  }
 
-  const plan = await getSubscriptionPlanById(u.subscription_plan_id);
-  if (!plan || !plan.active) return null;
+  const plan = await getSubscriptionPlanById(group.subscription_plan_id);
+  if (!plan || !plan.active) {
+    await expireSubscriptionGroup(groupId);
+    return null;
+  }
 
-  const activatedAt = rowPeriodStartYmd(u) ?? currentArgentinaYmd();
-  const cutsUsed = Math.max(0, Number(u.subscription_cuts_used ?? 0));
+  const activatedAt =
+    groups.periodStartYmd(group.period_start) ?? currentArgentinaYmd();
+  const cutsUsed = Math.max(0, Number(group.cuts_used ?? 0));
 
-  if (await maybeExpireClientSubscription(userId, plan, activatedAt, cutsUsed)) {
+  if (await maybeExpireSubscriptionGroup(groupId, plan, activatedAt, cutsUsed)) {
     return null;
   }
 
   const cutsRemaining = Math.max(0, plan.cutsPerMonth - cutsUsed);
+  const members = await groups.listSubscriptionGroupMembers(groupId);
 
   return {
     planId: plan.id,
@@ -142,42 +136,48 @@ export async function getClientSubscriptionStatus(
     periodEnd: subscriptionExpiresAtYmd(activatedAt, plan.validityDays),
     validityDays: plan.validityDays ?? null,
     monthlyPrice: plan.monthlyPrice,
+    groupId,
+    ownerUserId: group.owner_user_id,
+    sharedMembers: members.length > 1 ? members : undefined,
   };
 }
 
+export async function getClientSubscriptionStatus(
+  userId: number
+): Promise<ClientSubscriptionStatus | null> {
+  const groupId = await resolveGroupIdForUser(userId);
+  if (groupId == null) return null;
+  return buildStatusFromGroup(groupId, userId);
+}
+
 export function userHasActiveSubscriptionPlan(
-  u: Pick<DbUser, 'subscription_plan_id'>
+  u: { subscription_plan_id?: string | null; subscription_group_id?: number | null }
 ): boolean {
-  return Boolean(u.subscription_plan_id?.trim());
+  return Boolean(u.subscription_group_id) || Boolean(u.subscription_plan_id?.trim());
 }
 
 /** Abono activo con cortes disponibles → sin seña en la web (además del flag manual deposit_exempt). */
 export async function isClientDepositExempt(userId: number): Promise<boolean> {
-  const rows = await query<Pick<DbUser, 'deposit_exempt' | 'subscription_plan_id'>[]>(
-    'SELECT deposit_exempt, subscription_plan_id FROM users WHERE id = ? LIMIT 1',
+  const status = await getClientSubscriptionStatus(userId);
+  if (status != null && status.cutsRemaining > 0) return true;
+  const rows = await query<Pick<{ deposit_exempt: number | boolean }, 'deposit_exempt'>[]>(
+    'SELECT deposit_exempt FROM users WHERE id = ? LIMIT 1',
     [userId]
   );
   const u = rows[0];
-  if (!u) return false;
-  if (u.deposit_exempt === true || u.deposit_exempt === 1) return true;
-  const status = await getClientSubscriptionStatus(userId);
-  return status != null && status.cutsRemaining > 0;
+  return Boolean(u?.deposit_exempt === true || u?.deposit_exempt === 1);
 }
 
 export async function assignSubscriptionPlanToClient(
   userId: number,
   planId: string | null
-): Promise<void> {
-  const user = await query<{ role: string }[]>('SELECT role FROM users WHERE id = ? LIMIT 1', [
-    userId,
-  ]);
-  if (!user[0] || user[0].role !== 'client') {
-    throw new Error('Cliente no encontrado');
-  }
+): Promise<boolean> {
+  await assertClientRole(userId);
 
   if (planId == null || planId === '') {
-    await expireClientSubscription(userId);
-    return;
+    const hadSubscription = await groups.userHasAnySubscriptionLink(userId);
+    await removeClientFromSubscription(userId);
+    return hadSubscription;
   }
 
   const plan = await getSubscriptionPlanById(planId);
@@ -185,46 +185,182 @@ export async function assignSubscriptionPlanToClient(
     throw new Error('Plan de abono no encontrado o inactivo');
   }
 
+  const existingGroupId = await resolveGroupIdForUser(userId);
+  if (existingGroupId != null) {
+    const group = await groups.getSubscriptionGroupById(existingGroupId);
+    if (group?.subscription_plan_id === planId) {
+      const cutsUsed = Math.max(0, Number(group.cuts_used ?? 0));
+      const activatedAt =
+        groups.periodStartYmd(group.period_start) ?? currentArgentinaYmd();
+      const expiredByDate = isSubscriptionExpiredByDate(activatedAt, plan.validityDays);
+      const exhausted = cutsUsed >= plan.cutsPerMonth;
+      if (!expiredByDate && !exhausted) {
+        return false;
+      }
+    }
+  }
+
+  await removeClientFromSubscription(userId, { skipExpireGroup: false });
+
   const activatedAt = currentArgentinaYmd();
-  await query(
-    `UPDATE users SET subscription_plan_id = ?, subscription_period_start = ?,
-     subscription_cuts_used = 0, deposit_exempt = 1 WHERE id = ? AND role = 'client'`,
-    [planId, activatedAt, userId]
-  );
+  const groupId = await groups.createSubscriptionGroup({
+    planId,
+    periodStart: activatedAt,
+    ownerUserId: userId,
+    cutsUsed: 0,
+  });
+  await groups.linkUserToGroup(userId, groupId);
+  return true;
+}
+
+/** Ajuste manual de cortes usados y/o fecha de activación (migración / corrección admin). */
+export async function updateClientSubscriptionUsage(
+  userId: number,
+  data: { cutsUsed?: number; periodStart?: string }
+): Promise<void> {
+  await assertClientRole(userId);
+
+  if (data.cutsUsed === undefined && data.periodStart === undefined) return;
+
+  const groupId = await resolveGroupIdForUser(userId);
+  if (groupId == null) {
+    throw new Error('El cliente no tiene un abono activo.');
+  }
+
+  const group = await groups.getSubscriptionGroupById(groupId);
+  if (!group) {
+    throw new Error('Abono no encontrado.');
+  }
+
+  const plan = await getSubscriptionPlanById(group.subscription_plan_id);
+  if (!plan) {
+    throw new Error('Plan de abono no encontrado.');
+  }
+
+  const patch: { cutsUsed?: number; periodStart?: string } = {};
+
+  if (data.cutsUsed !== undefined) {
+    const n = typeof data.cutsUsed === 'number' ? data.cutsUsed : parseInt(String(data.cutsUsed), 10);
+    if (!Number.isFinite(n) || n < 0) {
+      throw new Error('Los cortes usados deben ser un número ≥ 0.');
+    }
+    if (n > plan.cutsPerMonth) {
+      throw new Error(`Los cortes usados no pueden superar ${plan.cutsPerMonth}.`);
+    }
+    patch.cutsUsed = Math.floor(n);
+  }
+
+  if (data.periodStart !== undefined) {
+    const ymd = String(data.periodStart).trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+      throw new Error('La fecha de activación debe ser YYYY-MM-DD.');
+    }
+    patch.periodStart = ymd;
+  }
+
+  await groups.setGroupSubscriptionUsage(groupId, patch);
+}
+
+/** Vincula un cliente al abono compartido de otro (mismo cupo de cortes). */
+export async function linkClientToSharedSubscription(
+  userId: number,
+  hostUserId: number
+): Promise<void> {
+  if (userId === hostUserId) {
+    throw new Error('Elegí otro cliente distinto.');
+  }
+  await assertClientRole(userId);
+  await assertClientRole(hostUserId);
+
+  const hostGroupId = await resolveGroupIdForUser(hostUserId);
+  if (hostGroupId == null) {
+    throw new Error('El cliente elegido no tiene un abono activo.');
+  }
+
+  const hostStatus = await buildStatusFromGroup(hostGroupId, hostUserId);
+  if (!hostStatus || hostStatus.cutsRemaining <= 0) {
+    throw new Error('El abono del cliente elegido no tiene cortes disponibles.');
+  }
+
+  const existingGroupId = await groups.getSubscriptionGroupIdForUser(userId);
+  if (existingGroupId === hostGroupId) return;
+
+  if (await groups.userHasAnySubscriptionLink(userId)) {
+    await removeClientFromSubscription(userId);
+  }
+
+  await groups.linkUserToGroup(userId, hostGroupId);
+}
+
+/** Agrega un cliente al mismo grupo de abono (admin). */
+export async function addMemberToClientSubscriptionGroup(
+  hostUserId: number,
+  memberUserId: number
+): Promise<void> {
+  await linkClientToSharedSubscription(memberUserId, hostUserId);
+}
+
+/** Quita a un cliente del abono compartido sin cancelar el grupo (salvo que sea el único). */
+export async function removeClientFromSubscription(
+  userId: number,
+  opts?: { skipExpireGroup?: boolean }
+): Promise<void> {
+  await assertClientRole(userId);
+  const groupId = await groups.getSubscriptionGroupIdForUser(userId);
+  if (groupId == null) {
+    await groups.unlinkUserFromGroup(userId);
+    return;
+  }
+
+  const memberCount = await groups.countGroupMembers(groupId);
+  await groups.unlinkUserFromGroup(userId);
+
+  if (opts?.skipExpireGroup) return;
+
+  const remaining = memberCount - 1;
+  if (remaining <= 0) {
+    await expireSubscriptionGroup(groupId);
+  }
+}
+
+export async function getSubscriptionGroupForClient(userId: number): Promise<{
+  groupId: number;
+  members: ClientSubscriptionMember[];
+  subscription: ClientSubscriptionStatus;
+} | null> {
+  const groupId = await resolveGroupIdForUser(userId);
+  if (groupId == null) return null;
+  const subscription = await buildStatusFromGroup(groupId, userId);
+  if (!subscription) return null;
+  const members = await groups.listSubscriptionGroupMembers(groupId);
+  return { groupId, members, subscription };
 }
 
 /** Consume un corte del abono si hay cupo. Devuelve false si no aplica o no hay cortes. */
 export async function tryConsumeSubscriptionCut(userId: number): Promise<boolean> {
-  const status = await getClientSubscriptionStatus(userId);
+  const groupId = await resolveGroupIdForUser(userId);
+  if (groupId == null) return false;
+
+  const status = await buildStatusFromGroup(groupId, userId);
   if (!status || status.cutsRemaining <= 0) return false;
 
-  const [res] = await pool.execute(
-    `UPDATE users SET subscription_cuts_used = subscription_cuts_used + 1
-     WHERE id = ? AND role = 'client' AND subscription_plan_id = ?
-       AND subscription_cuts_used < ?`,
-    [userId, status.planId, status.cutsPerMonth]
+  const ok = await groups.incrementGroupCutsUsed(
+    groupId,
+    status.planId,
+    status.cutsPerMonth
   );
-  const ok = ((res as { affectedRows?: number }).affectedRows ?? 0) > 0;
   if (ok && status.cutsRemaining === 1) {
-    await expireClientSubscription(userId);
+    await expireSubscriptionGroup(groupId);
   }
   return ok;
 }
 
 export async function restoreSubscriptionCut(userId: number): Promise<void> {
-  const rows = await query<DbUserSubscription[]>(
-    `SELECT id, subscription_plan_id, subscription_period_start, subscription_cuts_used
-     FROM users WHERE id = ? AND role = 'client' LIMIT 1`,
-    [userId]
-  );
-  const u = rows[0];
-  if (!u?.subscription_plan_id) return;
-
-  await query(
-    `UPDATE users SET subscription_cuts_used = GREATEST(0, subscription_cuts_used - 1)
-     WHERE id = ? AND role = 'client' AND subscription_cuts_used > 0`,
-    [userId]
-  );
+  const groupId = await resolveGroupIdForUser(userId);
+  if (groupId == null) return;
+  const group = await groups.getSubscriptionGroupById(groupId);
+  if (!group) return;
+  await groups.decrementGroupCutsUsed(groupId);
 }
 
 export async function assertClientCanBookWithSubscription(userId: number): Promise<void> {
@@ -241,10 +377,6 @@ function splitsUseSubscription(splits: ServicePaymentSplit[] | null | undefined)
   return Boolean(splits?.some((s) => s.method === 'subscription' && s.amount > 0));
 }
 
-/**
- * Descuenta o devuelve un corte del abono según si el cobro usa método «Abono».
- * Debe ejecutarse antes de persistir servicePaymentSplits.
- */
 export async function syncSubscriptionCutWithPayment(
   appointment: Appointment,
   newSplits: ServicePaymentSplit[] | null | undefined
@@ -275,7 +407,6 @@ export async function syncSubscriptionCutWithPayment(
   }
 }
 
-/** Reservado para efectos al confirmar; el corte se descuenta al cobrar con método Abono. */
 export async function onAppointmentConfirmed(_appointment: {
   id: string;
   userId?: number;
@@ -285,7 +416,6 @@ export async function onAppointmentConfirmed(_appointment: {
   /* sin consumo automático */
 }
 
-/** Al cancelar un turno que había consumido un corte, lo devuelve al cupo del abono. */
 export async function onAppointmentCancelled(appointment: {
   id: string;
   userId?: number;
@@ -297,6 +427,15 @@ export async function onAppointmentCancelled(appointment: {
   await query('UPDATE appointments SET subscription_cut_applied = 0 WHERE id = ?', [
     appointment.id,
   ]);
+}
+
+async function assertClientRole(userId: number): Promise<void> {
+  const rows = await query<{ role: string }[]>('SELECT role FROM users WHERE id = ? LIMIT 1', [
+    userId,
+  ]);
+  if (!rows[0] || rows[0].role !== 'client') {
+    throw new Error('Cliente no encontrado');
+  }
 }
 
 export type { SubscriptionPlan };

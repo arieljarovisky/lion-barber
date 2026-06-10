@@ -30,7 +30,26 @@ import { getSubscriptionPlanById } from '../repositories/subscriptionPlans.js';
 import {
   getSubscriptionPaymentByMpId,
   recordSubscriptionPayment,
+  getActivePromotions,
+  getPromotionById,
 } from '../repositories/promotions.js';
+import {
+  createProductOrder,
+  getProductOrderById,
+  getProductPaymentByMpId,
+  markProductOrderCancelled,
+  markProductOrderPaid,
+  recordProductPayment,
+} from '../repositories/productOrders.js';
+import { resolveProductOrderLines } from '../services/productCheckout.js';
+import { incrementClientPoints } from '../repositories/users.js';
+import { getShopProductById, decrementProductStock } from '../repositories/shopProducts.js';
+import type { ProductOrderLine } from '../types.js';
+import {
+  calculateBookingDepositArs,
+  isPromotionActiveOnDate,
+  resolveBookingPromotion,
+} from '../services/sitePromotions.js';
 import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
 import { parseMercadoPagoTransactionAmountArs } from '../mercadopagoAmount.js';
 
@@ -92,6 +111,48 @@ function getApiPublicUrl(): string | null {
   return u.replace(/\/$/, '');
 }
 
+async function fulfillProductOrderFromPayment(
+  orderId: number,
+  userId: number,
+  paymentId: string
+): Promise<void> {
+  const inserted = await recordProductPayment({
+    mercadopagoPaymentId: paymentId,
+    orderId,
+    userId,
+  });
+  if (!inserted) return;
+  const paid = await markProductOrderPaid(orderId, paymentId);
+  if (paid?.status !== 'paid') return;
+
+  let points = 0;
+  for (const line of paid.items) {
+    try {
+      await decrementProductStock(line.productId, line.quantity);
+    } catch (e) {
+      console.error('[Webhook MP] no se pudo descontar stock', line.productId, e);
+    }
+    const product = await getShopProductById(line.productId);
+    if (product?.pointsReward) points += product.pointsReward * line.quantity;
+  }
+  if (points > 0) {
+    try {
+      await incrementClientPoints(userId, points);
+    } catch (e) {
+      console.error('[Webhook MP] no se pudieron sumar puntos por compra', e);
+    }
+  }
+  console.log(`[Webhook MP] pedido productos pagado order=${orderId} user=${userId}`);
+}
+
+function parseLinkedProductOrderId(metadata: Record<string, unknown> | undefined): number | null {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const raw = (metadata as Record<string, unknown>).lb_po;
+  if (raw == null || raw === '') return null;
+  const n = parseInt(String(raw), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 async function createMercadoPagoSenaPreference(
   config: MercadoPagoConfig,
   input: {
@@ -107,6 +168,10 @@ async function createMercadoPagoSenaPreference(
     userId: number;
     /** Si true, MP redirige a /perfil tras el pago (flujo desde el perfil). */
     returnToProfile?: boolean;
+    productOrderId?: number;
+    productLines?: ProductOrderLine[];
+    /** Solo productos (cliente exento de seña). */
+    productsOnly?: boolean;
   }
 ): Promise<{ preferenceId: string; url?: string }> {
   const serviceEntity = input.serviceId ? await getServiceById(input.serviceId) : null;
@@ -114,7 +179,66 @@ async function createMercadoPagoSenaPreference(
   if (!servicePriceArs) {
     throw new Error('No se pudo calcular la seña: precio del servicio inválido.');
   }
-  const amountArs = calculateDepositAmountArs(servicePriceArs, DEPOSIT_PERCENT);
+
+  let amountArs = calculateDepositAmountArs(servicePriceArs, DEPOSIT_PERCENT);
+  let itemTitle = 'Seña — Lion Barber';
+
+  const existingApp = input.appointmentId
+    ? await repo.getAppointmentById(input.appointmentId)
+    : null;
+  let promo =
+    existingApp?.promotionId != null
+      ? await getPromotionById(existingApp.promotionId)
+      : null;
+  if (promo && !isPromotionActiveOnDate(promo, input.date)) {
+    promo = null;
+  }
+  if (!promo) {
+    const activePromos = await getActivePromotions();
+    promo = resolveBookingPromotion(activePromos, input.date);
+  }
+  const depositCalc = calculateBookingDepositArs(servicePriceArs, DEPOSIT_PERCENT, promo);
+  amountArs = depositCalc.amountArs;
+  if (depositCalc.promotionFullyPaid && promo?.discountPercent) {
+    itemTitle = `Promo ${promo.discountPercent}% — Lion Barber (todo pago online)`;
+  } else if (promo?.discountPercent) {
+    itemTitle = `Seña — Lion Barber (promo ${promo.discountPercent}%)`;
+  }
+
+  const mpItems: {
+    id: string;
+    title: string;
+    quantity: number;
+    unit_price: number;
+    currency_id: 'ARS';
+  }[] = [];
+
+  if (!input.productsOnly && amountArs > 0) {
+    mpItems.push({
+      id: 'lion-sena',
+      title: itemTitle,
+      quantity: 1,
+      unit_price: amountArs,
+      currency_id: 'ARS',
+    });
+  }
+
+  if (input.productLines?.length) {
+    for (const line of input.productLines) {
+      mpItems.push({
+        id: `prod-${line.productId}`,
+        title: line.name,
+        quantity: line.quantity,
+        unit_price: line.unitPrice,
+        currency_id: 'ARS',
+      });
+    }
+  }
+
+  if (mpItems.length === 0) {
+    throw new Error('No hay ítems para cobrar con Mercado Pago.');
+  }
+
   const externalReference = buildBookingRef({
     appointmentId: input.appointmentId,
     name: input.name,
@@ -132,15 +256,7 @@ async function createMercadoPagoSenaPreference(
   const checkoutBase = input.returnToProfile ? `${base}/perfil` : `${base}/`;
   const preference = new Preference(config);
   const body = {
-    items: [
-      {
-        id: 'lion-sena',
-        title: 'Seña — Lion Barber',
-        quantity: 1,
-        unit_price: amountArs,
-        currency_id: 'ARS',
-      },
-    ],
+    items: mpItems,
     external_reference: externalReference,
     metadata: {
       lb_a: input.appointmentId,
@@ -153,6 +269,7 @@ async function createMercadoPagoSenaPreference(
       lb_t: input.time,
       lb_m: String(input.durationMinutes),
       lb_u: String(input.userId),
+      ...(input.productOrderId != null ? { lb_po: String(input.productOrderId) } : {}),
     },
     back_urls: {
       success: `${checkoutBase}?checkout=success`,
@@ -193,6 +310,13 @@ interface SubscriptionRefV2 {
   u: string;
 }
 
+interface ProductOrderRefV2 {
+  v: 2;
+  k: 'product_order';
+  o: string;
+  u: string;
+}
+
 function buildSubscriptionRef(input: { planId: string; userId: number }): string {
   const ref: SubscriptionRefV2 = {
     v: 2,
@@ -224,6 +348,74 @@ function parseSubscriptionRef(
   return null;
 }
 
+function buildProductOrderRef(input: { orderId: number; userId: number }): string {
+  const ref: ProductOrderRefV2 = {
+    v: 2,
+    k: 'product_order',
+    o: String(input.orderId),
+    u: String(input.userId),
+  };
+  return JSON.stringify(ref);
+}
+
+function parseProductOrderRef(
+  externalReference: string | undefined,
+  metadata: Record<string, unknown> | undefined
+): ProductOrderRefV2 | null {
+  if (externalReference) {
+    try {
+      const o = JSON.parse(externalReference) as ProductOrderRefV2;
+      if (o.v === 2 && o.k === 'product_order' && o.o && o.u) return o;
+    } catch {
+      /* otro formato */
+    }
+  }
+  if (metadata && typeof metadata === 'object') {
+    const m = metadata as Record<string, string>;
+    if (m.lb_kind === 'product_order' && m.lb_o && m.lb_u) {
+      return { v: 2, k: 'product_order', o: m.lb_o, u: m.lb_u };
+    }
+  }
+  return null;
+}
+
+async function createMercadoPagoProductOrderPreference(
+  config: MercadoPagoConfig,
+  input: { orderId: number; userId: number; items: { id: string; title: string; quantity: number; unitPrice: number }[] }
+): Promise<{ preferenceId: string; url?: string }> {
+  const externalReference = buildProductOrderRef({ orderId: input.orderId, userId: input.userId });
+  const base = getFrontendUrl();
+  const apiPublic = getApiPublicUrl();
+  const preference = new Preference(config);
+  const body = {
+    items: input.items.map((item) => ({
+      id: item.id,
+      title: item.title,
+      quantity: item.quantity,
+      unit_price: item.unitPrice,
+      currency_id: 'ARS',
+    })),
+    external_reference: externalReference,
+    metadata: {
+      lb_kind: 'product_order',
+      lb_o: String(input.orderId),
+      lb_u: String(input.userId),
+    },
+    back_urls: {
+      success: `${base}/perfil?checkout=success&kind=products`,
+      failure: `${base}/perfil?checkout=failure&kind=products`,
+      pending: `${base}/perfil?checkout=pending&kind=products`,
+    },
+    auto_return: 'approved' as const,
+    ...(apiPublic ? { notification_url: `${apiPublic}/api/webhooks/mercadopago` } : {}),
+  };
+  const result = await preference.create({ body });
+  const preferenceId = result.id != null ? String(result.id) : '';
+  if (!preferenceId) throw new Error('Mercado Pago no devolvió el id de preferencia');
+  const url = result.init_point ?? result.sandbox_init_point ?? undefined;
+  return { preferenceId, ...(url ? { url } : {}) };
+}
+
 async function createMercadoPagoSubscriptionPreference(
   config: MercadoPagoConfig,
   input: { planId: string; planName: string; amountArs: number; userId: number }
@@ -236,7 +428,7 @@ async function createMercadoPagoSubscriptionPreference(
     items: [
       {
         id: `lion-abono-${input.planId}`,
-        title: `Abono mensual — ${input.planName}`,
+        title: `Abono — ${input.planName}`,
         quantity: 1,
         unit_price: input.amountArs,
         currency_id: 'ARS',
@@ -332,6 +524,14 @@ function parseBookingRef(
   return null;
 }
 
+function parseProductItemsBody(raw: unknown): { productId: string; quantity: number }[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  return raw.map((item) => ({
+    productId: String((item as { productId?: string }).productId ?? '').trim(),
+    quantity: Math.floor(Number((item as { quantity?: number }).quantity)),
+  }));
+}
+
 function extractPaymentId(req: Request): string | undefined {
   const q = req.query as Record<string, string | undefined>;
   const body = req.body as Record<string, unknown> | null | undefined;
@@ -418,7 +618,7 @@ router.post('/sena', async (req, res) => {
   const t = (process.env.MERCADOPAGO_ACCESS_TOKEN ?? '').trim();
   console.log(`[MP] preference.create usando token last6: ${t.slice(-6)}`);
 
-  const { name, phone, service, serviceId, barberId, date, time, userId } = req.body as {
+  const { name, phone, service, serviceId, barberId, date, time, userId, productItems } = req.body as {
     name?: string;
     phone?: string;
     service?: string;
@@ -427,7 +627,19 @@ router.post('/sena', async (req, res) => {
     date?: string;
     time?: string;
     userId?: number;
+    productItems?: { productId?: string; quantity?: number }[];
   };
+
+  let resolvedProducts: Awaited<ReturnType<typeof resolveProductOrderLines>> | null = null;
+  const productItemsParsed = parseProductItemsBody(productItems);
+  if (productItemsParsed.length > 0) {
+    try {
+      resolvedProducts = await resolveProductOrderLines(productItemsParsed);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Productos del carrito inválidos';
+      return res.status(400).json({ error: msg });
+    }
+  }
 
   if (!name || !phone || !service || !barberId || !date || !time) {
     return res.status(400).json({ error: 'Faltan datos para la reserva con seña' });
@@ -497,6 +709,66 @@ router.post('/sena', async (req, res) => {
       return res.status(409).json({ error: msg });
     }
 
+    if (resolvedProducts) {
+      let productOrder;
+      try {
+        productOrder = await createProductOrder({
+          userId: uid,
+          items: resolvedProducts.lines,
+          totalArs: resolvedProducts.totalArs,
+        });
+      } catch (e) {
+        console.error(e);
+        return res.status(500).json({ error: 'No se pudo crear el pedido de productos' });
+      }
+
+      let pref: { preferenceId: string; url?: string };
+      try {
+        pref = await createMercadoPagoSenaPreference(config, {
+          appointmentId: confirmed.id,
+          name,
+          phone,
+          service,
+          serviceId: serviceId ?? '',
+          barberId,
+          date,
+          time,
+          durationMinutes,
+          userId: uid,
+          productOrderId: productOrder.id,
+          productLines: resolvedProducts.lines,
+          productsOnly: true,
+        });
+      } catch (e) {
+        console.error('Mercado Pago preference.create (exempt+products):', e);
+        await markProductOrderCancelled(productOrder.id);
+        return res.status(502).json({
+          error: 'Turno confirmado, pero no se pudo iniciar el pago de los productos.',
+        });
+      }
+
+      res.status(201).json({
+        exempt: true,
+        appointmentId: confirmed.id,
+        preferenceId: pref.preferenceId,
+        ...(pref.url ? { url: pref.url } : {}),
+        productOrderId: productOrder.id,
+        productsTotalArs: resolvedProducts.totalArs,
+      });
+
+      void notifyShopPhoneAppointmentCreated(confirmed);
+      void (async () => {
+        try {
+          if (isRealClientEmail(requesterUser.email)) {
+            await sendAppointmentScheduledEmail(requesterUser.email, confirmed);
+          }
+        } catch (err) {
+          console.error('[Email] No se pudo enviar confirmación a cliente exento', err);
+        }
+      })();
+      return;
+    }
+
     res.status(201).json({
       exempt: true,
       appointmentId: confirmed.id,
@@ -519,6 +791,31 @@ router.post('/sena', async (req, res) => {
   let pending;
   const depositMinutes = getPendingPaymentMinutes();
   const paymentDueAt = paymentDueAtFromNow(depositMinutes);
+
+  const serviceEntity = serviceId ? await getServiceById(serviceId) : null;
+  const servicePriceArs = parseArsAmount(serviceEntity?.price ?? service);
+  const activePromos = await getActivePromotions();
+  const bookingPromo = resolveBookingPromotion(activePromos, date);
+  const depositCalc =
+    servicePriceArs != null
+      ? calculateBookingDepositArs(servicePriceArs, DEPOSIT_PERCENT, bookingPromo)
+      : null;
+
+  let productOrderId: number | undefined;
+  if (resolvedProducts) {
+    try {
+      const productOrder = await createProductOrder({
+        userId: uid,
+        items: resolvedProducts.lines,
+        totalArs: resolvedProducts.totalArs,
+      });
+      productOrderId = productOrder.id;
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: 'No se pudo crear el pedido de productos' });
+    }
+  }
+
   try {
     pending = await repo.createAppointment({
       name,
@@ -533,6 +830,8 @@ router.post('/sena', async (req, res) => {
       paymentDueAt,
       depositPaid: false,
       userId: uid,
+      promotionId: depositCalc?.promotionId ?? undefined,
+      promotionFullyPaid: depositCalc?.promotionFullyPaid ?? false,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'No se pudo reservar temporalmente el horario';
@@ -552,10 +851,13 @@ router.post('/sena', async (req, res) => {
       time,
       durationMinutes,
       userId: uid,
+      productOrderId,
+      productLines: resolvedProducts?.lines,
     });
   } catch (e) {
     console.error('Mercado Pago preference.create:', e);
     await repo.updateAppointment(pending.id, { status: 'cancelled' });
+    if (productOrderId != null) await markProductOrderCancelled(productOrderId);
     return res.status(502).json({
       error: 'No se pudo iniciar el pago con Mercado Pago. Revisá credenciales y montos.',
     });
@@ -566,6 +868,9 @@ router.post('/sena', async (req, res) => {
     ...(pref.url ? { url: pref.url } : {}),
     appointmentId: pending.id,
     paymentDueAt,
+    ...(resolvedProducts
+      ? { productOrderId, productsTotalArs: resolvedProducts.totalArs }
+      : {}),
   });
 
   void (async () => {
@@ -691,7 +996,7 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
 });
 
 /**
- * Checkout de abono mensual (Checkout Pro). Al aprobar el pago, el webhook asigna el plan al cliente.
+ * Checkout de abono (Checkout Pro). Al aprobar el pago, el webhook asigna el plan al cliente.
  */
 router.post('/subscription', requireAuth, async (req, res) => {
   const config = getMpConfig();
@@ -731,6 +1036,69 @@ router.post('/subscription', requireAuth, async (req, res) => {
     });
   } catch (e) {
     console.error('Mercado Pago preference.create (subscription):', e);
+    const msg = e instanceof Error ? e.message : 'No se pudo iniciar el pago';
+    return res.status(502).json({ error: msg });
+  }
+});
+
+/**
+ * Checkout de productos (Checkout Pro). Retiro en el local tras pagar online.
+ */
+router.post('/products', requireAuth, async (req, res) => {
+  const config = getMpConfig();
+  if (!config) {
+    return res
+      .status(503)
+      .json({ error: 'Mercado Pago no está configurado (MERCADOPAGO_ACCESS_TOKEN).' });
+  }
+
+  const authReq = req as AuthRequest;
+  const { items } = req.body as { items?: { productId?: string; quantity?: number }[] };
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'Agregá al menos un producto al pedido' });
+  }
+
+  let resolved;
+  try {
+    resolved = await resolveProductOrderLines(
+      items.map((i) => ({ productId: String(i.productId ?? ''), quantity: Number(i.quantity) }))
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Pedido inválido';
+    return res.status(400).json({ error: msg });
+  }
+
+  let order;
+  try {
+    order = await createProductOrder({
+      userId: authReq.user!.id,
+      items: resolved.lines,
+      totalArs: resolved.totalArs,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'No se pudo crear el pedido' });
+  }
+
+  try {
+    const pref = await createMercadoPagoProductOrderPreference(config, {
+      orderId: order.id,
+      userId: authReq.user!.id,
+      items: resolved.lines.map((line) => ({
+        id: line.productId,
+        title: line.name,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+      })),
+    });
+    res.json({
+      preferenceId: pref.preferenceId,
+      ...(pref.url ? { url: pref.url } : {}),
+      orderId: order.id,
+      totalArs: resolved.totalArs,
+    });
+  } catch (e) {
+    console.error('Mercado Pago preference.create (products):', e);
     const msg = e instanceof Error ? e.message : 'No se pudo iniciar el pago';
     return res.status(502).json({ error: msg });
   }
@@ -804,6 +1172,30 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
   const existingSubPayment = await getSubscriptionPaymentByMpId(paymentId);
   if (existingSubPayment) return;
 
+  const existingProductPayment = await getProductPaymentByMpId(paymentId);
+  if (existingProductPayment) return;
+
+  const productRef = parseProductOrderRef(
+    payment.external_reference,
+    payment.metadata as Record<string, unknown> | undefined
+  );
+  if (productRef) {
+    const userId = parseInt(productRef.u, 10);
+    const orderId = parseInt(productRef.o, 10);
+    if (!Number.isFinite(userId) || userId <= 0 || !Number.isFinite(orderId) || orderId <= 0) {
+      console.error('Webhook MP: pedido de productos sin ids válidos', paymentId);
+      return;
+    }
+    const inserted = await recordProductPayment({
+      mercadopagoPaymentId: paymentId,
+      orderId,
+      userId,
+    });
+    if (!inserted) return;
+    await fulfillProductOrderFromPayment(orderId, userId, paymentId);
+    return;
+  }
+
   const subRef = parseSubscriptionRef(
     payment.external_reference,
     payment.metadata as Record<string, unknown> | undefined
@@ -856,22 +1248,39 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
 
   const userId = ref.u ? parseInt(ref.u, 10) : undefined;
 
+  const paymentMetadata = payment.metadata as Record<string, unknown> | undefined;
+  const linkedProductOrderId = parseLinkedProductOrderId(paymentMetadata);
+
   const existingByRefId = ref.a ? await repo.getAppointmentById(ref.a) : null;
   if (existingByRefId) {
-    const updated = await repo.markAppointmentPaidAndScheduled(
-      existingByRefId.id,
-      paymentId,
-      depositAmountArs
-    );
-    if (updated) {
-      void notifyBarberByWhatsappOnDepositPaid(updated);
-      void notifyShopPhoneAppointmentCreated(updated);
-      void notifyClientDepositConfirmed(updated);
+    if (existingByRefId.status === 'pending_payment') {
+      const updated = await repo.markAppointmentPaidAndScheduled(
+        existingByRefId.id,
+        paymentId,
+        depositAmountArs
+      );
+      if (updated) {
+        void notifyBarberByWhatsappOnDepositPaid(updated);
+        void notifyShopPhoneAppointmentCreated(updated);
+        void notifyClientDepositConfirmed(updated);
+      }
+    }
+    if (linkedProductOrderId != null && userId != null && Number.isFinite(userId)) {
+      await fulfillProductOrderFromPayment(linkedProductOrderId, userId, paymentId);
     }
     return;
   }
 
   try {
+    const activePromos = await getActivePromotions();
+    const bookingPromo = resolveBookingPromotion(activePromos, ref.d);
+    const serviceEntity = ref.i ? await getServiceById(ref.i) : null;
+    const servicePriceArs = parseArsAmount(serviceEntity?.price ?? ref.s);
+    const depositCalc =
+      servicePriceArs != null
+        ? calculateBookingDepositArs(servicePriceArs, DEPOSIT_PERCENT, bookingPromo)
+        : null;
+
     const created = await repo.createAppointment({
       name: ref.n,
       phone: ref.p,
@@ -884,11 +1293,16 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       depositPaid: true,
       depositAmountArs: depositAmountArs ?? undefined,
       mercadopagoPaymentId: paymentId,
+      promotionId: depositCalc?.promotionId ?? undefined,
+      promotionFullyPaid: depositCalc?.promotionFullyPaid ?? false,
       ...(userId != null && !Number.isNaN(userId) ? { userId } : {}),
     });
     void notifyBarberByWhatsappOnDepositPaid(created);
     void notifyShopPhoneAppointmentCreated(created);
     void notifyClientDepositConfirmed(created);
+    if (linkedProductOrderId != null && userId != null && Number.isFinite(userId)) {
+      await fulfillProductOrderFromPayment(linkedProductOrderId, userId, paymentId);
+    }
   } catch (e) {
     const code = (e as { code?: string }).code;
     if (code === 'ER_DUP_ENTRY') return;

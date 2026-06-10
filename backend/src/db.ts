@@ -62,7 +62,7 @@ async function migrateServicePaymentMethodTransferToAccount(): Promise<void> {
 async function ensureSubscriptionPlanPresentationColumns(): Promise<void> {
   const cols: [string, string][] = [
     ['description', 'TEXT NULL'],
-    ['category', "VARCHAR(100) NULL DEFAULT 'Abono mensual'"],
+    ['category', "VARCHAR(100) NULL DEFAULT 'Abono'"],
     ['compare_at_price', 'VARCHAR(50) NULL'],
     ['discount_label', 'VARCHAR(80) NULL'],
     ['bonus_text', 'VARCHAR(255) NULL'],
@@ -75,6 +75,62 @@ async function ensureSubscriptionPlanPresentationColumns(): Promise<void> {
     if (!(await tableHasColumn('subscription_plans', col))) {
       await pool.execute(`ALTER TABLE subscription_plans ADD COLUMN ${col} ${def}`);
     }
+  }
+}
+
+async function migrateSubscriptionPlanCategoryLabels(): Promise<void> {
+  if (!(await tableHasColumn('subscription_plans', 'category'))) return;
+  await pool.execute(
+    `UPDATE subscription_plans SET category = 'Abono'
+     WHERE category IS NULL OR TRIM(category) = '' OR LOWER(TRIM(category)) = 'abono mensual'`
+  );
+}
+
+async function migrateLegacySubscriptionsToGroups(): Promise<void> {
+  if (!(await tableHasColumn('users', 'subscription_group_id'))) return;
+  const [rawRows] = await pool.execute(
+    `SELECT id, subscription_plan_id, subscription_period_start, subscription_cuts_used
+     FROM users
+     WHERE role = 'client'
+       AND subscription_plan_id IS NOT NULL
+       AND TRIM(subscription_plan_id) != ''
+       AND subscription_group_id IS NULL`
+  );
+  const rows = rawRows as {
+    id: number;
+    subscription_plan_id: string;
+    subscription_period_start: string | Date | null;
+    subscription_cuts_used: number;
+  }[];
+  for (const u of rows) {
+    const periodRaw = u.subscription_period_start;
+    let periodStart: string;
+    if (periodRaw instanceof Date) {
+      periodStart = periodRaw.toISOString().slice(0, 10);
+    } else if (typeof periodRaw === 'string' && periodRaw.length >= 10) {
+      periodStart = periodRaw.slice(0, 10);
+    } else {
+      periodStart = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+    }
+    const cutsUsed = Math.max(0, Number(u.subscription_cuts_used ?? 0));
+    const [ins] = await pool.execute(
+      `INSERT INTO client_subscription_groups
+       (subscription_plan_id, period_start, cuts_used, owner_user_id)
+       VALUES (?, ?, ?, ?)`,
+      [u.subscription_plan_id.trim(), periodStart, cutsUsed, u.id]
+    );
+    const groupId = (ins as { insertId: number }).insertId;
+    await pool.execute(
+      `UPDATE users SET subscription_group_id = ?, subscription_plan_id = NULL,
+       subscription_period_start = NULL, subscription_cuts_used = 0, deposit_exempt = 1
+       WHERE id = ? AND role = 'client'`,
+      [groupId, u.id]
+    );
   }
 }
 
@@ -249,6 +305,25 @@ export async function initDb(): Promise<void> {
     )
   `);
   await ensureSubscriptionPlanPresentationColumns();
+  await migrateSubscriptionPlanCategoryLabels();
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS client_subscription_groups (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      subscription_plan_id VARCHAR(50) NOT NULL,
+      period_start DATE NOT NULL,
+      cuts_used INT NOT NULL DEFAULT 0,
+      owner_user_id INT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_sub_group_plan (subscription_plan_id),
+      KEY idx_sub_group_owner (owner_user_id)
+    )
+  `);
+  try {
+    await pool.execute('ALTER TABLE users ADD COLUMN subscription_group_id INT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  await migrateLegacySubscriptionsToGroups();
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS site_promotions (
       id VARCHAR(50) PRIMARY KEY,
@@ -259,9 +334,41 @@ export async function initDb(): Promise<void> {
       cta_href VARCHAR(500) NULL,
       active TINYINT(1) NOT NULL DEFAULT 1,
       sort_order INT NOT NULL DEFAULT 0,
+      active_weekdays VARCHAR(32) NULL,
+      discount_percent INT NULL,
+      deposit_covers_full TINYINT(1) NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  try {
+    await pool.execute('ALTER TABLE site_promotions ADD COLUMN active_weekdays VARCHAR(32) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE site_promotions ADD COLUMN discount_percent INT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE site_promotions ADD COLUMN deposit_covers_full TINYINT(1) NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN promotion_id VARCHAR(50) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE appointments ADD COLUMN promotion_fully_paid TINYINT(1) NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS subscription_payment_events (
       mercadopago_payment_id VARCHAR(64) PRIMARY KEY,
@@ -340,6 +447,57 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE shop_products ADD COLUMN image_url VARCHAR(500) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE shop_products ADD COLUMN description TEXT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE shop_products ADD COLUMN web_active TINYINT(1) NOT NULL DEFAULT 1'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE shop_products ADD COLUMN image_data MEDIUMTEXT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE shop_products ADD COLUMN stock INT NULL DEFAULT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS product_orders (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      status ENUM('pending_payment', 'paid', 'cancelled') NOT NULL DEFAULT 'pending_payment',
+      items JSON NOT NULL,
+      total_ars DECIMAL(12,2) NOT NULL,
+      mercadopago_payment_id VARCHAR(64) NULL,
+      paid_at TIMESTAMP NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_product_orders_user (user_id),
+      KEY idx_product_orders_status (status),
+      UNIQUE KEY uq_product_orders_mp (mercadopago_payment_id)
+    )
+  `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS product_payment_events (
+      mercadopago_payment_id VARCHAR(64) PRIMARY KEY,
+      order_id INT NOT NULL,
+      user_id INT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_product_pay_user (user_id)
+    )
+  `);
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS points_redemption_options (
       id VARCHAR(50) PRIMARY KEY,

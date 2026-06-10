@@ -43,6 +43,7 @@ export interface DbUser {
   subscription_plan_id?: string | null;
   subscription_period_start?: string | Date | null;
   subscription_cuts_used?: number;
+  subscription_group_id?: number | null;
   /** Saldo cuenta corriente en ARS. Negativo = el cliente debe plata. */
   account_balance_ars?: number | string | null;
   created_at: Date;
@@ -144,11 +145,14 @@ export async function updateAdminClientById(
   }
 
   if (input.depositExempt != null) {
-    const subRows = await query<{ subscription_plan_id: string | null }[]>(
-      'SELECT subscription_plan_id FROM users WHERE id = ? LIMIT 1',
+    const subRows = await query<{ subscription_group_id: number | null; subscription_plan_id: string | null }[]>(
+      'SELECT subscription_group_id, subscription_plan_id FROM users WHERE id = ? LIMIT 1',
       [userId]
     );
-    if (!subRows[0]?.subscription_plan_id) {
+    const hasSub =
+      Boolean(subRows[0]?.subscription_group_id) ||
+      Boolean(subRows[0]?.subscription_plan_id?.trim());
+    if (!hasSub) {
       await query('UPDATE users SET deposit_exempt = ? WHERE id = ? AND role = ?', [
         input.depositExempt ? 1 : 0,
         userId,
@@ -393,6 +397,16 @@ export async function createManualClient(data: {
   }
   user.phones = phones;
   return user;
+}
+
+/** Suma puntos de fidelidad a un cliente (p. ej. compra web de productos). */
+export async function incrementClientPoints(userId: number, delta: number): Promise<void> {
+  const add = Math.floor(Number(delta));
+  if (!Number.isFinite(add) || add <= 0) return;
+  await query(
+    'UPDATE users SET points = LEAST(999999, points + ?) WHERE id = ? AND role = ?',
+    [add, userId, 'client']
+  );
 }
 
 /** Elimina un cliente y desvincula sus turnos (mantiene historial en agenda). */

@@ -76,6 +76,8 @@ interface DbAppointment {
   tip_amount?: number | string | null;
   products?: string | unknown | null;
   subscription_cut_applied?: number;
+  promotion_id?: string | null;
+  promotion_fully_paid?: number | boolean | null;
   created_by_user_id?: number | null;
   updated_by_user_id?: number | null;
 }
@@ -124,6 +126,8 @@ function rowToAppointment(row: DbAppointment): Appointment {
     servicePaymentSplits: parseServicePaymentSplits(row.service_payment_splits),
     products: parseAppointmentProductLines(row.products),
     subscriptionCutApplied: Boolean(row.subscription_cut_applied),
+    promotionId: row.promotion_id ?? undefined,
+    promotionFullyPaid: Boolean(row.promotion_fully_paid),
     tipAmount:
       row.tip_amount != null && Number.isFinite(Number(row.tip_amount))
         ? Math.round(Number(row.tip_amount) * 100) / 100
@@ -430,10 +434,12 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
   const mpId = data.mercadopagoPaymentId ?? null;
   const status = data.status ?? 'scheduled';
   const paymentDueAt = data.paymentDueAt ?? null;
+  const promotionId = data.promotionId ?? null;
+  const promotionFullyPaid = data.promotionFullyPaid ? 1 : 0;
 
   const [res] = await pool.execute(
-    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, client_chose_any_barber, date, time, duration_minutes, deposit_paid, deposit_amount_ars, mercadopago_payment_id, status, payment_due_at, created_by_user_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO appointments (user_id, name, phone, service, service_id, barber, barber_id, client_chose_any_barber, date, time, duration_minutes, deposit_paid, deposit_amount_ars, mercadopago_payment_id, status, payment_due_at, created_by_user_id, promotion_id, promotion_fully_paid)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.userId ?? null,
       data.name,
@@ -452,6 +458,8 @@ export async function createAppointment(data: Omit<Appointment, 'id'>): Promise<
       status,
       paymentDueAt,
       data.createdByUserId ?? null,
+      promotionId,
+      promotionFullyPaid,
     ]
   );
   const insertId = (res as { insertId: number }).insertId;

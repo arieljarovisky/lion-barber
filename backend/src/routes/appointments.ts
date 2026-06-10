@@ -24,7 +24,7 @@ import { parseServicePaymentMethod, parseServicePaymentSplits } from '../service
 import { parseTipAmountBody } from '../tipAmount.js';
 import type { ServicePaymentSplit } from '../types.js';
 import { MAX_APPOINTMENT_PRODUCT_LINES } from '../appointmentProducts.js';
-import { getShopProductById } from '../repositories/shopProducts.js';
+import { getShopProductById, syncAppointmentProductStock } from '../repositories/shopProducts.js';
 import { parseArsAmount } from '../arsAmount.js';
 import { assertCanModifyAppointment, isSuperAdminUser } from '../services/appointmentModifyPermission.js';
 import { isDailyCashCloseDate } from '../repositories/dailyCashClose.js';
@@ -458,6 +458,17 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
       if ('error' in built) return res.status(built.status).json({ error: built.error });
       Object.assign(payload, built.payload);
     }
+
+    if ('products' in body && payload.products !== undefined) {
+      try {
+        await syncAppointmentProductStock(existing.products, payload.products);
+      } catch (e) {
+        return res.status(400).json({ error: e instanceof Error ? e.message : 'Stock insuficiente' });
+      }
+    } else if (payload.status === 'cancelled' && existing.status !== 'cancelled' && existing.products?.length) {
+      await syncAppointmentProductStock(existing.products, null);
+    }
+
     const updated = await repo.updateAppointment(req.params.id, {
       ...payload,
       updatedByUserId: authReq.user!.id,

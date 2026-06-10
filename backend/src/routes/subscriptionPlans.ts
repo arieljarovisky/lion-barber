@@ -42,7 +42,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
   }
   const price = monthlyPrice != null ? String(monthlyPrice).trim() : '';
   if (!price) {
-    return res.status(400).json({ error: 'Se requiere precio mensual' });
+    return res.status(400).json({ error: 'Se requiere el precio del plan' });
   }
   const cuts = Number(cutsPerMonth);
   if (!Number.isFinite(cuts) || cuts < 1) {
@@ -84,7 +84,7 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
   }
   if (body.monthlyPrice !== undefined) {
     const price = String(body.monthlyPrice).trim();
-    if (!price) return res.status(400).json({ error: 'Precio mensual inválido' });
+    if (!price) return res.status(400).json({ error: 'Precio del plan inválido' });
     updates.monthlyPrice = price;
   }
   if (body.cutsPerMonth !== undefined) {

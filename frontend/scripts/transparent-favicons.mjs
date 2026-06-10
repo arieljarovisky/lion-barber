@@ -5,15 +5,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import sharp from 'sharp';
-import toIco from 'to-ico';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, '..', 'public');
 
 const FILES = [
-  'favicon-16x16.png',
-  'favicon-32x32.png',
-  'apple-touch-icon.png',
   'android-chrome-192x192.png',
   'android-chrome-512x512.png',
 ];
@@ -116,11 +112,6 @@ for (const name of FILES) {
   console.log('ok', name);
 }
 
-const icoBuf = await toIco([
-  fs.readFileSync(path.join(publicDir, 'favicon-16x16.png')),
-  fs.readFileSync(path.join(publicDir, 'favicon-32x32.png')),
-]);
-fs.writeFileSync(path.join(publicDir, 'favicon.ico'), icoBuf);
-console.log('ok favicon.ico (alpha desde PNGs)');
+console.log('Favicons opacos: no se regenera favicon.ico desde este script.');
 
-console.log('Listo: fondo transparente (PNG + ICO).');
+console.log('Listo: fondo transparente en iconos PWA (android-chrome).');

@@ -30,3 +30,6 @@ Thumbs.db
 # Testing
 coverage/
 .nyc_output/
+
+# Imágenes de productos subidas en runtime
+backend/uploads/

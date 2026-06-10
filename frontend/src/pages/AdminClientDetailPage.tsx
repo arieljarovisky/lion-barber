@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, Trash2, ShieldCheck, StickyNote, Save, Repeat } from 'lucide-react';
+import { ChevronLeft, Trash2, ShieldCheck, StickyNote, Save, Repeat, UserPlus, Users, X } from 'lucide-react';
 import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
+import ClientSearchInput from '../components/ClientSearchInput';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
 import { api, ApiError } from '../api';
 import { useAuth } from '../contexts/AuthContext';
@@ -48,7 +49,13 @@ export default function AdminClientDetailPage() {
   const [formNotes, setFormNotes] = useState('');
   const [formExempt, setFormExempt] = useState(false);
   const [formSubscriptionPlanId, setFormSubscriptionPlanId] = useState('');
+  const [formSubscriptionCutsUsed, setFormSubscriptionCutsUsed] = useState('0');
+  const [formSubscriptionPeriodStart, setFormSubscriptionPeriodStart] = useState('');
   const [availablePlans, setAvailablePlans] = useState<SubscriptionPlan[]>([]);
+  const [allClients, setAllClients] = useState<AdminClientWithHistory[]>([]);
+  const [linkHostClientId, setLinkHostClientId] = useState('');
+  const [addMemberClientId, setAddMemberClientId] = useState('');
+  const [subscriptionActionLoading, setSubscriptionActionLoading] = useState(false);
 
   const idNum = Number(clientId);
   const invalidId = !Number.isFinite(idNum) || idNum < 1;
@@ -100,6 +107,22 @@ export default function AdminClientDetailPage() {
   }, [isAdmin]);
 
   useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    api
+      .getAdminClientsWithHistory()
+      .then((r) => {
+        if (!cancelled) setAllClients(r.clients);
+      })
+      .catch(() => {
+        if (!cancelled) setAllClients([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
+  useEffect(() => {
     if (!client) return;
     setFormName(client.name);
     setFormEmail(isPlaceholderManualClientEmail(client.email) ? '' : client.email);
@@ -109,6 +132,8 @@ export default function AdminClientDetailPage() {
     setFormNotes(client.adminNotes ?? '');
     setFormExempt(Boolean(client.depositExempt));
     setFormSubscriptionPlanId(client.subscription?.planId ?? '');
+    setFormSubscriptionCutsUsed(String(client.subscription?.cutsUsed ?? 0));
+    setFormSubscriptionPeriodStart(client.subscription?.periodStart?.slice(0, 10) ?? '');
   }, [client]);
 
   const handlePanelNavigate = useCallback(
@@ -163,9 +188,40 @@ export default function AdminClientDetailPage() {
         points: pts,
         accountBalanceArs: balanceParsed,
         depositExempt: client.subscription ? undefined : formExempt,
-        subscriptionPlanId: formSubscriptionPlanId || null,
         adminNotes: formNotes.trim() || null,
       };
+      const currentPlanId = client.subscription?.planId ?? '';
+      const nextPlanId = formSubscriptionPlanId.trim();
+      if (nextPlanId !== currentPlanId) {
+        payload.subscriptionPlanId = nextPlanId || null;
+      }
+      const planSelected = Boolean(nextPlanId);
+      if (planSelected) {
+        const cutsUsed = parseInt(formSubscriptionCutsUsed, 10);
+        if (!Number.isFinite(cutsUsed) || cutsUsed < 0) {
+          setError('Los cortes usados deben ser un número ≥ 0.');
+          setSaving(false);
+          return;
+        }
+        const selectedPlan = availablePlans.find((p) => p.id === nextPlanId);
+        const maxCuts = selectedPlan?.cutsPerMonth ?? client.subscription?.cutsPerMonth;
+        if (maxCuts != null && cutsUsed > maxCuts) {
+          setError(`Los cortes usados no pueden superar ${maxCuts}.`);
+          setSaving(false);
+          return;
+        }
+        const currentCutsUsed = client.subscription?.cutsUsed;
+        const currentPeriodStart = client.subscription?.periodStart?.slice(0, 10) ?? '';
+        const nextPeriodStart = formSubscriptionPeriodStart.trim();
+        if (currentCutsUsed !== cutsUsed) {
+          payload.subscriptionCutsUsed = cutsUsed;
+        }
+        if (nextPeriodStart && nextPeriodStart !== currentPeriodStart) {
+          payload.subscriptionPeriodStart = nextPeriodStart;
+        } else if (!client.subscription && nextPeriodStart) {
+          payload.subscriptionPeriodStart = nextPeriodStart;
+        }
+      }
       if (!emailLocked) {
         payload.email = email;
       }
@@ -190,6 +246,9 @@ export default function AdminClientDetailPage() {
     formNotes,
     formExempt,
     formSubscriptionPlanId,
+    formSubscriptionCutsUsed,
+    formSubscriptionPeriodStart,
+    availablePlans,
     emailLocked,
   ]);
 
@@ -212,6 +271,109 @@ export default function AdminClientDetailPage() {
       setDeleting(false);
     }
   }, [client, deleting, navigate]);
+
+  const handleLinkToHostSubscription = useCallback(async () => {
+    if (!client || !linkHostClientId) return;
+    setSubscriptionActionLoading(true);
+    setError('');
+    try {
+      const res = await api.linkAdminClientToSubscription(client.id, Number(linkHostClientId));
+      setClient(res.client);
+      setLinkHostClientId('');
+      setSaveOk('Cliente vinculado al abono compartido.');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'No se pudo vincular al abono');
+    } finally {
+      setSubscriptionActionLoading(false);
+    }
+  }, [client, linkHostClientId]);
+
+  const handleAddSubscriptionMember = useCallback(async () => {
+    if (!client || !addMemberClientId) return;
+    setSubscriptionActionLoading(true);
+    setError('');
+    try {
+      const res = await api.addAdminClientSubscriptionMember(client.id, Number(addMemberClientId));
+      setClient(res.client);
+      setAddMemberClientId('');
+      setSaveOk('Cliente agregado al abono compartido.');
+      const all = await api.getAdminClientsWithHistory();
+      setAllClients(all.clients);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'No se pudo agregar al abono');
+    } finally {
+      setSubscriptionActionLoading(false);
+    }
+  }, [client, addMemberClientId]);
+
+  const handleRemoveSubscriptionMember = useCallback(
+    async (memberId: number) => {
+      if (!client) return;
+      setSubscriptionActionLoading(true);
+      setError('');
+      try {
+        const res = await api.removeAdminClientSubscriptionMember(client.id, memberId);
+        setClient(res.client);
+        setSaveOk('Cliente quitado del abono compartido.');
+        const all = await api.getAdminClientsWithHistory();
+        setAllClients(all.clients);
+      } catch (e) {
+        setError(e instanceof ApiError ? e.message : 'No se pudo quitar del abono');
+      } finally {
+        setSubscriptionActionLoading(false);
+      }
+    },
+    [client]
+  );
+
+  const clientsWithActiveSubscription = useMemo(
+    () =>
+      allClients.filter(
+        (c) =>
+          c.id !== client?.id &&
+          c.subscription &&
+          c.subscription.cutsRemaining > 0
+      ),
+    [allClients, client?.id]
+  );
+
+  const subscriptionMemberIds = useMemo(() => {
+    const ids = new Set<number>();
+    if (client?.subscription?.sharedMembers?.length) {
+      for (const m of client.subscription.sharedMembers) ids.add(m.id);
+    } else if (client?.subscription) {
+      ids.add(client.id);
+    }
+    return ids;
+  }, [client]);
+
+  const addableClients = useMemo(
+    () =>
+      allClients.filter(
+        (c) => c.id !== client?.id && !c.subscription && !subscriptionMemberIds.has(c.id)
+      ),
+    [allClients, client?.id, subscriptionMemberIds]
+  );
+
+  const displayedMembers = useMemo(() => {
+    if (!client?.subscription) return [];
+    if (client.subscription.sharedMembers?.length) return client.subscription.sharedMembers;
+    return [{ id: client.id, name: client.name, email: client.email }];
+  }, [client]);
+
+  const selectedSubscriptionPlan = useMemo(
+    () => availablePlans.find((p) => p.id === formSubscriptionPlanId),
+    [availablePlans, formSubscriptionPlanId]
+  );
+
+  const subscriptionCutsMax =
+    selectedSubscriptionPlan?.cutsPerMonth ?? client?.subscription?.cutsPerMonth ?? null;
+
+  const formCutsUsedNum = parseInt(formSubscriptionCutsUsed, 10);
+  const subscriptionCutsRemainingPreview =
+    subscriptionCutsMax != null && Number.isFinite(formCutsUsedNum)
+      ? Math.max(0, subscriptionCutsMax - formCutsUsedNum)
+      : null;
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
@@ -465,6 +627,156 @@ export default function AdminClientDetailPage() {
                     </option>
                   ))}
                 </select>
+
+                {formSubscriptionPlanId ? (
+                  <div className="rounded-xl border border-violet-200 bg-white px-3 py-3 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-violet-900">
+                      Ajuste manual (migración)
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">
+                          Cortes usados
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={subscriptionCutsMax ?? undefined}
+                          value={formSubscriptionCutsUsed}
+                          onChange={(e) => setFormSubscriptionCutsUsed(e.target.value)}
+                          className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm tabular-nums"
+                        />
+                        {subscriptionCutsRemainingPreview != null && subscriptionCutsMax != null ? (
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            Quedan{' '}
+                            <span className="font-semibold text-violet-900">
+                              {subscriptionCutsRemainingPreview}
+                            </span>{' '}
+                            de {subscriptionCutsMax} disponibles
+                          </p>
+                        ) : null}
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">
+                          Activado el
+                        </label>
+                        <input
+                          type="date"
+                          value={formSubscriptionPeriodStart}
+                          onChange={(e) => setFormSubscriptionPeriodStart(e.target.value)}
+                          className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm"
+                        />
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          Fecha desde la que corre la vigencia del plan.
+                        </p>
+                      </div>
+                    </div>
+                    {client.subscription && displayedMembers.length > 1 ? (
+                      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5">
+                        Este abono es compartido: el ajuste de cortes aplica al pool de todos los vinculados.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {client.subscription ? (
+                  <div className="rounded-xl border border-violet-200 bg-white/80 p-3 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Users size={16} className="text-violet-700" />
+                      <p className="text-xs font-bold uppercase tracking-wide text-violet-900">
+                        Abono compartido
+                      </p>
+                    </div>
+                    <ul className="divide-y divide-violet-100 rounded-lg border border-violet-100 bg-white">
+                      {displayedMembers.map((m) => (
+                        <li
+                          key={m.id}
+                          className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold text-zinc-900 truncate">{m.name}</p>
+                            <p className="text-[11px] text-zinc-500 truncate">{displayClientEmail(m.email)}</p>
+                          </div>
+                          {displayedMembers.length > 1 && (
+                            <button
+                              type="button"
+                              disabled={subscriptionActionLoading}
+                              onClick={() => void handleRemoveSubscriptionMember(m.id)}
+                              className="shrink-0 rounded-lg p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                              title="Quitar del abono"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[11px] text-zinc-500">
+                      Todos comparten el mismo cupo de cortes. Al cobrar con «Abono» en cualquier turno vinculado, se
+                      descuenta del pool común.
+                    </p>
+                    <div className="flex flex-wrap items-end gap-2">
+                        <div className="min-w-0 flex-1 basis-48">
+                          <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">
+                            Agregar familiar / otro cliente
+                          </label>
+                          <ClientSearchInput
+                            clients={addableClients}
+                            value={addMemberClientId}
+                            onChange={setAddMemberClientId}
+                            placeholder="Buscar por nombre, email o teléfono…"
+                            disabled={subscriptionActionLoading || addableClients.length === 0}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!addMemberClientId || subscriptionActionLoading}
+                          onClick={() => void handleAddSubscriptionMember()}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white hover:bg-violet-800 disabled:opacity-50"
+                        >
+                          <UserPlus size={14} />
+                          Agregar
+                        </button>
+                      </div>
+                    {addableClients.length === 0 && (
+                      <p className="text-[11px] text-zinc-500">No hay más clientes disponibles para vincular.</p>
+                    )}
+                  </div>
+                ) : (
+                  clientsWithActiveSubscription.length > 0 && (
+                    <div className="rounded-xl border border-dashed border-violet-200 bg-white/60 p-3 space-y-2">
+                      <p className="text-xs font-semibold text-violet-900">
+                        O vinculá este cliente al abono de otro (padre/hijo, hermanos…)
+                      </p>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <div className="min-w-0 flex-1 basis-48">
+                          <label className="block text-[10px] font-bold uppercase text-zinc-500 mb-1">
+                            Cliente con abono activo
+                          </label>
+                          <ClientSearchInput
+                            clients={clientsWithActiveSubscription}
+                            value={linkHostClientId}
+                            onChange={setLinkHostClientId}
+                            placeholder="Buscar por nombre, email o teléfono…"
+                            disabled={subscriptionActionLoading}
+                            getSubtitle={(c) =>
+                              `${displayClientEmail(c.email)} · ${c.subscription!.cutsRemaining} cortes disp.`
+                            }
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!linkHostClientId || subscriptionActionLoading}
+                          onClick={() => void handleLinkToHostSubscription()}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-violet-300 bg-white px-3 py-2 text-xs font-bold text-violet-800 hover:bg-violet-50 disabled:opacity-50"
+                        >
+                          <UserPlus size={14} />
+                          Vincular
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )}
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-zinc-100 bg-zinc-50 px-4 py-3">

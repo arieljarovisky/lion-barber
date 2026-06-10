@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { api, ApiError } from '../api';
 import type { Appointment, AppointmentProductLine, ClientSubscriptionInfo, Service, ServicePaymentSplit, ShopProduct, AdminClientWithHistory } from '../api';
@@ -66,6 +66,10 @@ export default function AppointmentPaymentSplitsModal({
   const [clientSubscription, setClientSubscription] = useState<ClientSubscriptionInfo | null>(null);
   /** Subtotal vigente de productos: lo usamos para repartir el delta (agregar/quitar) entre los cobros. */
   const productsSubtotalRef = useRef(0);
+  /** Evita pisar montos que el usuario ya empezó a cargar (p. ej. al llegar el abono o refrescar servicios). */
+  const splitsTouchedRef = useRef(false);
+  const servicesRef = useRef(services);
+  servicesRef.current = services;
 
   useEffect(() => {
     if (!app?.userId) {
@@ -87,7 +91,11 @@ export default function AppointmentPaymentSplitsModal({
   }, [app?.userId]);
 
   useEffect(() => {
-    if (!app) return;
+    if (!app) {
+      splitsTouchedRef.current = false;
+      return;
+    }
+    splitsTouchedRef.current = false;
     setTipAmount(tipAmountFromApp(app));
     const initialProducts = (app.products ?? []).map((p) => ({ ...p }));
     const productsTotal = sumAppointmentProducts(initialProducts);
@@ -96,16 +104,36 @@ export default function AppointmentPaymentSplitsModal({
     setSplits(
       initialSplitsFromAppointment(
         app,
-        services,
+        servicesRef.current,
         depositPercent,
         productsTotal,
-        clientSubscription
+        null
       )
     );
     setPickProductId('');
     setPickQty('1');
     setProductsError('');
-  }, [app, services, depositPercent, clientSubscription]);
+  }, [app?.id, depositPercent]);
+
+  /** Prefill de abono cuando termina de cargar, sin borrar lo que el usuario ya escribió. */
+  useEffect(() => {
+    if (!app || splitsTouchedRef.current || app.servicePaymentSplits?.length) return;
+    if (!clientSubscription || clientSubscription.cutsRemaining <= 0 || app.userId == null) return;
+    const productsTotal = productsSubtotalRef.current;
+    const prefill = buildSubscriptionPrefillSplits(
+      app,
+      servicesRef.current,
+      depositPercent,
+      productsTotal
+    );
+    if (prefill.length === 0) return;
+    setSplits((prev) => (prev.length === 0 ? prefill : prev));
+  }, [app, clientSubscription, depositPercent]);
+
+  const handleSplitsChange = useCallback((next: ServicePaymentSplit[]) => {
+    splitsTouchedRef.current = true;
+    setSplits(next);
+  }, []);
 
   /**
    * Al cambiar productos, ajustamos el primer cobro para que el total cobrado refleje
@@ -119,11 +147,16 @@ export default function AppointmentPaymentSplitsModal({
     if (delta === 0) return;
     productsSubtotalRef.current = newSubtotal;
     setSplits((prev) => {
-      const target = appointmentSplitsTargetArs(app, services, depositPercent, newSubtotal);
+      const target = appointmentSplitsTargetArs(
+        app,
+        servicesRef.current,
+        depositPercent,
+        newSubtotal
+      );
       if (prev.length === 0) {
         if (target <= 0) return prev;
         if (clientSubscription && clientSubscription.cutsRemaining > 0 && app.userId != null) {
-          return buildSubscriptionPrefillSplits(app, services, depositPercent, newSubtotal);
+          return buildSubscriptionPrefillSplits(app, servicesRef.current, depositPercent, newSubtotal);
         }
         const method =
           app.servicePaymentMethod && app.servicePaymentMethod !== 'mercadopago'
@@ -134,14 +167,14 @@ export default function AppointmentPaymentSplitsModal({
       const hasSubscription = prev.some((s) => s.method === 'subscription');
       if (hasSubscription) {
         const productMethod = prev.find((s) => s.method !== 'subscription')?.method ?? 'cash';
-        const servicePart = appointmentLocalPendingArs(app, services, depositPercent);
+        const servicePart = appointmentLocalPendingArs(app, servicesRef.current, depositPercent);
         const next: ServicePaymentSplit[] = [];
         if (servicePart > 0) next.push({ method: 'subscription', amount: servicePart });
         if (newSubtotal > 0) next.push({ method: productMethod, amount: newSubtotal });
         return normalizeAppointmentPaymentSplits(
           next,
           app,
-          services,
+          servicesRef.current,
           depositPercent,
           newSubtotal
         );
@@ -156,12 +189,12 @@ export default function AppointmentPaymentSplitsModal({
       return normalizeAppointmentPaymentSplits(
         next,
         app,
-        services,
+        servicesRef.current,
         depositPercent,
         newSubtotal
       );
     });
-  }, [productLines, app, services, depositPercent, clientSubscription]);
+  }, [productLines, app, depositPercent, clientSubscription]);
 
   useEffect(() => {
     if (!app) return;
@@ -357,7 +390,7 @@ export default function AppointmentPaymentSplitsModal({
                 </p>
                 {clientSubscription.cutsRemaining > 0 && (
                   <p className="mt-1 text-[11px] text-zinc-600">
-                    Al guardar con forma de pago «Abono» se descuenta un corte del cupo mensual.
+                    Al guardar con forma de pago «Abono» se descuenta un corte de los disponibles.
                   </p>
                 )}
               </div>
@@ -369,7 +402,7 @@ export default function AppointmentPaymentSplitsModal({
             )}
             <ServicePaymentSplitsEditor
               splits={splits}
-              onChange={setSplits}
+              onChange={handleSplitsChange}
               expectedLocalAmount={expectedLocal}
               disabled={saving}
             />

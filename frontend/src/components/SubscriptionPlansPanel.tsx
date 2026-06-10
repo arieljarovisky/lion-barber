@@ -43,7 +43,7 @@ export default function SubscriptionPlansPanel({
   const [cutsPerMonth, setCutsPerMonth] = useState('4');
   const [validityDays, setValidityDays] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Abono mensual');
+  const [category, setCategory] = useState('Abono');
   const [compareAtPrice, setCompareAtPrice] = useState('');
   const [discountLabel, setDiscountLabel] = useState('');
   const [bonusText, setBonusText] = useState('');
@@ -75,7 +75,7 @@ export default function SubscriptionPlansPanel({
     }
     const price = monthlyPrice.trim();
     if (!price) {
-      showToast('Indicá el precio mensual', 'err');
+      showToast('Indicá el precio del plan', 'err');
       return;
     }
     const cuts = parseInt(cutsPerMonth, 10);
@@ -104,7 +104,7 @@ export default function SubscriptionPlansPanel({
       setCutsPerMonth('4');
       setValidityDays('');
       setDescription('');
-      setCategory('Abono mensual');
+      setCategory('Abono');
       setCompareAtPrice('');
       setDiscountLabel('');
       setBonusText('');
@@ -127,7 +127,7 @@ export default function SubscriptionPlansPanel({
     setEditCuts(String(p.cutsPerMonth));
     setEditValidityDays(p.validityDays != null ? String(p.validityDays) : '');
     setEditDescription(p.description ?? '');
-    setEditCategory(p.category ?? 'Abono mensual');
+    setEditCategory(p.category ?? 'Abono');
     setEditCompareAtPrice(p.compareAtPrice ?? '');
     setEditDiscountLabel(p.discountLabel ?? '');
     setEditBonusText(p.bonusText ?? '');
@@ -214,7 +214,7 @@ export default function SubscriptionPlansPanel({
           type="text"
           value={monthlyPrice}
           onChange={(e) => setMonthlyPrice(e.target.value)}
-          placeholder="Precio mensual ($80.000)"
+          placeholder="Precio del plan ($80.000)"
           className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
         />
         <input
@@ -246,7 +246,7 @@ export default function SubscriptionPlansPanel({
           type="text"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
-          placeholder="Categoría (ej. Abono mensual)"
+          placeholder="Categoría (ej. Abono)"
           className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
         />
         <input
@@ -267,7 +267,7 @@ export default function SubscriptionPlansPanel({
           type="text"
           value={bonusText}
           onChange={(e) => setBonusText(e.target.value)}
-          placeholder="Bonus (Incluye GRATIS 1 mes)"
+          placeholder="Bonus (ej. Incluye 1 corte gratis)"
           className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
         />
         <input

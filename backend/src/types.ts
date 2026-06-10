@@ -60,8 +60,12 @@ export interface Appointment {
   servicePaymentSplits?: ServicePaymentSplit[] | null;
   /** Productos vendidos junto con el turno (cera, pomada, etc.). Aparecen en historial. */
   products?: AppointmentProductLine[] | null;
-  /** Si el turno consumió un corte del abono mensual del cliente. */
+  /** Si el turno consumió un corte del abono del cliente. */
   subscriptionCutApplied?: boolean;
+  /** Promoción aplicada al reservar (descuento por día). */
+  promotionId?: string;
+  /** La seña online cubrió todo el importe promocional (sin saldo en local). */
+  promotionFullyPaid?: boolean;
   /** Propina en ARS; no se incluye en factura AFIP. */
   tipAmount?: number;
   /** Usuario del panel que cargó el turno (staff/admin). */
@@ -99,6 +103,12 @@ export interface SubscriptionPlan {
   sortOrder?: number;
 }
 
+export interface ClientSubscriptionMember {
+  id: number;
+  name: string;
+  email: string;
+}
+
 export interface ClientSubscriptionInfo {
   planId: string;
   planName: string;
@@ -109,6 +119,9 @@ export interface ClientSubscriptionInfo {
   periodEnd: string | null;
   validityDays?: number | null;
   monthlyPrice: string;
+  groupId?: number;
+  ownerUserId?: number | null;
+  sharedMembers?: ClientSubscriptionMember[];
 }
 
 /** Desglose persistido al facturar con AFIP. */
@@ -167,6 +180,34 @@ export interface ShopProduct {
   /** Precio unitario en ARS (texto como en servicios) para sumar a la factura AFIP. */
   unitPrice?: string | null;
   sortOrder?: number;
+  imageUrl?: string | null;
+  description?: string | null;
+  /** Visible y comprable en la web pública. */
+  webActive?: boolean;
+  /** Unidades disponibles; `null` = sin control de stock. */
+  stock?: number | null;
+}
+
+export interface ProductOrderLine {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  imageUrl?: string | null;
+}
+
+export type ProductOrderStatus = 'pending_payment' | 'paid' | 'cancelled';
+
+export interface ProductOrder {
+  id: number;
+  userId: number;
+  status: ProductOrderStatus;
+  items: ProductOrderLine[];
+  totalArs: number;
+  mercadopagoPaymentId?: string | null;
+  paidAt?: string | null;
+  createdAt?: string;
 }
 
 export interface Barber {

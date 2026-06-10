@@ -134,8 +134,12 @@ export interface Appointment {
   createdByUserId?: number;
   /** Último usuario del panel que modificó el turno. */
   updatedByUserId?: number;
-  /** Si se descontó un corte del abono mensual al cobrar con método Abono. */
+  /** Si se descontó un corte del abono al cobrar con método Abono. */
   subscriptionCutApplied?: boolean;
+  /** Promoción aplicada al reservar. */
+  promotionId?: string;
+  /** La seña cubrió todo el importe promocional (sin saldo en local). */
+  promotionFullyPaid?: boolean;
 }
 
 export interface DailyCashClose {
@@ -200,6 +204,34 @@ export interface ShopProduct {
   /** Precio unitario (texto) para sumar a la factura AFIP. */
   unitPrice?: string | null;
   sortOrder?: number;
+  imageUrl?: string | null;
+  description?: string | null;
+  /** Visible y comprable en la web pública. */
+  webActive?: boolean;
+  /** Unidades disponibles; `null` = sin control de stock. */
+  stock?: number | null;
+}
+
+export interface ProductOrderLine {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  imageUrl?: string | null;
+}
+
+export type ProductOrderStatus = 'pending_payment' | 'paid' | 'cancelled';
+
+export interface ProductOrder {
+  id: number;
+  userId: number;
+  status: ProductOrderStatus;
+  items: ProductOrderLine[];
+  totalArs: number;
+  mercadopagoPaymentId?: string | null;
+  paidAt?: string | null;
+  createdAt?: string;
 }
 
 /** Beneficios canjeables con puntos (visible para clientes en el futuro; se configura en Puntos). */
@@ -329,6 +361,18 @@ export interface SitePromotion {
   ctaHref: string;
   active: boolean;
   sortOrder?: number;
+  /** Días ISO 1=lun … 7=dom. Vacío = todos los días. */
+  activeWeekdays?: number[];
+  /** Porcentaje del precio del servicio a cobrar (ej. 50 = pagás la mitad). */
+  discountPercent?: number | null;
+  /** La seña online cubre todo el importe promocional. */
+  depositCoversFull?: boolean;
+}
+
+export interface ClientSubscriptionMember {
+  id: number;
+  name: string;
+  email: string;
 }
 
 export interface ClientSubscriptionInfo {
@@ -341,6 +385,9 @@ export interface ClientSubscriptionInfo {
   periodEnd: string | null;
   validityDays?: number | null;
   monthlyPrice: string;
+  groupId?: number;
+  ownerUserId?: number | null;
+  sharedMembers?: ClientSubscriptionMember[];
 }
 
 /** Respuesta de GET /api/users/clients (solo admin). */
@@ -357,7 +404,7 @@ export interface AdminClientWithHistory {
   avatarUrl?: string | null;
   /** Cliente exento de pagar seña: sus reservas se confirman sin Mercado Pago. */
   depositExempt?: boolean;
-  /** Abono mensual activo (cortes incluidos, sin seña en la web). */
+  /** Abono activo (cortes incluidos, sin seña en la web). */
   subscription?: ClientSubscriptionInfo | null;
   /** Notas internas / recordatorios (solo panel admin). */
   adminNotes?: string | null;
@@ -475,10 +522,11 @@ export const api = {
     date: string;
     time: string;
     userId?: number;
+    productItems?: { productId: string; quantity: number }[];
   }) =>
     fetchApi<
-      | { exempt: true; appointmentId: string }
-      | { preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string }
+      | { exempt: true; appointmentId: string; preferenceId?: string; url?: string; productsTotalArs?: number }
+      | { preferenceId: string; url?: string; appointmentId: string; paymentDueAt: string; productsTotalArs?: number }
     >('/api/checkout/sena', { method: 'POST', body: JSON.stringify(data) }),
 
   /**
@@ -497,6 +545,17 @@ export const api = {
       body: JSON.stringify({ planId }),
     }),
 
+  createCheckoutProducts: (items: { productId: string; quantity: number }[]) =>
+    fetchApi<{ preferenceId: string; url?: string; orderId: number; totalArs: number }>(
+      '/api/checkout/products',
+      {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+      }
+    ),
+
+  getMyProductOrders: () => fetchApi<{ orders: ProductOrder[] }>('/api/product-orders/mine'),
+
   getPublicSubscriptionPlans: () =>
     fetchApi<{ plans: SubscriptionPlan[] }>('/api/subscription-plans/public'),
 
@@ -511,6 +570,9 @@ export const api = {
     ctaLabel?: string;
     ctaHref?: string;
     active?: boolean;
+    activeWeekdays?: number[];
+    discountPercent?: number | null;
+    depositCoversFull?: boolean;
   }) =>
     fetchApi<SitePromotion>('/api/promotions', {
       method: 'POST',
@@ -527,6 +589,9 @@ export const api = {
       ctaHref: string;
       active: boolean;
       sortOrder: number;
+      activeWeekdays: number[];
+      discountPercent: number | null;
+      depositCoversFull: boolean;
     }>
   ) =>
     fetchApi<SitePromotion>(`/api/promotions/${encodeURIComponent(id)}`, {
@@ -668,18 +733,43 @@ export const api = {
     }),
 
   getShopProducts: () => fetchApi<ShopProduct[]>('/api/shop-products'),
-  createShopProduct: (data: { name: string; pointsReward: number; unitPrice?: string | null }) =>
+
+  getPublicShopProducts: () =>
+    fetchApi<{ products: ShopProduct[] }>('/api/shop-products/public'),
+
+  createShopProduct: (data: {
+    name: string;
+    pointsReward: number;
+    unitPrice?: string | null;
+    description?: string | null;
+    imageUrl?: string | null;
+    webActive?: boolean;
+    stock?: number | null;
+  }) =>
     fetchApi<ShopProduct>('/api/shop-products', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   updateShopProduct: (
     id: string,
-    data: Partial<{ name: string; pointsReward: number; unitPrice: string | null }>
+    data: Partial<{
+      name: string;
+      pointsReward: number;
+      unitPrice: string | null;
+      description: string | null;
+      imageUrl: string | null;
+      webActive: boolean;
+      stock: number | null;
+    }>
   ) =>
     fetchApi<ShopProduct>(`/api/shop-products/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }),
+  uploadShopProductImage: (id: string, imageData: string) =>
+    fetchApi<ShopProduct>(`/api/shop-products/${encodeURIComponent(id)}/image`, {
+      method: 'POST',
+      body: JSON.stringify({ imageData }),
     }),
   deleteShopProduct: (id: string) =>
     fetchApi<void>(`/api/shop-products/${encodeURIComponent(id)}`, { method: 'DELETE' }),
@@ -780,6 +870,8 @@ export const api = {
       points?: number;
       depositExempt?: boolean;
       subscriptionPlanId?: string | null;
+      subscriptionCutsUsed?: number;
+      subscriptionPeriodStart?: string;
       adminNotes?: string | null;
       accountBalanceArs?: number;
     }
@@ -794,6 +886,24 @@ export const api = {
     fetchApi<void>(`/api/users/clients/${encodeURIComponent(String(clientId))}`, {
       method: 'DELETE',
     }),
+
+  linkAdminClientToSubscription: (clientId: number, hostUserId: number) =>
+    fetchApi<{ client: AdminClientWithHistory }>(
+      `/api/users/clients/${encodeURIComponent(String(clientId))}/subscription-group/link`,
+      { method: 'POST', body: JSON.stringify({ hostUserId }) }
+    ),
+
+  addAdminClientSubscriptionMember: (hostClientId: number, memberUserId: number) =>
+    fetchApi<{ client: AdminClientWithHistory }>(
+      `/api/users/clients/${encodeURIComponent(String(hostClientId))}/subscription-group/members`,
+      { method: 'POST', body: JSON.stringify({ memberUserId }) }
+    ),
+
+  removeAdminClientSubscriptionMember: (hostClientId: number, memberUserId: number) =>
+    fetchApi<{ client: AdminClientWithHistory }>(
+      `/api/users/clients/${encodeURIComponent(String(hostClientId))}/subscription-group/members/${encodeURIComponent(String(memberUserId))}`,
+      { method: 'DELETE' }
+    ),
 
   getFixedMonthlyExpenses: () =>
     fetchApi<{ items: FixedMonthlyExpense[] }>('/api/expenses/fixed'),

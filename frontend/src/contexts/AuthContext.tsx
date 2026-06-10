@@ -23,7 +23,7 @@ export interface UserProfile {
   avatarUrl?: string | null;
   /** Cliente exento de pagar seña: reserva turnos directo, sin Mercado Pago. */
   depositExempt?: boolean;
-  /** Abono mensual activo (cortes incluidos). */
+  /** Abono activo (cortes incluidos). */
   subscription?: ClientSubscriptionInfo | null;
   /** Facturación AFIP, cierre de caja, estadísticas contables y monotributo. */
   isSuperAdmin?: boolean;

@@ -97,6 +97,7 @@ export function appointmentLocalPendingArs(
   services: Service[],
   depositPercent: number
 ): number {
+  if (app.promotionFullyPaid) return 0;
   const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
   const deposit = resolveAppointmentDepositAmountArs(app, services, depositPercent);
   return Math.max(0, serviceAmount - deposit);

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, Scissors, MapPin, Phone, User, CheckCircle2, ChevronRight, ChevronLeft, ChevronDown, Menu, X, Users, LogOut, LayoutDashboard, AlertTriangle, ExternalLink, ShoppingCart } from 'lucide-react';
 import { BOOKING_FALLBACK_WHATSAPP_URL, checkBackendHealth } from '../utils/backendHealth';
 import {
   SHOP_ADDRESS,
@@ -14,13 +14,19 @@ import { InstagramIcon } from '../components/InstagramIcon';
 import ClientMobileNavUserSection from '../components/ClientMobileNavUserSection';
 import { api } from '../store';
 import { ANY_BARBER_ID, ApiError } from '../api';
-import type { Service, Barber, SubscriptionPlan, SitePromotion } from '../api';
+import type { Service, Barber, SubscriptionPlan, SitePromotion, ShopProduct } from '../api';
+import ShopCatalogSection from '../components/ShopCatalogSection';
+import { useShopCart } from '../hooks/useShopCart';
 import { useAuth } from '../contexts/AuthContext';
 import SitePromotionBanner from '../components/SitePromotionBanner';
 import { SubscriptionPricingCards } from '../components/SubscriptionPricingCards';
+import SubscriptionCheckoutConfirmModal from '../components/SubscriptionCheckoutConfirmModal';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
-import { calculateDepositAmountArs, parseArsAmount } from '../utils/money';
+import { parseArsAmount } from '../utils/money';
+import {
+  calculateBookingDepositPreview,
+} from '../utils/sitePromotions';
 import {
   format,
   parse,
@@ -56,6 +62,8 @@ const TIME_SLOTS = [
   '18:00', '18:20', '18:40',
   '19:00', '19:20', '19:40'
 ];
+
+const SERVICES_PREVIEW_COUNT = 3;
 
 type DayHours = { openTime: string; closeTime: string };
 
@@ -133,6 +141,7 @@ export default function ClientView() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
+  const [servicesExpanded, setServicesExpanded] = useState(false);
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [openWeekdays, setOpenWeekdays] = useState<number[]>([1, 2, 3, 4, 5, 6, 7]);
   const [closedDates, setClosedDates] = useState<string[]>([]);
@@ -140,11 +149,22 @@ export default function ClientView() {
   const [shopWeekdayHours, setShopWeekdayHours] = useState<Record<number, DayHours>>(DEFAULT_WEEKDAY_HOURS);
   const [backendReachable, setBackendReachable] = useState<boolean | null>(null);
   const [publicPromotions, setPublicPromotions] = useState<SitePromotion[]>([]);
+  const [publicShopProducts, setPublicShopProducts] = useState<ShopProduct[]>([]);
+  const {
+    cart: shopCart,
+    cartLines: shopCartLines,
+    cartTotal: shopCartTotal,
+    cartCount: shopCartCount,
+    setQty: setShopCartQty,
+    clearCart: clearShopCart,
+    cartItemsPayload: shopCartItemsPayload,
+  } = useShopCart(publicShopProducts);
   const [publicSubscriptionPlans, setPublicSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [publicCatalogLoading, setPublicCatalogLoading] = useState(true);
   const [subscriptionCheckoutPlanId, setSubscriptionCheckoutPlanId] = useState<string | null>(null);
   const [subscriptionCheckoutPreferenceId, setSubscriptionCheckoutPreferenceId] = useState<string | null>(null);
   const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState(false);
+  const [subscriptionConfirmPlan, setSubscriptionConfirmPlan] = useState<SubscriptionPlan | null>(null);
   const [subscriptionMessage, setSubscriptionMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const loadBookingCatalog = () => {
@@ -154,10 +174,12 @@ export default function ClientView() {
     Promise.all([
       api.getPublicPromotions().catch(() => ({ promotions: [] as SitePromotion[] })),
       api.getPublicSubscriptionPlans().catch(() => ({ plans: [] as SubscriptionPlan[] })),
+      api.getPublicShopProducts().catch(() => ({ products: [] as ShopProduct[] })),
     ])
-      .then(([promos, plans]) => {
+      .then(([promos, plans, shop]) => {
         setPublicPromotions(promos.promotions);
         setPublicSubscriptionPlans(plans.plans);
+        setPublicShopProducts(shop.products);
       })
       .finally(() => setPublicCatalogLoading(false));
     api
@@ -252,12 +274,25 @@ export default function ClientView() {
   const selectedServiceRow = services.find((s) => s.id === selectedService);
   const selectedServiceDuration = selectedServiceRow?.duration ?? 30;
   const serviceSelected = Boolean(selectedService);
-  const depositPreviewArs = useMemo(() => {
+  const depositPreview = useMemo(() => {
     if (!selectedServiceRow?.price || profile?.depositExempt) return null;
     const price = parseArsAmount(selectedServiceRow.price);
     if (price == null) return null;
-    return calculateDepositAmountArs(price, DEPOSIT_PERCENT);
-  }, [selectedServiceRow, profile?.depositExempt]);
+    return calculateBookingDepositPreview(
+      price,
+      DEPOSIT_PERCENT,
+      publicPromotions,
+      selectedDate || null
+    );
+  }, [selectedServiceRow, profile?.depositExempt, publicPromotions, selectedDate]);
+
+  const visibleCatalogServices = useMemo(() => {
+    if (servicesExpanded || services.length <= SERVICES_PREVIEW_COUNT) return services;
+    return services.slice(0, SERVICES_PREVIEW_COUNT);
+  }, [services, servicesExpanded]);
+
+  const hasMoreServices = services.length > SERVICES_PREVIEW_COUNT;
+
   const visibleBarbers = useMemo(() => {
     if (!selectedDate || !selectedService) return barbers;
     const set = new Set(availableBarberIds);
@@ -380,6 +415,7 @@ export default function ClientView() {
     const checkout = searchParams.get('checkout');
     if (checkout === 'success') {
       setPendingCheckoutSuccess(true);
+      clearShopCart();
       setSearchParams({}, { replace: true });
     } else if (checkout === 'subscription_success') {
       setSubscriptionMessage({
@@ -580,6 +616,7 @@ export default function ClientView() {
     }
     setSenaCheckoutLoading(true);
     try {
+      const productItems = shopCartItemsPayload.length > 0 ? shopCartItemsPayload : undefined;
       const data = await api.createCheckoutSena({
         name: name.trim(),
         phone: phone.trim(),
@@ -589,14 +626,22 @@ export default function ClientView() {
         date: selectedDate,
         time: selectedTime,
         userId: profile.id,
+        productItems,
       });
       if ('exempt' in data && data.exempt) {
-        setBookingSuccess(true);
-        setSenaCheckoutPreferenceId(null);
-        window.requestAnimationFrame(() => {
-          document.getElementById('reserva')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
+        if ('preferenceId' in data && data.preferenceId) {
+          setSenaCheckoutPreferenceId(data.preferenceId);
+          if (productItems?.length) clearShopCart();
+        } else {
+          setBookingSuccess(true);
+          setSenaCheckoutPreferenceId(null);
+          if (productItems?.length) clearShopCart();
+          window.requestAnimationFrame(() => {
+            document.getElementById('reserva')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        }
       } else if ('preferenceId' in data) {
+        if (productItems?.length) clearShopCart();
         setSenaCheckoutPreferenceId(data.preferenceId);
       }
     } catch (err) {
@@ -609,6 +654,15 @@ export default function ClientView() {
   const handleLogout = async () => {
     await logout();
     navigate('/', { replace: true });
+  };
+
+  const handleSubscriptionContinue = (plan: SubscriptionPlan) => {
+    if (!profile) {
+      handleSubscriptionLoginRequired();
+      return;
+    }
+    setSubscriptionConfirmPlan(plan);
+    setSubscriptionMessage(null);
   };
 
   const handleBuySubscription = async (planId: string) => {
@@ -633,6 +687,7 @@ export default function ClientView() {
       });
     } finally {
       setSubscriptionCheckoutLoading(false);
+      setSubscriptionConfirmPlan(null);
     }
   };
 
@@ -641,6 +696,7 @@ export default function ClientView() {
   };
 
   const showAbonosSection = publicCatalogLoading || publicSubscriptionPlans.length > 0;
+  const showProductsSection = publicCatalogLoading || publicShopProducts.length > 0;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
@@ -676,6 +732,7 @@ export default function ClientView() {
             {(
               [
                 { href: '#servicios', label: 'Servicios' },
+                ...(showProductsSection ? [{ href: '#productos', label: 'Productos' }] : []),
                 { href: '#barberos', label: 'Barberos' },
                 ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
                 { href: '#contacto', label: 'Contacto' },
@@ -780,6 +837,7 @@ export default function ClientView() {
             {(
               [
                 { href: '#servicios', label: 'Servicios' },
+                ...(showProductsSection ? [{ href: '#productos', label: 'Productos' }] : []),
                 { href: '#barberos', label: 'Barberos' },
                 ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
                 { href: '#contacto', label: 'Contacto' },
@@ -846,7 +904,7 @@ export default function ClientView() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
-            {services.map((service) => (
+            {visibleCatalogServices.map((service) => (
               <div key={service.id} className="bg-zinc-900/50 border border-zinc-800 p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl hover:border-[#e5c185]/50 transition-colors group min-w-0">
                 <div className="w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] bg-zinc-950 border border-zinc-800 rounded-lg sm:rounded-xl flex items-center justify-center text-[#e5c185] mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
                   <span className="text-xl sm:text-2xl font-black tracking-wider select-none">
@@ -864,8 +922,47 @@ export default function ClientView() {
               </div>
             ))}
           </div>
+
+          {hasMoreServices && (
+            <div className="mt-8 sm:mt-10 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setServicesExpanded((open) => !open)}
+                className="inline-flex items-center gap-2 rounded-xl border border-[#e5c185]/40 bg-zinc-900/80 px-6 py-3 text-sm font-black uppercase tracking-wider text-[#e5c185] transition-colors hover:border-[#e5c185] hover:bg-zinc-900"
+                aria-expanded={servicesExpanded}
+              >
+                {servicesExpanded ? (
+                  <>
+                    Ver menos servicios
+                    <ChevronDown size={18} className="rotate-180 transition-transform" aria-hidden />
+                  </>
+                ) : (
+                  <>
+                    Ver todos los servicios ({services.length})
+                    <ChevronDown size={18} className="transition-transform" aria-hidden />
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </section>
+
+      {showProductsSection && (
+        <ShopCatalogSection
+          products={publicShopProducts}
+          isLoggedIn={Boolean(profile)}
+          cart={shopCart}
+          cartLines={shopCartLines}
+          cartTotal={shopCartTotal}
+          cartCount={shopCartCount}
+          onSetQty={setShopCartQty}
+          onProductsPurchased={clearShopCart}
+          onRequireLogin={() =>
+            navigate('/login', { state: { from: { pathname: '/', hash: '#productos' } } })
+          }
+        />
+      )}
 
       {/* Barbers Section */}
       <section id="barberos" className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 bg-zinc-950 border-y border-zinc-900">
@@ -918,7 +1015,7 @@ export default function ClientView() {
               </h2>
               <div className="mx-auto mt-3 h-1 w-20 rounded-full bg-[#e5c185] sm:w-24" />
               <p className="mx-auto mt-4 max-w-2xl font-sans text-sm font-light text-zinc-400 sm:text-base">
-                Pagá online con Mercado Pago y reservá sin seña mientras tengas cortes disponibles en el mes.
+                Pagá online con Mercado Pago y reservá sin seña mientras tengas cortes disponibles en tu abono.
               </p>
             </div>
 
@@ -939,7 +1036,7 @@ export default function ClientView() {
               loading={publicCatalogLoading}
               checkoutPlanId={subscriptionCheckoutPlanId}
               checkoutLoading={subscriptionCheckoutLoading}
-              onBuy={(planId) => void handleBuySubscription(planId)}
+              onContinue={handleSubscriptionContinue}
               isLoggedIn={Boolean(profile)}
               onLoginRequired={handleSubscriptionLoginRequired}
             />
@@ -1347,13 +1444,77 @@ export default function ClientView() {
                   </div>
 
                   <div className={`flex flex-col gap-3 mt-4 transition-opacity ${serviceSelected ? '' : 'opacity-40 pointer-events-none'}`}>
-                    {depositPreviewArs != null && (
+                    {shopCartCount > 0 && (
+                      <div className="rounded-xl border border-[#e5c185]/25 bg-zinc-900/60 p-4">
+                        <div className="mb-2 flex items-center gap-2 text-sm font-bold text-white">
+                          <ShoppingCart size={16} className="text-[#e5c185]" aria-hidden />
+                          Productos en el carrito
+                        </div>
+                        <ul className="space-y-1 text-xs text-zinc-400">
+                          {shopCartLines.map((line) => (
+                            <li key={line.product.id} className="flex justify-between gap-2">
+                              <span className="truncate">
+                                {line.quantity}× {line.product.name}
+                              </span>
+                              <span className="shrink-0 tabular-nums text-zinc-300">
+                                $
+                                {Math.round(
+                                  (parseArsAmount(line.product.unitPrice ?? undefined) ?? 0) *
+                                    line.quantity
+                                ).toLocaleString('es-AR')}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-2 text-center text-sm text-zinc-300">
+                          Productos:{' '}
+                          <strong className="text-[#e5c185] tabular-nums">
+                            ${Math.round(shopCartTotal).toLocaleString('es-AR')}
+                          </strong>
+                          {depositPreview != null && !profile?.depositExempt && (
+                            <>
+                              {' '}
+                              + seña{' '}
+                              <strong className="text-[#e5c185] tabular-nums">
+                                ${depositPreview.amountArs.toLocaleString('es-AR')}
+                              </strong>
+                            </>
+                          )}
+                        </p>
+                        <p className="mt-1 text-center text-[11px] text-zinc-500">
+                          Se cobran juntos en un solo pago con Mercado Pago.
+                        </p>
+                      </div>
+                    )}
+                    {depositPreview != null && (
                       <p className="text-center text-sm text-zinc-400">
-                        Seña online:{' '}
-                        <strong className="text-[#e5c185] tabular-nums">
-                          ${depositPreviewArs.toLocaleString('es-AR')}
-                        </strong>{' '}
-                        ({DEPOSIT_PERCENT}% del servicio · el resto se abona en el local)
+                        {depositPreview.fullyPaidOnDeposit ? (
+                          <>
+                            Promo activa: pagás online{' '}
+                            <strong className="text-[#e5c185] tabular-nums">
+                              ${depositPreview.amountArs.toLocaleString('es-AR')}
+                            </strong>{' '}
+                            ({depositPreview.promotion?.discountPercent}% del servicio) y quedás
+                            con todo pago. No debés nada en el local.
+                          </>
+                        ) : depositPreview.promotion ? (
+                          <>
+                            Seña online:{' '}
+                            <strong className="text-[#e5c185] tabular-nums">
+                              ${depositPreview.amountArs.toLocaleString('es-AR')}
+                            </strong>{' '}
+                            ({DEPOSIT_PERCENT}% del servicio · promo {depositPreview.promotion.discountPercent}%
+                            ese día)
+                          </>
+                        ) : (
+                          <>
+                            Seña online:{' '}
+                            <strong className="text-[#e5c185] tabular-nums">
+                              ${depositPreview.amountArs.toLocaleString('es-AR')}
+                            </strong>{' '}
+                            ({DEPOSIT_PERCENT}% del servicio · el resto se abona en el local)
+                          </>
+                        )}
                       </p>
                     )}
                     <button
@@ -1374,11 +1535,13 @@ export default function ClientView() {
                         )
                       ) : profile ? (
                         profile.depositExempt ? (
-                          'Confirmar turno'
+                          shopCartCount > 0 ? 'Pagar productos y confirmar turno' : 'Confirmar turno'
                         ) : (
                           senaCheckoutPreferenceId
                             ? 'Preferencia lista — pagá abajo'
-                            : 'Pagar seña y confirmar turno'
+                            : shopCartCount > 0
+                              ? 'Pagar seña + productos'
+                              : 'Pagar seña y confirmar turno'
                         )
                       ) : (
                         'Iniciar sesión para confirmar'
@@ -1636,6 +1799,18 @@ export default function ClientView() {
           </div>
         </div>
       )}
+      <SubscriptionCheckoutConfirmModal
+        plan={subscriptionConfirmPlan}
+        loading={subscriptionCheckoutLoading}
+        onClose={() => {
+          if (!subscriptionCheckoutLoading) setSubscriptionConfirmPlan(null);
+        }}
+        onConfirm={() => {
+          if (subscriptionConfirmPlan) {
+            void handleBuySubscription(subscriptionConfirmPlan.id);
+          }
+        }}
+      />
     </div>
   );
 }

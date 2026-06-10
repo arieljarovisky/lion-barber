@@ -3,7 +3,14 @@ import { requireAuth, requireAdmin, requireStaffOrAdmin } from '../middleware/au
 import * as userRepo from '../repositories/users.js';
 import * as appointmentRepo from '../repositories/appointments.js';
 import { toAdminClientPayload } from './adminClientPayload.js';
-import { assignSubscriptionPlanToClient } from '../services/clientSubscription.js';
+import {
+  assignSubscriptionPlanToClient,
+  addMemberToClientSubscriptionGroup,
+  getSubscriptionGroupForClient,
+  linkClientToSharedSubscription,
+  removeClientFromSubscription,
+  updateClientSubscriptionUsage,
+} from '../services/clientSubscription.js';
 import { notifyClientSubscriptionActivated } from '../services/email.js';
 
 const router = Router();
@@ -116,6 +123,8 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     points?: unknown;
     depositExempt?: unknown;
     subscriptionPlanId?: unknown;
+    subscriptionCutsUsed?: unknown;
+    subscriptionPeriodStart?: unknown;
     adminNotes?: unknown;
     accountBalanceArs?: unknown;
   };
@@ -189,7 +198,36 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
     patch.accountBalanceArs = raw;
   }
 
-  if (Object.keys(patch).length === 0 && subscriptionPlanIdPatch === undefined) {
+  let subscriptionUsagePatch: { cutsUsed?: number; periodStart?: string } | undefined;
+  if (body.subscriptionCutsUsed !== undefined || body.subscriptionPeriodStart !== undefined) {
+    subscriptionUsagePatch = {};
+    if (body.subscriptionCutsUsed !== undefined) {
+      const n =
+        typeof body.subscriptionCutsUsed === 'number'
+          ? body.subscriptionCutsUsed
+          : parseInt(String(body.subscriptionCutsUsed), 10);
+      if (!Number.isFinite(n)) {
+        return res.status(400).json({ error: 'subscriptionCutsUsed debe ser un número' });
+      }
+      subscriptionUsagePatch.cutsUsed = n;
+    }
+    if (body.subscriptionPeriodStart !== undefined) {
+      if (body.subscriptionPeriodStart !== null && typeof body.subscriptionPeriodStart !== 'string') {
+        return res.status(400).json({ error: 'subscriptionPeriodStart debe ser texto YYYY-MM-DD' });
+      }
+      if (typeof body.subscriptionPeriodStart === 'string' && body.subscriptionPeriodStart.trim()) {
+        subscriptionUsagePatch.periodStart = body.subscriptionPeriodStart.trim().slice(0, 10);
+      }
+    }
+    if (
+      subscriptionUsagePatch.cutsUsed === undefined &&
+      subscriptionUsagePatch.periodStart === undefined
+    ) {
+      subscriptionUsagePatch = undefined;
+    }
+  }
+
+  if (Object.keys(patch).length === 0 && subscriptionPlanIdPatch === undefined && subscriptionUsagePatch === undefined) {
     return res.status(400).json({ error: 'No hay campos para actualizar' });
   }
 
@@ -204,10 +242,13 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
       });
     }
     if (subscriptionPlanIdPatch !== undefined) {
-      await assignSubscriptionPlanToClient(id, subscriptionPlanIdPatch);
-      if (subscriptionPlanIdPatch != null) {
+      const assigned = await assignSubscriptionPlanToClient(id, subscriptionPlanIdPatch);
+      if (assigned && subscriptionPlanIdPatch != null) {
         void notifyClientSubscriptionActivated(id);
       }
+    }
+    if (subscriptionUsagePatch !== undefined) {
+      await updateClientSubscriptionUsage(id, subscriptionUsagePatch);
     }
 
     const updated =
@@ -230,12 +271,103 @@ router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+router.get('/clients/:id/subscription-group', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  try {
+    const data = await getSubscriptionGroupForClient(id);
+    if (!data) return res.status(404).json({ error: 'Este cliente no tiene abono activo' });
+    res.json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error al cargar el abono compartido' });
+  }
+});
+
+router.post('/clients/:id/subscription-group/link', requireAuth, requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const hostUserId = Number((req.body as { hostUserId?: unknown }).hostUserId);
+  if (!Number.isFinite(id) || id < 1 || !Number.isFinite(hostUserId) || hostUserId < 1) {
+    return res.status(400).json({ error: 'IDs inválidos' });
+  }
+  try {
+    await linkClientToSharedSubscription(id, hostUserId);
+    const user = await userRepo.findUserById(id);
+    if (!user || user.role !== 'client') {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+    const phones = await userRepo.getClientPhonesByUserId(id);
+    const map = await appointmentRepo.getAppointmentsByUserIds([id]);
+    res.json({ client: await toAdminClientPayload(user, phones, map.get(id) ?? []) });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'No se pudo vincular el abono';
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.post('/clients/:id/subscription-group/members', requireAuth, requireAdmin, async (req, res) => {
+  const hostId = Number(req.params.id);
+  const memberUserId = Number((req.body as { memberUserId?: unknown }).memberUserId);
+  if (!Number.isFinite(hostId) || hostId < 1 || !Number.isFinite(memberUserId) || memberUserId < 1) {
+    return res.status(400).json({ error: 'IDs inválidos' });
+  }
+  try {
+    await addMemberToClientSubscriptionGroup(hostId, memberUserId);
+    const user = await userRepo.findUserById(hostId);
+    if (!user || user.role !== 'client') {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+    const phones = await userRepo.getClientPhonesByUserId(hostId);
+    const map = await appointmentRepo.getAppointmentsByUserIds([hostId]);
+    res.json({ client: await toAdminClientPayload(user, phones, map.get(hostId) ?? []) });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'No se pudo agregar al abono';
+    res.status(400).json({ error: msg });
+  }
+});
+
+router.delete(
+  '/clients/:id/subscription-group/members/:memberId',
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    const hostId = Number(req.params.id);
+    const memberId = Number(req.params.memberId);
+    if (!Number.isFinite(hostId) || hostId < 1 || !Number.isFinite(memberId) || memberId < 1) {
+      return res.status(400).json({ error: 'IDs inválidos' });
+    }
+    try {
+      const group = await getSubscriptionGroupForClient(hostId);
+      if (!group) {
+        return res.status(404).json({ error: 'Abono no encontrado' });
+      }
+      if (!group.members.some((m) => m.id === memberId)) {
+        return res.status(400).json({ error: 'Ese cliente no pertenece a este abono' });
+      }
+      await removeClientFromSubscription(memberId);
+      const user = await userRepo.findUserById(hostId);
+      if (!user || user.role !== 'client') {
+        return res.status(404).json({ error: 'Cliente no encontrado' });
+      }
+      const phones = await userRepo.getClientPhonesByUserId(hostId);
+      const map = await appointmentRepo.getAppointmentsByUserIds([hostId]);
+      res.json({ client: await toAdminClientPayload(user, phones, map.get(hostId) ?? []) });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'No se pudo quitar del abono';
+      res.status(400).json({ error: msg });
+    }
+  }
+);
+
 router.delete('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id < 1) {
     return res.status(400).json({ error: 'ID inválido' });
   }
   try {
+    await removeClientFromSubscription(id);
     const ok = await userRepo.deleteClientById(id);
     if (!ok) {
       return res.status(404).json({ error: 'Cliente no encontrado' });
