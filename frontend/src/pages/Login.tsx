@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
 import { LION_LOGO_URL } from '../constants/brandLogo';
 import { useAuth } from '../contexts/AuthContext';
@@ -105,6 +105,17 @@ export default function Login() {
 
           <p className="text-zinc-500 text-xs text-center">
             Si es tu primera vez, se creará tu cuenta al iniciar sesión con Google.
+          </p>
+          <p className="text-zinc-500 text-[11px] text-center leading-relaxed">
+            Al continuar, aceptás nuestros{' '}
+            <Link to="/terminos" className="text-[#e5c185] underline-offset-2 hover:underline">
+              Términos y condiciones
+            </Link>{' '}
+            y la{' '}
+            <Link to="/privacidad" className="text-[#e5c185] underline-offset-2 hover:underline">
+              Política de privacidad
+            </Link>
+            .
           </p>
         </motion.div>
 
