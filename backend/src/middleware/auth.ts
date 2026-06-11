@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyJwt, JwtPayload, isSuperAdminEmail } from '../auth.js';
 import { findUserById } from '../repositories/users.js';
+import { staffPermissionsFromDbUser } from '../services/staffPermissions.js';
+import type { StaffPermissions } from '../services/staffPermissions.js';
 
 export interface AuthRequest extends Request {
   user?: JwtPayload & {
@@ -10,6 +12,9 @@ export interface AuthRequest extends Request {
     role: string;
     /** Solo staff: id del barbero en `barbers` */
     barberId: string | null;
+    permViewAllAgendas?: boolean;
+    permEditAllAgendas?: boolean;
+    staffPermissions?: StaffPermissions | null;
   };
 }
 
@@ -18,6 +23,7 @@ async function attachUserFromToken(req: AuthRequest, token: string): Promise<boo
     const payload = verifyJwt(token);
     const user = await findUserById(payload.userId);
     if (!user) return false;
+    const staffPerms = staffPermissionsFromDbUser(user);
     req.user = {
       ...payload,
       id: user.id,
@@ -25,6 +31,9 @@ async function attachUserFromToken(req: AuthRequest, token: string): Promise<boo
       email: user.email,
       role: user.role,
       barberId: user.barber_id ?? null,
+      permViewAllAgendas: staffPerms?.viewAllAgendas ?? false,
+      permEditAllAgendas: staffPerms?.editAllAgendas ?? false,
+      staffPermissions: staffPerms,
     };
     return true;
   } catch {

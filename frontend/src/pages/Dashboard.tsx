@@ -75,6 +75,7 @@ import type {
   BarberFrancoRow,
   BarberTimeBlockRow,
   StaffInviteRow,
+  StaffUserPermissionsRow,
   ShopProduct,
   SubscriptionPlan,
   SitePromotion,
@@ -267,6 +268,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const [blockTimeEnd, setBlockTimeEnd] = useState('14:00');
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [staffInvites, setStaffInvites] = useState<StaffInviteRow[]>([]);
+  const [staffUsers, setStaffUsers] = useState<StaffUserPermissionsRow[]>([]);
+  const [staffPermissionsSavingId, setStaffPermissionsSavingId] = useState<number | null>(null);
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamError, setTeamError] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
@@ -324,14 +327,17 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     };
   }, []);
 
-  const { profile, isAdmin, isSuperAdmin, canAccessDashboard } = useAuth();
+  const { profile, isAdmin, isSuperAdmin, canAccessDashboard, refreshProfile } = useAuth();
   const confirm = useConfirm();
   const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
   const isStaffBarber = Boolean(staffBarberId);
+  const staffCanViewAll = isAdmin || Boolean(profile?.staffPermissions?.viewAllAgendas);
+  const staffCanEditAll = isAdmin || Boolean(profile?.staffPermissions?.editAllAgendas);
+  const isRestrictedStaffView = isStaffBarber && !staffCanViewAll;
 
   const canStaffManageBarber = useCallback(
-    (barberId: string) => !staffBarberId || staffBarberId === barberId,
-    [staffBarberId]
+    (barberId: string) => staffCanEditAll || !staffBarberId || staffBarberId === barberId,
+    [staffCanEditAll, staffBarberId]
   );
 
   const notifyBarberForPaidAppointments = useCallback(
@@ -643,8 +649,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     const close = selectedDayHours.closeTime;
     return agendaTimeSlots.includes(close) ? agendaTimeSlots : [...agendaTimeSlots, close];
   }, [agendaTimeSlots, selectedDayHours.closeTime]);
-  /** Vista semana solo para admin (elige un peluquero). Los barberos usan vista por día (día actual / calendario). */
-  const isWeekView = selectedBarberId !== 'all' && !isStaffBarber;
+  /** Vista semana solo para admin o staff con permiso de ver todas las agendas. */
+  const isWeekView = selectedBarberId !== 'all' && !isRestrictedStaffView;
   const isDayToday = isSameDay(selectedDate, new Date());
   /** Un solo peluquero en pantalla (ej. cuenta barbero): layout de día ampliado */
   const isSingleBarberDayView = !isWeekView && barbers.length === 1;
@@ -662,7 +668,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       setAppointments(appRes);
       notifyBarberForPaidAppointments(appRes);
       const staffBid = profile?.role === 'staff' ? profile.barberId ?? null : null;
-      setBarbers(staffBid ? barbersRes.filter((b) => b.id === staffBid) : barbersRes);
+      setBarbers(staffBid && !staffCanViewAll ? barbersRes.filter((b) => b.id === staffBid) : barbersRes);
       setServices(servicesRes);
     } catch (e) {
       setAppointments([]);
@@ -676,7 +682,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     } finally {
       if (!opts?.silent) setLoading(false);
     }
-  }, [dateStr, selectedBarberId, isWeekView, profile?.role, profile?.barberId, notifyBarberForPaidAppointments]);
+  }, [dateStr, selectedBarberId, isWeekView, profile?.role, profile?.barberId, staffCanViewAll, notifyBarberForPaidAppointments]);
 
   useEffect(() => {
     const from = isWeekView ? weekFromYmd : dateStr;
@@ -733,11 +739,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   }, [isSuperAdmin]);
 
   useEffect(() => {
-    if (profile?.role === 'staff' && profile.barberId) {
+    if (profile?.role === 'staff' && profile.barberId && !profile.staffPermissions?.viewAllAgendas) {
       setSelectedBarberId(profile.barberId);
       setScheduleBarberId(profile.barberId);
     }
-  }, [profile?.role, profile?.barberId]);
+  }, [profile?.role, profile?.barberId, profile?.staffPermissions?.viewAllAgendas]);
 
   useEffect(() => {
     if (view === 'horarios' && barbers.length && !scheduleBarberId) {
@@ -826,25 +832,32 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     };
   }, [view, isAdmin]);
 
-  const loadStaffInvites = useCallback(async () => {
+  const loadTeamPanel = useCallback(async () => {
     setTeamLoading(true);
     setTeamError('');
     try {
-      const list = await api.getStaffInvites();
-      setStaffInvites(list);
+      const invites = await api.getStaffInvites();
+      setStaffInvites(invites);
+      if (isSuperAdmin) {
+        const staff = await api.getStaffPermissions();
+        setStaffUsers(staff);
+      } else {
+        setStaffUsers([]);
+      }
     } catch {
       setStaffInvites([]);
+      setStaffUsers([]);
       setTeamError('No se pudo cargar el equipo.');
     } finally {
       setTeamLoading(false);
     }
-  }, []);
+  }, [isSuperAdmin]);
 
   useEffect(() => {
     if (view === 'equipo' && isAdmin) {
-      loadStaffInvites();
+      void loadTeamPanel();
     }
-  }, [view, isAdmin, loadStaffInvites]);
+  }, [view, isAdmin, loadTeamPanel]);
 
   const toggleFranco = async (weekday: number) => {
     if (!scheduleBarberId || !canAccessDashboard) return;
@@ -907,7 +920,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       setInviteEmail('');
       setInviteName('');
       setInviteBarberId('');
-      await loadStaffInvites();
+      await loadTeamPanel();
     } catch (err) {
       setTeamError(err instanceof Error ? err.message : 'Error al invitar');
     } finally {
@@ -926,9 +939,31 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     setTeamError('');
     try {
       await api.deleteStaffInvite(id);
-      await loadStaffInvites();
+      await loadTeamPanel();
     } catch (err) {
       setTeamError(err instanceof Error ? err.message : 'Error al eliminar');
+    }
+  };
+
+  const handleToggleStaffPermission = async (
+    userId: number,
+    key: 'viewAllAgendas' | 'editAllAgendas',
+    value: boolean
+  ) => {
+    setStaffPermissionsSavingId(userId);
+    setTeamError('');
+    try {
+      const updated = await api.updateStaffPermissions(userId, { [key]: value });
+      setStaffUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, ...updated } : u)));
+      showToast('Permisos actualizados', 'ok');
+      if (profile?.id === userId) {
+        await refreshProfile();
+      }
+    } catch (err) {
+      setTeamError(err instanceof Error ? err.message : 'No se pudieron guardar los permisos');
+      showToast(err instanceof Error ? err.message : 'Error al guardar permisos', 'err');
+    } finally {
+      setStaffPermissionsSavingId(null);
     }
   };
 
@@ -1150,8 +1185,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
 
   const getAppointmentModifyBlockedReason = useCallback(
     (app: Appointment) =>
-      appointmentModifyBlockedReason(app, profile?.id, isSuperAdmin, closedDateSet),
-    [profile?.id, isSuperAdmin, closedDateSet]
+      appointmentModifyBlockedReason(app, profile?.id, isSuperAdmin, closedDateSet, staffCanEditAll),
+    [profile?.id, isSuperAdmin, closedDateSet, staffCanEditAll]
   );
 
   const tryOpenEditModal = (app: Appointment) => {
@@ -1787,7 +1822,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   useEffect(() => {
     if (!agendasOnly) return;
     setView('agenda');
-    if (profile?.role === 'staff' && profile.barberId) {
+    if (profile?.role === 'staff' && profile.barberId && !profile.staffPermissions?.viewAllAgendas) {
       setSelectedBarberId(profile.barberId);
     } else {
       setSelectedBarberId('all');
@@ -1796,7 +1831,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     if (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
       setSelectedDate(parseISO(`${fecha}T12:00:00`));
     }
-  }, [agendasOnly, location.search, profile?.role, profile?.barberId]);
+  }, [agendasOnly, location.search, profile?.role, profile?.barberId, profile?.staffPermissions?.viewAllAgendas]);
 
   const openAgendasInNewTab = useCallback(() => {
     const url = `${window.location.origin}/dashboard/agendas?fecha=${dateStr}`;
@@ -1883,18 +1918,22 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     view === 'agenda'
       ? {
           title: 'Agenda de Turnos',
-          subtitle: isStaffBarber
+          subtitle: isRestrictedStaffView
             ? 'Solo tus turnos y tu calendario.'
-            : 'Calendario por peluquero y gestión de reservas.',
+            : isStaffBarber
+              ? 'Turnos de todos los barberos (según tus permisos).'
+              : 'Calendario por peluquero y gestión de reservas.',
         }
       : view === 'servicios'
         ? { title: 'Servicios', subtitle: 'Precios, duración e iconos mostrados en la web.' }
         : view === 'horarios'
           ? {
               title: 'Horarios y disponibilidad',
-              subtitle: isStaffBarber
+              subtitle: isRestrictedStaffView
                 ? 'Tus francos y bloqueos (solo afectan tu agenda).'
-                : 'Francos semanales y bloqueos por barbero.',
+                : isStaffBarber
+                  ? 'Francos y bloqueos por barbero (según tus permisos).'
+                  : 'Francos semanales y bloqueos por barbero.',
             }
           : view === 'puntos'
             ? {
@@ -2062,7 +2101,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 />
               </label>
 
-              {isStaffBarber ? (
+              {isRestrictedStaffView ? (
                 <div className="bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm font-bold text-white w-full sm:w-auto">
                   {barbers[0]?.name ?? 'Barbero'}
                 </div>
@@ -2104,7 +2143,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           {view === 'horarios' && (
             <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
               <label className="text-sm font-bold text-zinc-600 sr-only sm:not-sr-only sm:inline">Barbero</label>
-              {isStaffBarber ? (
+              {isRestrictedStaffView ? (
                 <div className="bg-zinc-800 border border-zinc-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm font-bold text-white min-w-[180px]">
                   {barbers[0]?.name ?? '—'}
                 </div>
@@ -2219,7 +2258,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                   </div>
                   <div className="min-w-0">
                     <p className="text-[#e5c185] text-[11px] font-bold uppercase tracking-[0.2em] mb-1">
-                      {isStaffBarber ? 'Tu agenda' : 'Vista del día'}
+                      {isRestrictedStaffView ? 'Tu agenda' : 'Vista del día'}
                     </p>
                     <h3 className="text-2xl sm:text-3xl font-black tracking-tight truncate">{barbers[0].name}</h3>
                     <p className="text-zinc-400 mt-1.5 text-sm sm:text-base capitalize">
@@ -3374,8 +3413,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 Invitar empleado
               </h3>
               <p className="text-sm text-zinc-500 mt-2">
-                Ingresá el correo de Google del barbero y elegí a qué puesto de la agenda corresponde. En el primer
-                acceso con esa cuenta solo verá sus turnos y podrá bloquear sus horarios.
+                Ingresá el correo de Google del barbero y elegí a qué puesto de la agenda corresponde. Por defecto solo
+                ve su agenda; el super administrador puede habilitar ver o editar turnos de otros barberos.
               </p>
               <form onSubmit={handleAddStaffInvite} className="mt-6 space-y-4">
                 <div>
@@ -3465,6 +3504,70 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 </ul>
               )}
             </div>
+
+            {isSuperAdmin && (
+              <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-4 border-b border-zinc-100 bg-zinc-50/50">
+                  <h4 className="font-bold text-zinc-800">Permisos de empleados</h4>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Solo super administrador. «Ver todas las agendas» permite consultar turnos de otros barberos. «Editar
+                    todas las agendas» permite crear, modificar y eliminar turnos en cualquier barbero.
+                  </p>
+                </div>
+                {teamLoading ? (
+                  <p className="p-6 text-zinc-400">Cargando...</p>
+                ) : staffUsers.length === 0 ? (
+                  <p className="p-6 text-zinc-500 text-sm">No hay cuentas de empleados activas.</p>
+                ) : (
+                  <ul className="divide-y divide-zinc-100">
+                    {staffUsers.map((member) => {
+                      const saving = staffPermissionsSavingId === member.id;
+                      const perms = member.permissions ?? { viewAllAgendas: false, editAllAgendas: false };
+                      return (
+                        <li key={member.id} className="px-4 py-4 text-sm space-y-3">
+                          <div>
+                            <p className="font-medium text-zinc-900">{member.name}</p>
+                            <p className="text-zinc-500 text-xs">{member.email}</p>
+                            <p className="text-zinc-600 text-xs mt-1">
+                              Agenda:{' '}
+                              <span className="font-semibold">
+                                {barbers.find((b) => b.id === member.barberId)?.name ?? member.barberId ?? '—'}
+                              </span>
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:gap-6">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={perms.viewAllAgendas}
+                                disabled={saving || perms.editAllAgendas}
+                                onChange={(e) =>
+                                  void handleToggleStaffPermission(member.id, 'viewAllAgendas', e.target.checked)
+                                }
+                                className="rounded border-zinc-300"
+                              />
+                              <span className="text-zinc-700">Ver todas las agendas</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={perms.editAllAgendas}
+                                disabled={saving}
+                                onChange={(e) =>
+                                  void handleToggleStaffPermission(member.id, 'editAllAgendas', e.target.checked)
+                                }
+                                className="rounded border-zinc-300"
+                              />
+                              <span className="text-zinc-700">Editar todas las agendas</span>
+                            </label>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -4199,7 +4302,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 <select
                   value={form.barberId}
                   onChange={(e) => setForm((f) => ({ ...f, barberId: e.target.value }))}
-                  disabled={isStaffBarber}
+                  disabled={isStaffBarber && !staffCanEditAll}
                   className="w-full border border-zinc-200 rounded-xl px-4 py-3 text-zinc-900 disabled:bg-zinc-100 disabled:text-zinc-600"
                 >
                   {barbers.map((b) => (

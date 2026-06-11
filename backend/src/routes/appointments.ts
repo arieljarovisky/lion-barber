@@ -28,6 +28,7 @@ import { getShopProductById, syncAppointmentProductStock } from '../repositories
 import { parseArsAmount } from '../arsAmount.js';
 import { assertCanModifyAppointment, isSuperAdminUser } from '../services/appointmentModifyPermission.js';
 import { isDailyCashCloseDate } from '../repositories/dailyCashClose.js';
+import { staffCanEditBarberAgenda, staffCanViewAllAgendas } from '../services/staffPermissions.js';
 import { syncSubscriptionCutWithPayment } from '../services/clientSubscription.js';
 
 const PAYMENT_PATCH_KEYS = new Set([
@@ -198,6 +199,7 @@ router.get('/', optionalAuth, async (req, res) => {
   const { date, barberId } = req.query;
   const u = (req as AuthRequest).user;
   const staffBid = u?.role === 'staff' ? u.barberId ?? null : null;
+  const staffViewAll = u ? staffCanViewAllAgendas(u) : false;
 
   try {
     if (u?.role === 'staff' && !staffBid) {
@@ -208,7 +210,7 @@ router.get('/', optionalAuth, async (req, res) => {
     }
 
     if (date && typeof date === 'string') {
-      if (staffBid) {
+      if (staffBid && !staffViewAll) {
         return res.json(await repo.getAppointmentsByBarber(staffBid, date));
       }
       if (barberId && typeof barberId === 'string') {
@@ -217,15 +219,15 @@ router.get('/', optionalAuth, async (req, res) => {
       return res.json(await repo.getAppointmentsByDate(date));
     }
     if (barberId && typeof barberId === 'string') {
-      if (staffBid && barberId !== staffBid) {
+      if (staffBid && !staffViewAll && barberId !== staffBid) {
         return res.status(403).json({ error: 'No autorizado' });
       }
       return res.json(await repo.getAppointmentsByBarber(barberId));
     }
-    if (staffBid) {
+    if (staffBid && !staffViewAll) {
       return res.json(await repo.getAppointmentsByBarber(staffBid));
     }
-    if (u?.role === 'admin') {
+    if (u?.role === 'admin' || (u?.role === 'staff' && staffViewAll)) {
       return res.json(await repo.getAllAppointments());
     }
     return res.status(401).json({ error: 'Iniciá sesión para ver la agenda' });
@@ -355,8 +357,11 @@ router.post('/', optionalAuth, async (req, res) => {
   }
   if (u?.role === 'staff') {
     const bid = u.barberId;
-    if (!bid || String(barberId) !== bid) {
-      return res.status(403).json({ error: 'Solo podés cargar turnos en tu propia agenda' });
+    if (!bid) {
+      return res.status(403).json({ error: 'Tu cuenta no está vinculada a un barbero' });
+    }
+    if (!staffCanEditBarberAgenda(u, String(barberId))) {
+      return res.status(403).json({ error: 'No tenés permiso para cargar turnos en esa agenda' });
     }
   }
   try {
@@ -416,6 +421,10 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   try {
     const existing = await repo.getAppointmentById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
+    if (!existing.barberId) {
+      return res.status(400).json({ error: 'Turno sin barbero asignado' });
+    }
+    const appointmentBarberId = existing.barberId;
     const body = req.body as Record<string, unknown>;
     const notifyClientByEmail = parseNotifyClientByEmail(body);
     const paymentOnly = isPaymentOnlyPatch(body);
@@ -424,11 +433,13 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
       if ((existing.status ?? 'scheduled') !== 'scheduled') {
         return res.status(400).json({ error: 'Solo se pueden cargar cobros en turnos confirmados.' });
       }
+      if (authReq.user!.role === 'staff' && !staffCanEditBarberAgenda(authReq.user!, appointmentBarberId)) {
+        return res.status(403).json({ error: 'No tenés permiso para cargar cobros en esa agenda' });
+      }
     } else {
       if (authReq.user!.role === 'staff') {
-        const bid = authReq.user!.barberId;
-        if (!bid || existing.barberId !== bid) {
-          return res.status(403).json({ error: 'No autorizado' });
+        if (!staffCanEditBarberAgenda(authReq.user!, appointmentBarberId)) {
+          return res.status(403).json({ error: 'No tenés permiso para modificar turnos de esa agenda' });
         }
       }
       try {
@@ -501,10 +512,13 @@ router.delete('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   const authReq = req as AuthRequest;
   const existing = await repo.getAppointmentById(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
+  if (!existing.barberId) {
+    return res.status(400).json({ error: 'Turno sin barbero asignado' });
+  }
+  const appointmentBarberId = existing.barberId;
   if (authReq.user!.role === 'staff') {
-    const bid = authReq.user!.barberId;
-    if (!bid || existing.barberId !== bid) {
-      return res.status(403).json({ error: 'No autorizado' });
+    if (!staffCanEditBarberAgenda(authReq.user!, appointmentBarberId)) {
+      return res.status(403).json({ error: 'No tenés permiso para eliminar turnos de esa agenda' });
     }
   }
   try {

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { verifyGoogleToken, isAdminEmail, isSuperAdminEmail, signJwt } from '../auth.js';
 import * as userRepo from '../repositories/users.js';
+import { staffPermissionsFromDbUser } from '../services/staffPermissions.js';
 import {
   getClientSubscriptionStatus,
   isClientDepositExempt,
@@ -128,6 +129,7 @@ router.post('/google', async (req, res) => {
         depositExempt: await isClientDepositExempt(user.id),
         subscription: await getClientSubscriptionStatus(user.id),
         isSuperAdmin: isSuperAdminEmail(user.email),
+        staffPermissions: staffPermissionsFromDbUser(user),
       },
     });
   } catch (err) {
@@ -151,6 +153,7 @@ router.get('/me', requireAuth, async (req, res) => {
     depositExempt: await isClientDepositExempt(user.id),
     subscription: await getClientSubscriptionStatus(user.id),
     isSuperAdmin: isSuperAdminEmail(user.email),
+    staffPermissions: staffPermissionsFromDbUser(user),
   });
 });
 

@@ -27,6 +27,8 @@ export interface UserProfile {
   subscription?: ClientSubscriptionInfo | null;
   /** Facturación AFIP, cierre de caja, estadísticas contables y monotributo. */
   isSuperAdmin?: boolean;
+  /** Permisos de agenda (solo staff). */
+  staffPermissions?: { viewAllAgendas: boolean; editAllAgendas: boolean } | null;
 }
 
 interface AuthContextType {
@@ -75,6 +77,7 @@ function profileFromBackend(u: {
   depositExempt?: boolean;
   subscription?: ClientSubscriptionInfo | null;
   isSuperAdmin?: boolean;
+  staffPermissions?: { viewAllAgendas: boolean; editAllAgendas: boolean } | null;
 }): UserProfile {
   const role =
     u.role === 'admin' ? 'admin' : u.role === 'staff' ? 'staff' : 'client';
@@ -89,6 +92,7 @@ function profileFromBackend(u: {
     depositExempt: Boolean(u.depositExempt),
     subscription: u.subscription ?? null,
     isSuperAdmin: Boolean(u.isSuperAdmin),
+    staffPermissions: u.staffPermissions ?? null,
   };
 }
 

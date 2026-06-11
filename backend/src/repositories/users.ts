@@ -46,6 +46,10 @@ export interface DbUser {
   subscription_group_id?: number | null;
   /** Saldo cuenta corriente en ARS. Negativo = el cliente debe plata. */
   account_balance_ars?: number | string | null;
+  /** Staff: puede ver agendas de todos los barberos. */
+  perm_view_all_agendas?: number | boolean | null;
+  /** Staff: puede crear/editar/eliminar turnos de cualquier barbero. */
+  perm_edit_all_agendas?: number | boolean | null;
   created_at: Date;
 }
 
@@ -407,6 +411,26 @@ export async function incrementClientPoints(userId: number, delta: number): Prom
     'UPDATE users SET points = LEAST(999999, points + ?) WHERE id = ? AND role = ?',
     [add, userId, 'client']
   );
+}
+
+/** Empleados activos (panel super admin). */
+export async function listStaffUsers(): Promise<DbUser[]> {
+  return query<DbUser[]>(
+    "SELECT * FROM users WHERE role = 'staff' ORDER BY name ASC, created_at ASC"
+  );
+}
+
+export async function updateStaffPermissions(
+  userId: number,
+  perms: { viewAllAgendas: boolean; editAllAgendas: boolean }
+): Promise<DbUser | null> {
+  const viewAll = perms.editAllAgendas ? true : perms.viewAllAgendas;
+  await query(
+    `UPDATE users SET perm_view_all_agendas = ?, perm_edit_all_agendas = ?
+     WHERE id = ? AND role = 'staff'`,
+    [viewAll ? 1 : 0, perms.editAllAgendas ? 1 : 0, userId]
+  );
+  return findUserById(userId);
 }
 
 /** Elimina un cliente y desvincula sus turnos (mantiene historial en agenda). */

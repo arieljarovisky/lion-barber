@@ -317,6 +317,21 @@ export interface StaffInviteRow {
   createdAt: string;
 }
 
+export interface StaffPermissions {
+  viewAllAgendas: boolean;
+  editAllAgendas: boolean;
+}
+
+export interface StaffUserPermissionsRow {
+  id: number;
+  email: string;
+  name: string;
+  barberId: string | null;
+  barberName?: string | null;
+  permissions: StaffPermissions | null;
+  createdAt?: string;
+}
+
 export interface FixedMonthlyExpense {
   id: number;
   description: string;
@@ -849,6 +864,17 @@ export const api = {
   deleteStaffInvite: (id: number) =>
     fetchApi<void>(`/api/staff-invites/${id}`, { method: 'DELETE' }),
 
+  getStaffPermissions: () => fetchApi<StaffUserPermissionsRow[]>('/api/staff-permissions'),
+
+  updateStaffPermissions: (
+    userId: number,
+    data: { viewAllAgendas?: boolean; editAllAgendas?: boolean }
+  ) =>
+    fetchApi<StaffUserPermissionsRow>(`/api/staff-permissions/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
   /** Admin y barberos (staff): clientes con historial de turnos. */
   getAdminClientsWithHistory: () =>
     fetchApi<{ clients: AdminClientWithHistory[] }>('/api/users/clients'),
@@ -1038,6 +1064,7 @@ export const api = {
           depositExempt?: boolean;
           subscription?: ClientSubscriptionInfo | null;
           isSuperAdmin?: boolean;
+          staffPermissions?: StaffPermissions | null;
         };
       }>('/api/auth/google', {
         method: 'POST',
@@ -1060,6 +1087,7 @@ export const api = {
         depositExempt?: boolean;
         subscription?: ClientSubscriptionInfo | null;
         isSuperAdmin?: boolean;
+        staffPermissions?: StaffPermissions | null;
       }>('/api/auth/me'),
   },
 };

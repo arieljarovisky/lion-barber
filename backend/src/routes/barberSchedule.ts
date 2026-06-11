@@ -3,6 +3,7 @@ import { requireAuth, requireStaffOrAdmin, type AuthRequest } from '../middlewar
 import * as scheduleRepo from '../repositories/barberSchedule.js';
 import { getBarberById } from '../repositories/barbers.js';
 import { timeToMinutes } from '../slotUtils.js';
+import { staffCanViewAllAgendas } from '../services/staffPermissions.js';
 
 const router = Router();
 
@@ -15,7 +16,8 @@ function parseWeekday(v: unknown): number | null {
 router.get('/:barberId', requireAuth, requireStaffOrAdmin, async (req: AuthRequest, res) => {
   const { barberId } = req.params;
   if (req.user!.role === 'staff') {
-    if (!req.user!.barberId || req.user!.barberId !== barberId) {
+    const canView = staffCanViewAllAgendas(req.user!);
+    if (!canView && (!req.user!.barberId || req.user!.barberId !== barberId)) {
       return res.status(403).json({ error: 'No autorizado' });
     }
   }

@@ -262,6 +262,20 @@ export async function initDb(): Promise<void> {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
   try {
+    await pool.execute(
+      'ALTER TABLE users ADD COLUMN perm_view_all_agendas TINYINT(1) NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE users ADD COLUMN perm_edit_all_agendas TINYINT(1) NOT NULL DEFAULT 0'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
     await pool.execute('ALTER TABLE appointments ADD COLUMN created_by_user_id INT NULL');
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
