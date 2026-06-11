@@ -1664,6 +1664,23 @@ export default function ClientView() {
               className="h-14 w-auto object-contain sm:h-16"
             />
             <p className="text-zinc-500 text-xs sm:text-sm font-sans">Estilo y precisión en cada corte.</p>
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 md:justify-start">
+              <Link
+                to="/privacidad"
+                className="text-[11px] text-zinc-500 underline-offset-2 transition-colors hover:text-[#e5c185] hover:underline sm:text-xs"
+              >
+                Política de privacidad
+              </Link>
+              <span className="hidden text-zinc-700 sm:inline" aria-hidden>
+                ·
+              </span>
+              <Link
+                to="/terminos"
+                className="text-[11px] text-zinc-500 underline-offset-2 transition-colors hover:text-[#e5c185] hover:underline sm:text-xs"
+              >
+                Términos y condiciones
+              </Link>
+            </div>
           </div>
           
           <div className="flex flex-col items-center md:items-start gap-2 text-zinc-400 text-xs sm:text-sm font-sans">

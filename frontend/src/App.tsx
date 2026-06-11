@@ -9,6 +9,8 @@ import AdminClientsListPage from './pages/AdminClientsListPage';
 import AdminClientDetailPage from './pages/AdminClientDetailPage';
 import Login from './pages/Login';
 import Perfil from './pages/Perfil';
+import PoliticaPrivacidad from './pages/PoliticaPrivacidad';
+import TerminosCondiciones from './pages/TerminosCondiciones';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
@@ -27,6 +29,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ClientView />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/privacidad" element={<PoliticaPrivacidad />} />
+          <Route path="/terminos" element={<TerminosCondiciones />} />
           <Route
             path="/dashboard/clientes/:clientId"
             element={
