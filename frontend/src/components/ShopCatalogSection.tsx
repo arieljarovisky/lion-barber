@@ -116,11 +116,6 @@ export default function ShopCatalogSection({
                       {product.description}
                     </p>
                   )}
-                  {product.stock != null && (
-                    <p className="mt-1 text-[10px] font-semibold text-zinc-500 sm:text-xs">
-                      {product.stock <= 5 ? `Quedan ${product.stock}` : `${product.stock} disponibles`}
-                    </p>
-                  )}
                   <div className="mt-auto flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-3 sm:pt-4">
                     <span className="font-sans text-sm font-black text-[#e5c185] sm:text-2xl">
                       {price != null ? `$${price.toLocaleString('es-AR')}` : product.unitPrice}
