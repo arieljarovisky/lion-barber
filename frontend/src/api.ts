@@ -506,7 +506,7 @@ export const api = {
 
   getMyAppointments: () => fetchApi<Appointment[]>('/api/appointments/mine'),
 
-  createAppointment: (data: Omit<Appointment, 'id'> & { userId?: number }) =>
+  createAppointment: (data: Omit<Appointment, 'id'> & { userId?: number; notifyClientByEmail?: boolean }) =>
     fetchApi<Appointment>('/api/appointments', { method: 'POST', body: JSON.stringify(data) }),
 
   /**
@@ -602,11 +602,16 @@ export const api = {
   deletePromotion: (id: string) =>
     fetchApi<void>(`/api/promotions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  updateAppointment: (id: string, data: Partial<Appointment>) =>
+  updateAppointment: (
+    id: string,
+    data: Partial<Appointment> & { notifyClientByEmail?: boolean }
+  ) =>
     fetchApi<Appointment>(`/api/appointments/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
-  deleteAppointment: (id: string) =>
-    fetchApi<void>(`/api/appointments/${id}`, { method: 'DELETE' }),
+  deleteAppointment: (id: string, opts?: { notifyClientByEmail?: boolean }) => {
+    const q = opts?.notifyClientByEmail ? '?notifyClientByEmail=1' : '';
+    return fetchApi<void>(`/api/appointments/${encodeURIComponent(id)}${q}`, { method: 'DELETE' });
+  },
 
   cancelMyAppointment: (id: string) =>
     fetchApi<Appointment & { cancelNotice?: CancelAppointmentNotice }>(

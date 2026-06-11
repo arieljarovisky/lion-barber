@@ -294,7 +294,7 @@ export default function PromotionsPanel({
   };
 
   const removePromotion = async (p: SitePromotion) => {
-    const ok = await confirm({
+    const { confirmed: ok } = await confirm({
       title: 'Eliminar promoción',
       message: `¿Eliminar «${p.title}»?`,
     });

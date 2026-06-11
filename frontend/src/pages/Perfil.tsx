@@ -407,7 +407,7 @@ export default function Perfil() {
   };
 
   const handleCancel = async (a: Appointment) => {
-    const ok = await confirm({
+    const { confirmed: ok } = await confirm({
       title: 'Cancelar turno',
       message:
         '¿Cancelar este turno? Si falta menos de 2 horas para el horario, la seña abonada no se reembolsa. ' +

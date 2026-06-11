@@ -209,7 +209,7 @@ export default function ShopProductsPanel({
   };
 
   const removeProduct = async (id: string) => {
-    const ok = await confirm({
+    const { confirmed: ok } = await confirm({
       title: 'Eliminar producto',
       message: '¿Eliminar este producto del catálogo?',
       variant: 'danger',

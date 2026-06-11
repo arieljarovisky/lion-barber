@@ -215,6 +215,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   /** Solo admin — modal nueva cita: '' | 'new' | id de cliente */
   /** Cliente elegido desde sugerencias o coincidencia exacta de nombre (solo admin, nueva cita). */
   const [linkedClientId, setLinkedClientId] = useState<number | null>(null);
+  const [notifyClientByEmail, setNotifyClientByEmail] = useState(false);
   const [newClientEmail, setNewClientEmail] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [adminClientsLoading, setAdminClientsLoading] = useState(false);
@@ -915,7 +916,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   };
 
   const handleDeleteStaffInvite = async (id: number) => {
-    const ok = await confirm({
+    const { confirmed: ok } = await confirm({
       title: 'Eliminar invitación',
       message: '¿Eliminar esta invitación pendiente?',
       variant: 'danger',
@@ -933,7 +934,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
 
   const deleteBlock = async (id: number) => {
     if (!scheduleBarberId || !canAccessDashboard) return;
-    const ok = await confirm({
+    const { confirmed: ok } = await confirm({
       title: 'Quitar bloqueo',
       message: '¿Quitar este bloqueo de horario?',
       variant: 'danger',
@@ -1068,6 +1069,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     }
     setEditingAppointment(null);
     setLinkedClientId(null);
+    setNotifyClientByEmail(false);
     setNewClientEmail('');
     const defaultBarber = staffBarberId ?? barbers[0]?.id ?? '';
     setForm({
@@ -1096,6 +1098,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     }
     setEditingAppointment(null);
     setLinkedClientId(null);
+    setNotifyClientByEmail(false);
     setNewClientEmail('');
     const defaultBarber =
       staffBarberId ??
@@ -1120,6 +1123,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const openEditModal = (app: Appointment) => {
     setEditingAppointment(app);
     setLinkedClientId(null);
+    setNotifyClientByEmail(false);
     setNewClientEmail('');
     const barberId = app.barberId ?? barbers.find((b) => b.name === app.barber)?.id ?? '';
     setForm({
@@ -1372,6 +1376,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     setModalOpen(false);
     setEditingAppointment(null);
     setLinkedClientId(null);
+    setNotifyClientByEmail(false);
     setNewClientEmail('');
     setError('');
   };
@@ -1412,6 +1417,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           time: form.time,
           servicePaymentSplits: cleanServicePaymentSplits(form.servicePaymentSplits),
           tipAmount,
+          notifyClientByEmail,
         });
         patchAppointmentInState(updated);
       } else {
@@ -1471,7 +1477,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           : null;
         const owedArs = clientAccountBalanceOwedArs(matchedClient?.accountBalanceArs);
         if (owedArs > 0 && matchedClient) {
-          const proceed = await confirm({
+          const { confirmed: proceed } = await confirm({
             title: 'Cliente con deuda',
             message: `${matchedClient.name} debe $${formatArs(owedArs)} en cuenta corriente. ¿Agendar el turno igualmente?`,
             confirmLabel: 'Agendar turno',
@@ -1492,6 +1498,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           date: form.date,
           time: form.time,
           ...(userId != null ? { userId } : {}),
+          ...(userId != null && notifyClientByEmail ? { notifyClientByEmail: true } : {}),
         });
       }
       closeModal();
@@ -1504,15 +1511,24 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   };
 
   const handleDelete = async (id: string) => {
-    const ok = await confirm({
+    const app = appointments.find((a) => a.id === id);
+    const { confirmed: ok, checkboxValue } = await confirm({
       title: 'Eliminar cita',
       message: '¿Eliminar esta cita del calendario?',
       variant: 'danger',
       confirmLabel: 'Eliminar',
+      ...(app?.userId != null
+        ? {
+            checkbox: {
+              label: 'Notificar al cliente por email',
+              defaultChecked: false,
+            },
+          }
+        : {}),
     });
     if (!ok) return;
     try {
-      await api.deleteAppointment(id);
+      await api.deleteAppointment(id, { notifyClientByEmail: checkboxValue ?? false });
       loadData();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Error al eliminar');
@@ -1661,7 +1677,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   };
 
   const handleDeleteService = async (id: string) => {
-    const ok = await confirm({
+    const { confirmed: ok } = await confirm({
       title: 'Eliminar servicio',
       message: '¿Eliminar este servicio? Esta acción no se puede deshacer.',
       variant: 'danger',
@@ -4268,6 +4284,24 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                       </p>
                     </div>
                   </>
+                )}
+                {(editingAppointment?.userId != null || linkedClientId != null) && (
+                  <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifyClientByEmail}
+                      onChange={(e) => setNotifyClientByEmail(e.target.checked)}
+                      className="mt-0.5 shrink-0"
+                    />
+                    <span className="text-sm text-zinc-700">
+                      <span className="font-semibold text-zinc-900">Notificar al cliente por email</span>
+                      <span className="mt-0.5 block text-xs text-zinc-500">
+                        {editingAppointment
+                          ? 'Enviá un aviso con los datos actualizados del turno.'
+                          : 'Enviá un aviso de confirmación al agendar el turno.'}
+                      </span>
+                    </span>
+                  </label>
                 )}
               </div>
               <div className="flex gap-3 p-6 pt-4 border-t border-zinc-200 shrink-0 bg-white">

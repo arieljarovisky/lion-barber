@@ -17,7 +17,7 @@ import {
   notifyShopPhoneAppointmentCreated,
   notifyShopPhoneAppointmentRescheduled,
 } from '../services/mobileNotifications.js';
-import { isRealClientEmail, sendAppointmentScheduledEmail } from '../services/email.js';
+import { isRealClientEmail, sendAppointmentScheduledEmail, sendAppointmentUpdatedEmail, sendAppointmentCancelledEmail } from '../services/email.js';
 import { findUserById } from '../repositories/users.js';
 import type { Appointment, AppointmentProductLine } from '../types.js';
 import { parseServicePaymentMethod, parseServicePaymentSplits } from '../servicePaymentMethod.js';
@@ -398,7 +398,9 @@ router.post('/', optionalAuth, async (req, res) => {
     });
     if ((created.status ?? 'scheduled') === 'scheduled') {
       void notifyShopPhoneAppointmentCreated(created);
-      void notifyClientAppointmentScheduled(created);
+      if (parseNotifyClientByEmail(req.body as Record<string, unknown>)) {
+        void notifyClientAppointmentEmail(created, 'scheduled');
+      }
     }
     res.status(201).json(created);
   } catch (err) {
@@ -415,6 +417,7 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
     const existing = await repo.getAppointmentById(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
     const body = req.body as Record<string, unknown>;
+    const notifyClientByEmail = parseNotifyClientByEmail(body);
     const paymentOnly = isPaymentOnlyPatch(body);
 
     if (paymentOnly) {
@@ -469,11 +472,20 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
       await syncAppointmentProductStock(existing.products, null);
     }
 
+    delete (payload as Record<string, unknown>).notifyClientByEmail;
+
     const updated = await repo.updateAppointment(req.params.id, {
       ...payload,
       updatedByUserId: authReq.user!.id,
     });
     if (!updated) return res.status(404).json({ error: 'Cita no encontrada' });
+    if (notifyClientByEmail && !paymentOnly) {
+      const kind =
+        updated.status === 'cancelled' && existing.status !== 'cancelled'
+          ? 'cancelled'
+          : 'updated';
+      void notifyClientAppointmentEmail(updated, kind, existing);
+    }
     const refreshed =
       'servicePaymentSplits' in body ? await repo.getAppointmentById(req.params.id) : null;
     res.json(refreshed ?? updated);
@@ -503,27 +515,48 @@ router.delete('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   const ok = await repo.deleteAppointment(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Cita no encontrada' });
   void notifyShopPhoneAppointmentCancelled(existing, { byClient: false });
+  const notifyClientByEmail =
+    req.query.notifyClientByEmail === 'true' || req.query.notifyClientByEmail === '1';
+  if (notifyClientByEmail) {
+    void notifyClientAppointmentEmail({ ...existing, status: 'cancelled' }, 'cancelled');
+  }
   res.status(204).send();
 });
 
-async function notifyClientAppointmentScheduled(app: Appointment): Promise<void> {
+function parseNotifyClientByEmail(body: Record<string, unknown>): boolean {
+  return body.notifyClientByEmail === true;
+}
+
+type ClientAppointmentEmailKind = 'scheduled' | 'updated' | 'cancelled';
+
+async function notifyClientAppointmentEmail(
+  app: Appointment,
+  kind: ClientAppointmentEmailKind,
+  previous?: Appointment
+): Promise<void> {
   try {
     if (app.userId == null || !Number.isFinite(Number(app.userId))) {
       console.warn(
-        `[Email] OMITIDO: turno ${app.id} sin userId vinculado (cliente no logueado o carga manual sin cuenta)`
+        `[Email] OMITIDO (${kind}): turno ${app.id} sin userId vinculado (cliente sin cuenta)`
       );
       return;
     }
     const user = await findUserById(Number(app.userId));
     if (!user) {
-      console.warn(`[Email] OMITIDO: usuario ${app.userId} no encontrado en DB`);
+      console.warn(`[Email] OMITIDO (${kind}): usuario ${app.userId} no encontrado en DB`);
       return;
     }
     if (!isRealClientEmail(user.email)) return;
-    console.log(`[Email] Disparando aviso de turno agendado a userId=${user.id} email=${user.email}`);
-    await sendAppointmentScheduledEmail(user.email, app);
+    console.log(`[Email] Disparando aviso ${kind} a userId=${user.id} email=${user.email}`);
+    if (kind === 'scheduled') {
+      await sendAppointmentScheduledEmail(user.email, app);
+    } else if (kind === 'cancelled') {
+      await sendAppointmentCancelledEmail(user.email, app);
+    } else {
+      await sendAppointmentUpdatedEmail(user.email, app, previous);
+    }
   } catch (err) {
-    console.error('[Email] No se pudo enviar aviso de turno agendado', err);
+    console.error(`[Email] No se pudo enviar aviso de turno (${kind})`, err);
   }
 }
 

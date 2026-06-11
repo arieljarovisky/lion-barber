@@ -173,7 +173,7 @@ export default function SubscriptionPlansPanel({
   };
 
   const removePlan = async (p: SubscriptionPlan) => {
-    const ok = await confirm({
+    const { confirmed: ok } = await confirm({
       title: 'Eliminar plan',
       message: `¿Eliminar «${p.name}»? Solo podés si ningún cliente lo tiene asignado.`,
     });

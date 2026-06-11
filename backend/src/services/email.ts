@@ -619,6 +619,122 @@ export async function sendDepositConfirmedEmail(
   });
 }
 
+/** Aviso al cliente: el turno fue modificado desde el panel (fecha, hora, servicio, etc.). */
+export async function sendAppointmentUpdatedEmail(
+  email: string,
+  app: Appointment,
+  previous?: Pick<Appointment, 'date' | 'time' | 'service' | 'barber'>
+): Promise<void> {
+  if (!isRealClientEmail(email)) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendAppointmentUpdatedEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const shopName = getShopNameForEmails();
+
+  const subscription = await loadSubscriptionForAppointment(app);
+  const { text: detailsText, html: detailsHtml, subscriptionNoticeHtml } =
+    mergeAppointmentAndSubscriptionDetails(app, subscription);
+  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+  const reproUrl = getClientPerfilRescheduleUrl(app.id);
+
+  const prevLines: string[] = [];
+  if (previous) {
+    if (previous.date !== app.date || previous.time !== app.time) {
+      prevLines.push(`Horario anterior: ${fmtDate(previous.date)} ${previous.time}`);
+    }
+    if (previous.service !== app.service) {
+      prevLines.push(`Servicio anterior: ${previous.service}`);
+    }
+    if (previous.barber && previous.barber !== app.barber) {
+      prevLines.push(`Barbero anterior: ${previous.barber}`);
+    }
+  }
+
+  const text = [
+    `${greetingName}, actualizamos los datos de tu turno en ${shopName}.`,
+    ...(prevLines.length ? ['', ...prevLines] : []),
+    '',
+    'Detalles actuales del turno:',
+    detailsText,
+    '',
+    'Recordá que hay 10 minutos de tolerancia desde la hora del turno.',
+    '',
+    `Reprogramar turno: ${reproUrl}`,
+    '',
+    `Te esperamos en ${shopName}.`,
+  ].join('\n');
+
+  const prevHtml =
+    prevLines.length > 0
+      ? `<p class="text-sm" style="color:#71717a;margin:0 0 12px">${prevLines.map((l) => escapeHtml(l)).join('<br />')}</p>`
+      : undefined;
+
+  const html = renderBrandedEmail({
+    title: 'Tu turno fue actualizado',
+    greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
+    intro: 'Actualizamos tu turno. Te dejamos los datos vigentes:',
+    detailsHtml: prevHtml ? `${prevHtml}${detailsHtml}` : detailsHtml,
+    noticeColor: subscription?.cutsRemaining === 0 ? 'amber' : 'green',
+    noticeHtml: subscriptionNoticeHtml
+      ? `${subscriptionNoticeHtml}<br /><br />Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.`
+      : 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
+    cta: { label: 'Ver o reprogramar turno', url: reproUrl },
+    secondaryCta: subscription ? { label: 'Ver mi abono', url: getClientPerfilUrl() } : undefined,
+    outro: 'Si tenés dudas, respondé a este mail o contactanos por WhatsApp.',
+  });
+
+  await sendMail({
+    to: email,
+    subject: `Tu turno en ${shopName} fue actualizado`,
+    text,
+    html,
+  });
+}
+
+/** Aviso al cliente: el turno fue cancelado desde el panel. */
+export async function sendAppointmentCancelledEmail(
+  email: string,
+  app: Appointment
+): Promise<void> {
+  if (!isRealClientEmail(email)) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendAppointmentCancelledEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const shopName = getShopNameForEmails();
+  const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
+  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+  const reservaUrl = getClientReservaUrl();
+
+  const text = [
+    `${greetingName}, cancelamos tu turno en ${shopName}.`,
+    '',
+    'Turno cancelado:',
+    detailsText,
+    '',
+    `Podés reservar otro horario en: ${reservaUrl}`,
+  ].join('\n');
+
+  const html = renderBrandedEmail({
+    title: 'Tu turno fue cancelado',
+    greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
+    intro: 'Te avisamos que tu turno fue cancelado. Estos eran los datos:',
+    detailsHtml,
+    noticeColor: 'zinc',
+    noticeHtml: 'Si fue un error o querés otro horario, podés reservar de nuevo desde la web.',
+    cta: { label: 'Reservar nuevo turno', url: reservaUrl },
+    outro: `Equipo ${shopName}`,
+  });
+
+  await sendMail({
+    to: email,
+    subject: `Tu turno en ${shopName} fue cancelado`,
+    text,
+    html,
+  });
+}
+
 /** Recordatorio ~2 h 30 min antes del turno (solo turnos scheduled con cuenta). */
 export async function sendAppointmentReminder1hEmail(email: string, app: Appointment): Promise<void> {
   if (!isRealClientEmail(email)) return;

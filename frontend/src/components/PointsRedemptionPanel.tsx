@@ -85,7 +85,7 @@ export default function PointsRedemptionPanel({
   };
 
   const removeRow = async (o: PointsRedemptionOption) => {
-    const ok = await confirm({
+    const { confirmed: ok } = await confirm({
       title: 'Quitar opción de canje',
       message: `¿Eliminar “${o.label}”?`,
       variant: 'danger',

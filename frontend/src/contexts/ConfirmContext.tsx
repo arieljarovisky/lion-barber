@@ -14,26 +14,45 @@ export type ConfirmOptions = {
   cancelLabel?: string;
   /** danger = botón principal rojo (eliminar / acciones irreversibles) */
   variant?: 'danger' | 'default';
+  /** Checkbox opcional mostrado antes de confirmar. */
+  checkbox?: {
+    label: string;
+    defaultChecked?: boolean;
+  };
 };
 
-type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
+export type ConfirmResult = {
+  confirmed: boolean;
+  checkboxValue?: boolean;
+};
+
+type ConfirmFn = (options: ConfirmOptions) => Promise<ConfirmResult>;
 
 const ConfirmContext = createContext<ConfirmFn | null>(null);
 
 export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<
-    null | { options: ConfirmOptions; resolve: (v: boolean) => void }
+    null | { options: ConfirmOptions; resolve: (v: ConfirmResult) => void; checkboxValue: boolean }
   >(null);
 
   const confirm: ConfirmFn = useCallback((options) => {
-    return new Promise<boolean>((resolve) => {
-      setState({ options, resolve });
+    return new Promise<ConfirmResult>((resolve) => {
+      setState({
+        options,
+        resolve,
+        checkboxValue: options.checkbox?.defaultChecked ?? false,
+      });
     });
   }, []);
 
-  const finish = useCallback((result: boolean) => {
+  const finish = useCallback((confirmed: boolean) => {
     setState((s) => {
-      if (s) s.resolve(result);
+      if (s) {
+        s.resolve({
+          confirmed,
+          checkboxValue: s.options.checkbox ? s.checkboxValue : undefined,
+        });
+      }
       return null;
     });
   }, []);
@@ -91,10 +110,25 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                 <X size={20} />
               </button>
             </div>
-            <div className="px-6 pb-2">
+            <div className="px-6 pb-2 space-y-3">
               <p className="text-sm text-zinc-600 leading-relaxed whitespace-pre-wrap">
                 {opts.message}
               </p>
+              {opts.checkbox && state && (
+                <label className="flex items-start gap-2.5 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={state.checkboxValue}
+                    onChange={(e) =>
+                      setState((prev) =>
+                        prev ? { ...prev, checkboxValue: e.target.checked } : prev
+                      )
+                    }
+                    className="mt-0.5 shrink-0"
+                  />
+                  <span>{opts.checkbox.label}</span>
+                </label>
+              )}
             </div>
             <div className="p-6 pt-4 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
               <button
