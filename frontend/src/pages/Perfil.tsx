@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Info,
   ShoppingBag,
+  Scissors,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
