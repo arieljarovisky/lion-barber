@@ -699,7 +699,7 @@ export default function ClientView() {
   const showProductsSection = publicCatalogLoading || publicShopProducts.length > 0;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
+    <div className="min-h-screen min-w-0 overflow-x-clip bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
       {/* Navbar */}
       <nav
         className={`fixed top-0 left-0 right-0 z-50 border-b transition-all duration-200 ${
@@ -1064,11 +1064,13 @@ export default function ClientView() {
       )}
 
       {/* Booking Section */}
-      <section id="reserva" className="py-12 sm:py-20 md:py-24 px-3 sm:px-4 md:px-6 relative bg-zinc-900/30">
+      <section id="reserva" className="scroll-mt-16 sm:scroll-mt-20 py-12 pb-28 sm:py-20 sm:pb-24 md:py-24 md:pb-28 px-3 sm:px-4 md:px-6 relative bg-zinc-900/30">
         <div className="max-w-4xl mx-auto w-full min-w-0">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 sm:p-6 md:p-8 lg:p-12 shadow-2xl relative overflow-hidden">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 sm:p-6 md:p-8 lg:p-12 shadow-2xl relative">
             {/* Decorative background element */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-[#e5c185]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+            <div className="pointer-events-none absolute top-0 right-0 h-64 w-64 overflow-hidden rounded-full" aria-hidden>
+              <div className="h-full w-full bg-[#e5c185]/5 blur-3xl -translate-y-1/2 translate-x-1/2" />
+            </div>
             
             <div className="relative z-10">
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black uppercase tracking-tight mb-2 text-white">Reserva tu lugar</h2>
@@ -1144,7 +1146,7 @@ export default function ClientView() {
               ) : (
                 <form
                   onSubmit={(e) => e.preventDefault()}
-                  className="space-y-6 font-sans"
+                  className="space-y-6 pb-4 font-sans sm:pb-0"
                 >
                   <div className="grid md:grid-cols-2 gap-6">
                     {/* Service Selection */}
@@ -1242,9 +1244,10 @@ export default function ClientView() {
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                         <Calendar size={14} /> Fecha
                       </label>
-                      <div className="relative group">
+                      <div className="relative min-w-0 group">
+                        <p className="text-[11px] text-zinc-500 md:hidden">Deslizá para ver más fechas</p>
                         {/* Left Gradient & Button */}
-                        <div className="absolute left-0 top-0 bottom-2 w-12 bg-gradient-to-r from-zinc-950 to-transparent z-10 pointer-events-none"></div>
+                        <div className="absolute left-0 top-0 bottom-2 w-8 sm:w-12 bg-gradient-to-r from-zinc-950 to-transparent z-10 pointer-events-none"></div>
                         <button 
                           type="button" 
                           disabled={!serviceSelected}
@@ -1256,8 +1259,8 @@ export default function ClientView() {
 
                         <div 
                           ref={scrollContainerRef} 
-                          className={`flex gap-3 overflow-x-auto pb-2 hide-scrollbar w-full relative z-0 px-1 select-none ${
-                            !serviceSelected ? 'cursor-not-allowed' : isDragging ? 'cursor-grabbing' : 'snap-x cursor-grab'
+                          className={`flex max-w-full gap-2.5 sm:gap-3 overflow-x-auto overscroll-x-contain pb-2 hide-scrollbar w-full relative z-0 -mx-1 px-1 select-none touch-pan-x ${
+                            !serviceSelected ? 'cursor-not-allowed' : isDragging ? 'cursor-grabbing' : 'snap-x snap-mandatory cursor-grab'
                           }`}
                           onMouseDown={serviceSelected ? handleMouseDown : undefined}
                           onMouseLeave={handleMouseLeave}
@@ -1332,7 +1335,7 @@ export default function ClientView() {
                         </div>
 
                         {/* Right Gradient & Button */}
-                        <div className="absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-zinc-950 to-transparent z-10 pointer-events-none"></div>
+                        <div className="absolute right-0 top-0 bottom-2 w-8 sm:w-12 bg-gradient-to-l from-zinc-950 to-transparent z-10 pointer-events-none"></div>
                         <button 
                           type="button" 
                           disabled={!serviceSelected}

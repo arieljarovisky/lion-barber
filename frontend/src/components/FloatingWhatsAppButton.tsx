@@ -12,7 +12,7 @@ export default function FloatingWhatsAppButton() {
       href={BOOKING_FALLBACK_WHATSAPP_URL}
       target="_blank"
       rel="noopener noreferrer"
-      className="fixed bottom-5 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full transition-transform sm:bottom-6 sm:right-6 hover:scale-105 active:scale-95"
+      className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full transition-transform sm:bottom-[max(1.5rem,env(safe-area-inset-bottom))] sm:right-6 hover:scale-105 active:scale-95"
       aria-label="Contactar por WhatsApp"
       title="WhatsApp"
     >
