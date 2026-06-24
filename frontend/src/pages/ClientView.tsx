@@ -699,7 +699,7 @@ export default function ClientView() {
   const showProductsSection = publicCatalogLoading || publicShopProducts.length > 0;
 
   return (
-    <div className="min-h-screen min-w-0 overflow-x-clip bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
+    <div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-zinc-950 text-zinc-50 font-sans selection:bg-[#e5c185]/30">
       {/* Navbar */}
       <nav
         className={`fixed top-0 left-0 right-0 z-50 border-b transition-all duration-200 ${
@@ -1064,15 +1064,15 @@ export default function ClientView() {
       )}
 
       {/* Booking Section */}
-      <section id="reserva" className="scroll-mt-16 sm:scroll-mt-20 py-12 pb-28 sm:py-20 sm:pb-24 md:py-24 md:pb-28 px-3 sm:px-4 md:px-6 relative bg-zinc-900/30">
-        <div className="max-w-4xl mx-auto w-full min-w-0">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 sm:p-6 md:p-8 lg:p-12 shadow-2xl relative">
+      <section id="reserva" className="scroll-mt-16 sm:scroll-mt-20 py-12 pb-28 sm:py-20 sm:pb-24 md:py-24 md:pb-28 px-3 sm:px-4 md:px-6 relative bg-zinc-900/30 w-full max-w-full min-w-0 overflow-x-hidden">
+        <div className="mx-auto w-full min-w-0 max-w-4xl">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 sm:p-6 md:p-8 lg:p-12 shadow-2xl relative w-full min-w-0 max-w-full overflow-x-hidden">
             {/* Decorative background element */}
-            <div className="pointer-events-none absolute top-0 right-0 h-64 w-64 overflow-hidden rounded-full" aria-hidden>
-              <div className="h-full w-full bg-[#e5c185]/5 blur-3xl -translate-y-1/2 translate-x-1/2" />
+            <div className="pointer-events-none absolute top-0 right-0 h-48 w-48 overflow-hidden rounded-full" aria-hidden>
+              <div className="h-full w-full bg-[#e5c185]/5 blur-3xl translate-x-1/4 -translate-y-1/4" />
             </div>
             
-            <div className="relative z-10">
+            <div className="relative z-10 min-w-0 w-full max-w-full">
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-serif font-black uppercase tracking-tight mb-2 text-white">Reserva tu lugar</h2>
               <p className="text-sm sm:text-base text-zinc-400 mb-8 sm:mb-10 font-sans font-light">Completa los datos para agendar tu próximo corte.</p>
 
@@ -1146,9 +1146,9 @@ export default function ClientView() {
               ) : (
                 <form
                   onSubmit={(e) => e.preventDefault()}
-                  className="space-y-6 pb-4 font-sans sm:pb-0"
+                  className="w-full min-w-0 max-w-full space-y-6 pb-4 font-sans sm:pb-0"
                 >
-                  <div className="grid md:grid-cols-2 gap-6">
+                  <div className="grid w-full min-w-0 max-w-full md:grid-cols-2 gap-6">
                     {/* Service Selection */}
                     <div className="space-y-2 md:col-span-2 min-w-0">
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
@@ -1173,7 +1173,7 @@ export default function ClientView() {
                     </div>
 
                     <div
-                      className={`md:col-span-2 space-y-6 transition-opacity ${
+                      className={`md:col-span-2 min-w-0 w-full max-w-full space-y-6 transition-opacity ${
                         serviceSelected ? '' : 'opacity-40 pointer-events-none select-none'
                       }`}
                       aria-disabled={!serviceSelected}
@@ -1244,8 +1244,8 @@ export default function ClientView() {
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
                         <Calendar size={14} /> Fecha
                       </label>
-                      <div className="relative min-w-0 group">
-                        <p className="text-[11px] text-zinc-500 md:hidden">Deslizá para ver más fechas</p>
+                      <p className="text-[11px] text-zinc-500 md:hidden">Deslizá para ver más fechas</p>
+                      <div className="relative min-w-0 w-full max-w-full overflow-hidden group">
                         {/* Left Gradient & Button */}
                         <div className="absolute left-0 top-0 bottom-2 w-8 sm:w-12 bg-gradient-to-r from-zinc-950 to-transparent z-10 pointer-events-none"></div>
                         <button 
@@ -1259,7 +1259,7 @@ export default function ClientView() {
 
                         <div 
                           ref={scrollContainerRef} 
-                          className={`flex max-w-full gap-2.5 sm:gap-3 overflow-x-auto overscroll-x-contain pb-2 hide-scrollbar w-full relative z-0 -mx-1 px-1 select-none touch-pan-x ${
+                          className={`flex w-full min-w-0 max-w-full gap-2.5 sm:gap-3 overflow-x-auto overscroll-x-contain pb-2 hide-scrollbar relative z-0 select-none touch-pan-x ${
                             !serviceSelected ? 'cursor-not-allowed' : isDragging ? 'cursor-grabbing' : 'snap-x snap-mandatory cursor-grab'
                           }`}
                           onMouseDown={serviceSelected ? handleMouseDown : undefined}
@@ -1410,7 +1410,7 @@ export default function ClientView() {
                       )}
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-6">
+                    <div className="grid w-full min-w-0 max-w-full md:grid-cols-2 gap-6">
                     {/* Name Input */}
                     <div className="space-y-2 min-w-0">
                       <label className="text-xs font-bold text-zinc-500 uppercase tracking-widest flex items-center gap-2">
@@ -1446,7 +1446,7 @@ export default function ClientView() {
                     </div>
                   </div>
 
-                  <div className={`flex flex-col gap-3 mt-4 transition-opacity ${serviceSelected ? '' : 'opacity-40 pointer-events-none'}`}>
+                  <div className={`flex w-full min-w-0 max-w-full flex-col gap-3 mt-4 transition-opacity ${serviceSelected ? '' : 'opacity-40 pointer-events-none'}`}>
                     {shopCartCount > 0 && (
                       <div className="rounded-xl border border-[#e5c185]/25 bg-zinc-900/60 p-4">
                         <div className="mb-2 flex items-center gap-2 text-sm font-bold text-white">
@@ -1490,7 +1490,7 @@ export default function ClientView() {
                       </div>
                     )}
                     {depositPreview != null && (
-                      <p className="text-center text-sm text-zinc-400">
+                      <p className="text-center text-sm text-zinc-400 break-words">
                         {depositPreview.fullyPaidOnDeposit ? (
                           <>
                             Promo activa: pagás online{' '}
@@ -1528,7 +1528,7 @@ export default function ClientView() {
                         senaCheckoutLoading ||
                         Boolean(profile?.subscription && profile.subscription.cutsRemaining <= 0)
                       }
-                      className="bg-[#e5c185] hover:bg-[#d4b074] disabled:opacity-60 disabled:pointer-events-none text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
+                      className="w-full max-w-full bg-[#e5c185] hover:bg-[#d4b074] disabled:opacity-60 disabled:pointer-events-none text-black font-sans font-black uppercase tracking-widest py-5 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
                       {senaCheckoutLoading ? (
                         profile?.depositExempt ? (
@@ -1568,7 +1568,7 @@ export default function ClientView() {
                     )}
                   </div>
                   {!profile?.depositExempt && (
-                    <p className="text-center text-[11px] text-zinc-500 mt-2">
+                    <p className="text-center text-[11px] text-zinc-500 mt-2 break-words">
                       Reservamos el horario por {DEPOSIT_PAYMENT_MINUTES} minutos: si el pago de la seña no se aprueba en ese tiempo, la reserva se
                       cancela automáticamente. Podés volver a pagar desde tu perfil mientras no venza el plazo.
                     </p>
