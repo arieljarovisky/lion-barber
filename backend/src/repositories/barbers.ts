@@ -56,7 +56,9 @@ function rowToBarber(r: DbBarber): Barber {
 }
 
 export async function getAllBarbers(): Promise<Barber[]> {
-  const rows = await query<DbBarber[]>('SELECT * FROM barbers');
+  const rows = await query<DbBarber[]>(
+    `SELECT * FROM barbers ORDER BY FIELD(id, 'barber_2', 'barber_3', 'barber_1')`
+  );
   return rows.map(rowToBarber);
 }
 
