@@ -41,7 +41,7 @@ export function buildTimeSlotsInRange(openTime: string, closeTime: string): stri
     : 20 * 60;
   return AGENDA_TIME_SLOTS.filter((slot) => {
     const start = timeToMinutes(slot);
-    return Number.isFinite(start) && start >= safeOpen && start + SLOT_STEP_MINUTES < safeClose;
+    return Number.isFinite(start) && start >= safeOpen && start + SLOT_STEP_MINUTES <= safeClose;
   });
 }
 
