@@ -17,6 +17,7 @@ import {
   sendDepositConfirmedEmail,
   sendDepositPendingEmail,
   sendAppointmentScheduledEmail,
+  sendLatePaymentRefundedEmail,
   notifyClientSubscriptionActivated,
   isRealClientEmail,
 } from '../services/email.js';
@@ -52,6 +53,7 @@ import {
 } from '../services/sitePromotions.js';
 import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
 import { parseMercadoPagoTransactionAmountArs } from '../mercadopagoAmount.js';
+import { refundPaymentTotal } from '../mercadopagoRefund.js';
 
 const router = Router();
 
@@ -1264,6 +1266,34 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
         void notifyShopPhoneAppointmentCreated(updated);
         void notifyClientDepositConfirmed(updated);
       }
+    } else if (existingByRefId.status === 'cancelled') {
+      console.log(
+        `[Webhook MP] turno ${existingByRefId.id} cancelado (vencido) pero cliente pagó. Intentando reactivar...`
+      );
+      const reactivateResult = await repo.reactivateCancelledAppointmentIfSlotFree(
+        existingByRefId.id,
+        paymentId,
+        depositAmountArs
+      );
+      if (reactivateResult.ok) {
+        console.log(`[Webhook MP] turno ${existingByRefId.id} reactivado exitosamente`);
+        void notifyBarberByWhatsappOnDepositPaid(reactivateResult.appointment);
+        void notifyShopPhoneAppointmentCreated(reactivateResult.appointment);
+        void notifyClientDepositConfirmed(reactivateResult.appointment);
+      } else if (reactivateResult.reason === 'slot_taken') {
+        console.log(
+          `[Webhook MP] turno ${existingByRefId.id} no se pudo reactivar: horario ya ocupado. Reembolsando pago ${paymentId}...`
+        );
+        const refundResult = await refundPaymentTotal(paymentId);
+        if (refundResult.ok) {
+          console.log(`[Webhook MP] reembolso exitoso para pago ${paymentId}`);
+          void notifyClientLatePaymentRefunded(existingByRefId);
+        } else {
+          console.error(
+            `[Webhook MP] ALERTA: no se pudo reembolsar pago ${paymentId} de turno cancelado ${existingByRefId.id}: ${refundResult.error}`
+          );
+        }
+      }
     }
     if (linkedProductOrderId != null && userId != null && Number.isFinite(userId)) {
       await fulfillProductOrderFromPayment(linkedProductOrderId, userId, paymentId);
@@ -1324,6 +1354,19 @@ async function notifyClientDepositConfirmed(app: { id: string; userId?: number; 
     await sendDepositConfirmedEmail(user.email, full);
   } catch (err) {
     console.error('[Email] No se pudo enviar confirmación de seña al cliente', err);
+  }
+}
+
+async function notifyClientLatePaymentRefunded(app: { id: string; userId?: number; name: string }): Promise<void> {
+  try {
+    if (app.userId == null || !Number.isFinite(Number(app.userId))) return;
+    const user = await findUserById(Number(app.userId));
+    if (!user || !isRealClientEmail(user.email)) return;
+    const full = await repo.getAppointmentById(app.id);
+    if (!full) return;
+    await sendLatePaymentRefundedEmail(user.email, full);
+  } catch (err) {
+    console.error('[Email] No se pudo enviar aviso de reembolso por pago tardío', err);
   }
 }
 
