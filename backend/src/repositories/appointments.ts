@@ -652,6 +652,60 @@ export async function markAppointmentPaidAndScheduled(
   return app;
 }
 
+/**
+ * Intenta reactivar un turno cancelado (por vencimiento de pago) cuando el cliente pagó tarde.
+ * Verifica que el horario siga disponible antes de reactivar.
+ * Retorna el turno reactivado, o null si el horario ya no está disponible.
+ */
+export async function reactivateCancelledAppointmentIfSlotFree(
+  appointmentId: string,
+  paymentId: string,
+  depositAmountArs?: number | null
+): Promise<{ ok: true; appointment: Appointment } | { ok: false; reason: 'slot_taken' | 'not_found' | 'not_cancelled' }> {
+  const app = await getAppointmentById(appointmentId);
+  if (!app) {
+    return { ok: false, reason: 'not_found' };
+  }
+  if (app.status !== 'cancelled') {
+    return { ok: false, reason: 'not_cancelled' };
+  }
+  if (!app.barberId || !app.date || !app.time) {
+    return { ok: false, reason: 'not_found' };
+  }
+
+  const durationMinutes = app.durationMinutes ?? 30;
+  const { closeTime, weekdayHours } = await getShopSettings();
+  const weekday = new Date(`${app.date}T12:00:00`).getDay() || 7;
+  const dayHours = weekdayHours[weekday] ?? { openTime: '10:00', closeTime };
+  const openMinutes = openTimeToMinutes(dayHours.openTime);
+  const closeMinutes = closeTimeToMinutes(dayHours.closeTime);
+
+  try {
+    await assertNoOverlap(app.barberId, app.date, app.time, durationMinutes, appointmentId, openMinutes, closeMinutes);
+  } catch {
+    return { ok: false, reason: 'slot_taken' };
+  }
+
+  const amount =
+    depositAmountArs != null && Number.isFinite(depositAmountArs) && depositAmountArs > 0
+      ? Math.round(depositAmountArs * 100) / 100
+      : null;
+
+  await query(
+    "UPDATE appointments SET status = 'scheduled', deposit_paid = 1, mercadopago_payment_id = ?, deposit_amount_ars = ?, payment_due_at = NULL WHERE id = ?",
+    [paymentId, amount, appointmentId]
+  );
+
+  const reactivated = await getAppointmentById(appointmentId);
+  if (reactivated?.status === 'scheduled') {
+    await onAppointmentConfirmed(reactivated);
+    const refreshed = await getAppointmentById(appointmentId);
+    return { ok: true, appointment: refreshed ?? reactivated };
+  }
+
+  return { ok: true, appointment: reactivated! };
+}
+
 /** Cliente exento: pasa de pending_payment a scheduled sin marcar seña pagada ni vincular pago MP. */
 export async function markAppointmentScheduledByExempt(appointmentId: string): Promise<Appointment | null> {
   await query(

@@ -855,3 +855,51 @@ export async function notifyClientSubscriptionActivated(userId: number): Promise
     console.error('[Email] No se pudo enviar aviso de abono activado', err);
   }
 }
+
+/** Aviso al cliente: pagó la seña después de que el turno venció y el horario ya no está disponible, así que se reembolsó. */
+export async function sendLatePaymentRefundedEmail(
+  email: string,
+  app: Appointment
+): Promise<void> {
+  if (!isRealClientEmail(email)) return;
+  if (!isEmailProviderConfigured()) {
+    console.warn('[Email] OMITIDO sendLatePaymentRefundedEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
+    return;
+  }
+  const shopName = getShopNameForEmails();
+  const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
+  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
+  const reservaUrl = getClientReservaUrl();
+
+  const text = [
+    `${greetingName}, recibimos tu pago pero el plazo de reserva había vencido y el horario ya no estaba disponible.`,
+    '',
+    'Turno que no pudo confirmarse:',
+    detailsText,
+    '',
+    'El pago de la seña fue reembolsado automáticamente a tu medio de pago.',
+    '',
+    `Podés reservar otro horario en: ${reservaUrl}`,
+    '',
+    'Disculpá las molestias.',
+    `Equipo ${shopName}`,
+  ].join('\n');
+
+  const html = renderBrandedEmail({
+    title: 'Tu pago fue reembolsado',
+    greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
+    intro: 'Recibimos tu pago, pero el plazo de reserva había vencido y el horario ya fue tomado por otro cliente.',
+    detailsHtml,
+    noticeColor: 'amber',
+    noticeHtml: 'El pago de la seña fue <strong>reembolsado automáticamente</strong> a tu medio de pago. Puede tardar unos días en reflejarse según tu banco o billetera.',
+    cta: { label: 'Reservar nuevo turno', url: reservaUrl },
+    outro: 'Disculpá las molestias. Te esperamos pronto.',
+  });
+
+  await sendMail({
+    to: email,
+    subject: `Tu pago fue reembolsado — ${shopName}`,
+    text,
+    html,
+  });
+}
