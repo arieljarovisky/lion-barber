@@ -10,6 +10,7 @@ import {
   Plus,
   X,
   Search,
+  FileSpreadsheet,
   SlidersHorizontal,
   RotateCcw,
   Trash2,
@@ -23,6 +24,7 @@ import type { AdminClientWithHistory } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { displayClientEmail, isPlaceholderManualClientEmail } from '../utils/manualClientEmail';
 import { formatPhonesForInput, parsePhonesInput } from '../utils/adminClientHistory';
+import { exportAdminClientsExcel } from '../utils/adminClientsExport';
 
 const VIEW_STORAGE_KEY = 'lion-barber-admin-clients-view';
 
@@ -81,6 +83,7 @@ export default function AdminClientsListPage() {
   const [formPhone, setFormPhone] = useState('');
   const [formPoints, setFormPoints] = useState('0');
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [deletingClientId, setDeletingClientId] = useState<number | null>(null);
   const [formError, setFormError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -263,6 +266,16 @@ export default function AdminClientsListPage() {
     setSortBy('recent');
   };
 
+  const handleExportExcel = () => {
+    if (clients.length === 0 || exporting) return;
+    setExporting(true);
+    try {
+      exportAdminClientsExcel(clients);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">
       <DashboardPanelShell activePanel="clientes" onNavigate={handlePanelNavigate}>
@@ -300,6 +313,16 @@ export default function AdminClientsListPage() {
                 Filas
               </button>
             </div>
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={loading || exporting || clients.length === 0}
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-900 shadow-sm transition hover:bg-emerald-100 disabled:opacity-50"
+              title="Descargar Excel con todos los clientes"
+            >
+              <FileSpreadsheet size={18} />
+              {exporting ? 'Generando…' : 'Excel'}
+            </button>
             {isAdmin && (
               <button
                 type="button"
