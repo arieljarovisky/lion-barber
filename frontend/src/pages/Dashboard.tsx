@@ -3358,6 +3358,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
             shopProducts={shopProducts}
             loading={shopProductsPanelLoading}
             onRefresh={loadShopProductsPanel}
+            onProductsChange={setShopProducts}
             showToast={showToast}
           />
         )}

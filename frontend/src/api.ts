@@ -770,6 +770,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  reorderShopProducts: (ids: string[]) =>
+    fetchApi<ShopProduct[]>('/api/shop-products/reorder/manual', {
+      method: 'PATCH',
+      body: JSON.stringify({ ids }),
+    }),
   updateShopProduct: (
     id: string,
     data: Partial<{

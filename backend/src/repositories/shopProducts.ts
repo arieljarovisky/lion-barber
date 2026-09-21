@@ -1,4 +1,4 @@
-import { query } from '../db.js';
+import pool, { query } from '../db.js';
 import type { ShopProduct } from '../types.js';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -308,4 +308,38 @@ export async function updateShopProduct(
 export async function deleteShopProduct(id: string): Promise<boolean> {
   const res = await query<{ affectedRows: number }>('DELETE FROM shop_products WHERE id = ?', [id]);
   return (res as { affectedRows: number }).affectedRows > 0;
+}
+
+export async function reorderShopProducts(idsInOrder: string[]): Promise<ShopProduct[]> {
+  const ids = idsInOrder.map((x) => x.trim()).filter(Boolean);
+  if (ids.length === 0) return getAllShopProducts();
+
+  const rows = await query<{ id: string }[]>(
+    'SELECT id FROM shop_products ORDER BY sort_order ASC, name ASC'
+  );
+  const currentIds = rows.map((r) => r.id);
+  if (currentIds.length !== ids.length) {
+    throw new Error('La lista de productos no coincide con la cantidad actual.');
+  }
+  const currentSet = new Set(currentIds);
+  if (ids.some((id) => !currentSet.has(id))) {
+    throw new Error('La lista de productos contiene IDs inválidos.');
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    let sortOrder = 1;
+    for (const id of ids) {
+      await conn.execute('UPDATE shop_products SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+      sortOrder += 1;
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+  return getAllShopProducts();
 }

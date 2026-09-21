@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ImagePlus, Loader2, Pencil, ShoppingBag, Trash2 } from 'lucide-react';
+import { GripVertical, ImagePlus, Loader2, Pencil, ShoppingBag, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api';
 import { useConfirm } from '../contexts/ConfirmContext';
 import type { ShopProduct } from '../api';
@@ -10,6 +10,8 @@ type ShopProductsPanelProps = {
   shopProducts: ShopProduct[];
   loading: boolean;
   onRefresh: (opts?: { silent?: boolean }) => Promise<void>;
+  /** Actualiza el listado en el padre (p. ej. tras reordenar). */
+  onProductsChange?: (products: ShopProduct[]) => void;
   showToast: (message: string, kind?: 'ok' | 'err') => void;
 };
 
@@ -111,6 +113,7 @@ export default function ShopProductsPanel({
   shopProducts,
   loading,
   onRefresh,
+  onProductsChange,
   showToast,
 }: ShopProductsPanelProps) {
   const confirm = useConfirm();
@@ -129,6 +132,58 @@ export default function ShopProductsPanel({
   const [editDescription, setEditDescription] = useState('');
   const [editWebActive, setEditWebActive] = useState(true);
   const [editStock, setEditStock] = useState('');
+  const [sortingProducts, setSortingProducts] = useState(false);
+  const [dragProductId, setDragProductId] = useState<string | null>(null);
+  const [dragOverProductId, setDragOverProductId] = useState<string | null>(null);
+
+  const persistProductOrder = async (next: ShopProduct[], before: ShopProduct[]) => {
+    if (sortingProducts) return;
+    onProductsChange?.(next);
+    setSortingProducts(true);
+    try {
+      const ordered = await api.reorderShopProducts(next.map((p) => p.id));
+      onProductsChange?.(ordered);
+      showToast('Orden de productos actualizado');
+    } catch (err) {
+      onProductsChange?.(before);
+      showToast(err instanceof ApiError ? err.message : 'No se pudo reordenar', 'err');
+    } finally {
+      setSortingProducts(false);
+    }
+  };
+
+  const handleProductDragStart = (e: React.DragEvent<HTMLLIElement>, productId: string) => {
+    if (sortingProducts || editingProductId) return;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', productId);
+    setDragProductId(productId);
+    setDragOverProductId(productId);
+  };
+
+  const handleProductDragOver = (e: React.DragEvent<HTMLLIElement>, productId: string) => {
+    e.preventDefault();
+    if (!dragProductId || dragProductId === productId) return;
+    setDragOverProductId(productId);
+  };
+
+  const handleProductDrop = async (targetId: string) => {
+    if (!dragProductId || dragProductId === targetId || sortingProducts) return;
+    const before = [...shopProducts];
+    const fromIndex = before.findIndex((p) => p.id === dragProductId);
+    const toIndex = before.findIndex((p) => p.id === targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const next = [...before];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setDragProductId(null);
+    setDragOverProductId(null);
+    await persistProductOrder(next, before);
+  };
+
+  const handleProductDragEnd = () => {
+    setDragProductId(null);
+    setDragOverProductId(null);
+  };
 
   const addProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,14 +292,23 @@ export default function ShopProductsPanel({
   return (
     <div className="max-w-4xl space-y-6">
       <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="mb-4 flex items-center gap-2">
-          <ShoppingBag className="h-6 w-6 text-emerald-700" aria-hidden />
-          <h3 className="text-lg font-black text-zinc-900">Catálogo de productos</h3>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="h-6 w-6 text-emerald-700" aria-hidden />
+            <div>
+              <h3 className="text-lg font-black text-zinc-900">Catálogo de productos</h3>
+              <p className="mt-0.5 text-xs text-zinc-500">Podés ordenar arrastrando desde las barritas</p>
+            </div>
+          </div>
+          <span className="text-sm text-zinc-500">
+            {sortingProducts ? 'Guardando orden…' : `${shopProducts.length} productos`}
+          </span>
         </div>
         <p className="mb-4 text-sm text-zinc-500">
           Cargá nombre, precio, foto, stock y descripción. Con «Visible en la web» y precio aparecen en la tienda
           pública. Si el stock es 0, se ocultan solos. Dejá stock vacío para no controlar unidades. Los puntos se
-          configuran en <strong className="font-semibold text-zinc-700">Puntos</strong>.
+          configuran en <strong className="font-semibold text-zinc-700">Puntos</strong>. El orden acá es el de la
+          tienda web.
         </p>
 
         <ul className="mb-6 divide-y divide-zinc-100 rounded-xl border border-zinc-100">
@@ -252,7 +316,17 @@ export default function ShopProductsPanel({
             <li className="px-4 py-8 text-center text-sm text-zinc-500">Todavía no cargaste productos.</li>
           ) : (
             shopProducts.map((p) => (
-              <li key={p.id} className="flex flex-col gap-3 px-4 py-4">
+              <li
+                key={p.id}
+                draggable={!sortingProducts && editingProductId !== p.id}
+                onDragStart={(e) => handleProductDragStart(e, p.id)}
+                onDragOver={(e) => handleProductDragOver(e, p.id)}
+                onDrop={() => void handleProductDrop(p.id)}
+                onDragEnd={handleProductDragEnd}
+                className={`flex flex-col gap-3 px-4 py-4 ${
+                  dragOverProductId === p.id && dragProductId !== p.id ? 'bg-amber-50' : ''
+                } ${dragProductId === p.id ? 'opacity-60' : ''}`}
+              >
                 {editingProductId === p.id ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <ProductImageField
@@ -315,6 +389,16 @@ export default function ShopProductsPanel({
                 ) : (
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex min-w-0 flex-1 items-start gap-3">
+                      <div
+                        className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${
+                          sortingProducts
+                            ? 'cursor-not-allowed border-zinc-200 text-zinc-300'
+                            : 'cursor-grab border-zinc-300 text-zinc-500 active:cursor-grabbing'
+                        }`}
+                        title="Arrastrar para reordenar"
+                      >
+                        <GripVertical size={16} />
+                      </div>
                       <ProductImageField
                         productId={p.id}
                         imageUrl={p.imageUrl}

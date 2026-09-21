@@ -44,6 +44,20 @@ router.get('/', requireAuth, requireStaffOrAdmin, async (_req, res) => {
   }
 });
 
+router.patch('/reorder/manual', requireAuth, requireStaffOrAdmin, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map((x: unknown) => String(x)) : null;
+  if (!ids || ids.length === 0) {
+    return res.status(400).json({ error: 'Enviá ids en el orden deseado.' });
+  }
+  try {
+    const ordered = await repo.reorderShopProducts(ids);
+    res.json(ordered);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'No se pudo actualizar el orden de productos';
+    res.status(400).json({ error: msg });
+  }
+});
+
 router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
   const { name, pointsReward, unitPrice, description, webActive, stock } = req.body as {
     name?: string;
