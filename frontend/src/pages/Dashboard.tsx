@@ -226,7 +226,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const [agendaRestrictionsByBarber, setAgendaRestrictionsByBarber] = useState<
     Record<string, { offWeekdays: Set<number>; blocks: BarberTimeBlockRow[] }>
   >({});
-  const [view, setView] = useState<
+  type ViewType =
     | 'agenda'
     | 'servicios'
     | 'horarios'
@@ -236,8 +236,27 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     | 'abonos'
     | 'promociones'
     | 'facturacion'
-    | 'configuracion'
-  >('agenda');
+    | 'configuracion';
+  const validViews: ViewType[] = ['agenda', 'servicios', 'horarios', 'equipo', 'puntos', 'productos', 'abonos', 'promociones', 'facturacion', 'configuracion'];
+  const getInitialView = (): ViewType => {
+    if (typeof window === 'undefined') return 'agenda';
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get('vista');
+    if (v && validViews.includes(v as ViewType)) return v as ViewType;
+    return 'agenda';
+  };
+  const [view, setViewState] = useState<ViewType>(getInitialView);
+  const setView = useCallback((v: ViewType) => {
+    setViewState(v);
+    const params = new URLSearchParams(window.location.search);
+    if (v === 'agenda') {
+      params.delete('vista');
+    } else {
+      params.set('vista', v);
+    }
+    const newUrl = params.toString() ? `${window.location.pathname}?${params}` : window.location.pathname;
+    window.history.replaceState({}, '', newUrl);
+  }, []);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [serviceForm, setServiceForm] = useState({
