@@ -28,6 +28,7 @@ import {
   type WeeklyCashCloseExportData,
 } from '../utils/weeklyCashCloseExport';
 import CashCloseExpensesSection from '../components/CashCloseExpensesSection';
+import ProductPurchasesPanel from '../components/ProductPurchasesPanel';
 import { prorateFixedMonthlyExpenses, sumCashExpenses } from '../utils/expenseProration';
 import { appointmentsWithCashCloseSnapshots } from '../utils/cashCloseSnapshot';
 import type { CashExpense, FixedMonthlyExpense, AppointmentCashClosePaymentSnapshot } from '../api';
@@ -50,6 +51,7 @@ export default function WeeklyCashClosePage() {
   const [closeActionError, setCloseActionError] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [paymentSnapshots, setPaymentSnapshots] = useState<AppointmentCashClosePaymentSnapshot[]>([]);
+  const [productPurchasesTotal, setProductPurchasesTotal] = useState(0);
 
   const { start, end, fromYmd, toYmd } = useMemo(
     () => periodBoundsFromAnchor(periodAnchor, periodMode),
@@ -745,6 +747,21 @@ export default function WeeklyCashClosePage() {
                 shopNetEstimate={summary.shopNetEstimate}
                 onReload={() => void loadExpenses()}
               />
+
+              <div className="no-print mt-6">
+                <ProductPurchasesPanel
+                  fromYmd={fromYmd}
+                  toYmd={toYmd}
+                  onTotalChange={setProductPurchasesTotal}
+                />
+                {productPurchasesTotal > 0 && (
+                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+                    <p className="text-xs text-amber-800">
+                      Las compras de productos (${formatArs(productPurchasesTotal)}) representan gastos adicionales para reposición de inventario.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               <p className="mt-6 text-xs text-zinc-500 max-w-3xl">
                 Las señas son el {DEPOSIT_PERCENT}% del servicio. La comisión de productos ({BARBER_PRODUCT_COMMISSION_PERCENT}

@@ -488,6 +488,11 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE shop_products ADD COLUMN cost VARCHAR(50) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS product_orders (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -510,6 +515,22 @@ export async function initDb(): Promise<void> {
       user_id INT NOT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       KEY idx_product_pay_user (user_id)
+    )
+  `);
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS product_purchases (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      product_id VARCHAR(50) NOT NULL,
+      product_name VARCHAR(255) NOT NULL,
+      quantity INT NOT NULL DEFAULT 1,
+      unit_cost DECIMAL(12,2) NOT NULL,
+      total_cost DECIMAL(12,2) NOT NULL,
+      purchase_date DATE NOT NULL,
+      notes TEXT NULL,
+      created_by_user_id INT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_product_purchases_date (purchase_date),
+      KEY idx_product_purchases_product (product_id)
     )
   `);
   await pool.execute(`

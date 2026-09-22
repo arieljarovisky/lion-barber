@@ -119,6 +119,7 @@ export default function ShopProductsPanel({
   const confirm = useConfirm();
   const [productName, setProductName] = useState('');
   const [productUnitPrice, setProductUnitPrice] = useState('');
+  const [productCost, setProductCost] = useState('');
   const [productDescription, setProductDescription] = useState('');
   const [productWebActive, setProductWebActive] = useState(true);
   const [productStock, setProductStock] = useState('');
@@ -129,6 +130,7 @@ export default function ShopProductsPanel({
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editUnitPrice, setEditUnitPrice] = useState('');
+  const [editCost, setEditCost] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editWebActive, setEditWebActive] = useState(true);
   const [editStock, setEditStock] = useState('');
@@ -200,10 +202,12 @@ export default function ShopProductsPanel({
     setSavingProduct(true);
     try {
       const up = productUnitPrice.trim();
+      const costVal = productCost.trim();
       const created = await api.createShopProduct({
         name,
         pointsReward: 0,
         unitPrice: up ? up : undefined,
+        cost: costVal ? costVal : undefined,
         description: productDescription.trim() || undefined,
         webActive: productWebActive,
         stock: parsedStock,
@@ -213,6 +217,7 @@ export default function ShopProductsPanel({
       }
       setProductName('');
       setProductUnitPrice('');
+      setProductCost('');
       setProductDescription('');
       setProductWebActive(true);
       setProductStock('');
@@ -230,6 +235,7 @@ export default function ShopProductsPanel({
     setEditingProductId(p.id);
     setEditName(p.name);
     setEditUnitPrice(p.unitPrice ?? '');
+    setEditCost(p.cost ?? '');
     setEditDescription(p.description ?? '');
     setEditWebActive(p.webActive !== false);
     setEditStock(p.stock == null ? '' : String(p.stock));
@@ -248,9 +254,11 @@ export default function ShopProductsPanel({
     }
     try {
       const up = editUnitPrice.trim();
+      const costVal = editCost.trim();
       await api.updateShopProduct(id, {
         name,
         unitPrice: up ? up : null,
+        cost: costVal ? costVal : null,
         description: editDescription.trim() || null,
         webActive: editWebActive,
         stock: parsedStock,
@@ -348,6 +356,12 @@ export default function ShopProductsPanel({
                       className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                     />
                     <input
+                      value={editCost}
+                      onChange={(e) => setEditCost(e.target.value)}
+                      placeholder="Costo (precio de compra)"
+                      className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    />
+                    <input
                       value={editStock}
                       onChange={(e) => setEditStock(e.target.value)}
                       inputMode="numeric"
@@ -413,6 +427,9 @@ export default function ShopProductsPanel({
                         )}
                         <p className="mt-1 text-sm text-zinc-600">
                           {p.unitPrice ? `Venta: ${p.unitPrice}` : 'Sin precio venta'}
+                          {p.cost && (
+                            <span className="ml-2 text-amber-700">· Costo: {p.cost}</span>
+                          )}
                           {p.webActive === false && (
                             <span className="ml-2 text-xs text-zinc-400">· Oculto en web</span>
                           )}
@@ -463,6 +480,15 @@ export default function ShopProductsPanel({
               value={productUnitPrice}
               onChange={(e) => setProductUnitPrice(e.target.value)}
               placeholder="Ej. 15000"
+              className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Costo</label>
+            <input
+              value={productCost}
+              onChange={(e) => setProductCost(e.target.value)}
+              placeholder="Precio de compra"
               className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
             />
           </div>
