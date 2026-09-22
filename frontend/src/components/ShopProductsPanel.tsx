@@ -421,19 +421,21 @@ export default function ShopProductsPanel({
                         compact
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-zinc-900">{p.name}</p>
+                        <p className="font-medium text-zinc-900 break-words">{p.name}</p>
                         {p.description && (
-                          <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{p.description}</p>
+                          <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500 break-words">{p.description}</p>
                         )}
-                        <p className="mt-1 text-sm text-zinc-600">
-                          {p.unitPrice ? `Venta: ${p.unitPrice}` : 'Sin precio venta'}
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-sm">
+                          <span className="text-zinc-600">
+                            {p.unitPrice ? `Venta: ${p.unitPrice}` : 'Sin precio venta'}
+                          </span>
                           {p.cost && (
-                            <span className="ml-2 text-amber-700">· Costo: {p.cost}</span>
+                            <span className="text-amber-700">Costo: {p.cost}</span>
                           )}
                           {p.webActive === false && (
-                            <span className="ml-2 text-xs text-zinc-400">· Oculto en web</span>
+                            <span className="text-xs text-zinc-400">Oculto en web</span>
                           )}
-                        </p>
+                        </div>
                         <p className={`mt-0.5 text-xs font-semibold ${stockStatusLabel(p).className}`}>
                           {stockStatusLabel(p).text}
                         </p>
@@ -464,8 +466,8 @@ export default function ShopProductsPanel({
           )}
         </ul>
 
-        <form onSubmit={addProduct} className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
+        <form onSubmit={addProduct} className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="sm:col-span-2 lg:col-span-4">
             <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Nuevo producto</label>
             <input
               value={productName}
@@ -502,15 +504,17 @@ export default function ShopProductsPanel({
               className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
             />
           </div>
-          <label className="flex items-end gap-2 pb-2.5 text-sm text-zinc-600 sm:col-span-2">
-            <input
-              type="checkbox"
-              checked={productWebActive}
-              onChange={(e) => setProductWebActive(e.target.checked)}
-            />
-            Visible en la web
-          </label>
-          <div className="sm:col-span-2">
+          <div className="flex items-end">
+            <label className="flex items-center gap-2 pb-2.5 text-sm text-zinc-600">
+              <input
+                type="checkbox"
+                checked={productWebActive}
+                onChange={(e) => setProductWebActive(e.target.checked)}
+              />
+              Visible en la web
+            </label>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-4">
             <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Descripción</label>
             <textarea
               value={productDescription}
@@ -520,10 +524,10 @@ export default function ShopProductsPanel({
               className="mt-1 w-full rounded-xl border border-zinc-200 px-4 py-2.5 text-sm"
             />
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-2 lg:col-span-4">
             <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500">Foto</label>
-            <div className="mt-1 flex items-center gap-3">
-              <div className="h-16 w-16 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
                 {pendingImageData ? (
                   <img src={pendingImageData} alt="" className="h-full w-full object-cover" />
                 ) : (
@@ -568,7 +572,7 @@ export default function ShopProductsPanel({
           <button
             type="submit"
             disabled={savingProduct}
-            className="rounded-xl bg-[#e5c185] px-5 py-2.5 text-sm font-bold text-zinc-950 hover:bg-[#d4b074] disabled:opacity-50 sm:col-span-2"
+            className="rounded-xl bg-[#e5c185] px-5 py-2.5 text-sm font-bold text-zinc-950 hover:bg-[#d4b074] disabled:opacity-50 sm:col-span-2 lg:col-span-4"
           >
             {savingProduct ? 'Agregando…' : 'Agregar producto'}
           </button>
