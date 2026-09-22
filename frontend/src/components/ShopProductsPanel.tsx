@@ -59,37 +59,39 @@ function ProductImageField({
   };
 
   return (
-    <div className={compact ? 'flex items-center gap-3' : 'space-y-2'}>
+    <div className={compact ? '' : 'space-y-2'}>
       <div
         className={`overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50 ${
-          compact ? 'h-14 w-14 shrink-0' : 'mx-auto h-32 w-32'
+          compact ? 'h-12 w-12' : 'mx-auto h-32 w-32'
         }`}
       >
         {resolvedImage ? (
           <img src={resolvedImage} alt="" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-zinc-300">
-            <ImagePlus size={compact ? 20 : 32} aria-hidden />
+            <ImagePlus size={compact ? 18 : 32} aria-hidden />
           </div>
         )}
       </div>
-      <div className={compact ? 'min-w-0 flex-1' : ''}>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-          className="hidden"
-          onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
-        />
-        <button
-          type="button"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-          className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-        >
-          {uploading ? 'Subiendo…' : resolvedImage ? 'Cambiar foto' : 'Subir foto'}
-        </button>
-      </div>
+      {!compact && (
+        <div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+            className="hidden"
+            onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
+          />
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+            className="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-bold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            {uploading ? 'Subiendo…' : resolvedImage ? 'Cambiar foto' : 'Subir foto'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -401,18 +403,21 @@ export default function ShopProductsPanel({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="flex min-w-0 flex-1 items-start gap-3">
-                      <div
-                        className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${
-                          sortingProducts
-                            ? 'cursor-not-allowed border-zinc-200 text-zinc-300'
-                            : 'cursor-grab border-zinc-300 text-zinc-500 active:cursor-grabbing'
-                        }`}
-                        title="Arrastrar para reordenar"
-                      >
-                        <GripVertical size={16} />
-                      </div>
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    {/* Drag handle */}
+                    <div
+                      className={`mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border ${
+                        sortingProducts
+                          ? 'cursor-not-allowed border-zinc-200 text-zinc-300'
+                          : 'cursor-grab border-zinc-300 text-zinc-500 active:cursor-grabbing'
+                      }`}
+                      title="Arrastrar para reordenar"
+                    >
+                      <GripVertical size={16} />
+                    </div>
+                    
+                    {/* Image */}
+                    <div className="shrink-0">
                       <ProductImageField
                         productId={p.id}
                         imageUrl={p.imageUrl}
@@ -420,44 +425,46 @@ export default function ShopProductsPanel({
                         showToast={showToast}
                         compact
                       />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-zinc-900 break-words">{p.name}</p>
-                        {p.description && (
-                          <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500 break-words">{p.description}</p>
-                        )}
-                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-sm">
-                          <span className="text-zinc-600">
-                            {p.unitPrice ? `Venta: ${p.unitPrice}` : 'Sin precio venta'}
-                          </span>
-                          {p.cost && (
-                            <span className="text-amber-700">Costo: {p.cost}</span>
-                          )}
-                          {p.webActive === false && (
-                            <span className="text-xs text-zinc-400">Oculto en web</span>
-                          )}
-                        </div>
-                        <p className={`mt-0.5 text-xs font-semibold ${stockStatusLabel(p).className}`}>
-                          {stockStatusLabel(p).text}
-                        </p>
-                      </div>
                     </div>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => startEditProduct(p)}
-                        className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
-                        aria-label={`Editar ${p.name}`}
-                      >
-                        <Pencil size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void removeProduct(p.id)}
-                        className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                        aria-label={`Eliminar ${p.name}`}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                    
+                    {/* Content and actions */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-medium text-zinc-900">{p.name}</p>
+                        <div className="flex shrink-0 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => startEditProduct(p)}
+                            className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+                            aria-label={`Editar ${p.name}`}
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void removeProduct(p.id)}
+                            className="rounded-lg p-1.5 text-red-600 hover:bg-red-50"
+                            aria-label={`Eliminar ${p.name}`}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      {p.description && (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{p.description}</p>
+                      )}
+                      <div className="mt-1 text-sm text-zinc-600">
+                        <span>{p.unitPrice ? `Venta: ${p.unitPrice}` : 'Sin precio'}</span>
+                        {p.cost && <span className="ml-2 text-amber-700">· Costo: {p.cost}</span>}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span className={`text-xs font-semibold ${stockStatusLabel(p).className}`}>
+                          {stockStatusLabel(p).text}
+                        </span>
+                        {p.webActive === false && (
+                          <span className="text-xs text-zinc-400">· Oculto en web</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
