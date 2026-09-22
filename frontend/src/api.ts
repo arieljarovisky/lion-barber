@@ -203,6 +203,8 @@ export interface ShopProduct {
   pointsReward: number;
   /** Precio unitario (texto) para sumar a la factura AFIP. */
   unitPrice?: string | null;
+  /** Costo unitario del producto (precio de compra/reposición). */
+  cost?: string | null;
   sortOrder?: number;
   imageUrl?: string | null;
   description?: string | null;
@@ -210,6 +212,20 @@ export interface ShopProduct {
   webActive?: boolean;
   /** Unidades disponibles; `null` = sin control de stock. */
   stock?: number | null;
+}
+
+/** Compra de producto para control de gastos/inventario. */
+export interface ProductPurchase {
+  id: number;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  purchaseDate: string;
+  notes?: string | null;
+  createdByUserId?: number | null;
+  createdAt?: string;
 }
 
 export interface ProductOrderLine {
@@ -761,6 +777,7 @@ export const api = {
     name: string;
     pointsReward: number;
     unitPrice?: string | null;
+    cost?: string | null;
     description?: string | null;
     imageUrl?: string | null;
     webActive?: boolean;
@@ -781,6 +798,7 @@ export const api = {
       name: string;
       pointsReward: number;
       unitPrice: string | null;
+      cost: string | null;
       description: string | null;
       imageUrl: string | null;
       webActive: boolean;
@@ -984,6 +1002,41 @@ export const api = {
 
   deleteCashExpense: (id: number) =>
     fetchApi<void>(`/api/expenses/cash/${id}`, { method: 'DELETE' }),
+
+  getProductPurchases: (fromYmd: string, toYmd: string) =>
+    fetchApi<{ items: ProductPurchase[] }>(
+      `/api/product-purchases?from=${encodeURIComponent(fromYmd)}&to=${encodeURIComponent(toYmd)}`
+    ),
+
+  createProductPurchase: (data: {
+    productId: string;
+    quantity: number;
+    unitCost: number;
+    purchaseDate: string;
+    notes?: string;
+  }) =>
+    fetchApi<{ item: ProductPurchase }>('/api/product-purchases', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateProductPurchase: (
+    id: number,
+    data: Partial<{
+      productId: string;
+      quantity: number;
+      unitCost: number;
+      purchaseDate: string;
+      notes: string | null;
+    }>
+  ) =>
+    fetchApi<{ item: ProductPurchase }>(`/api/product-purchases/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteProductPurchase: (id: number) =>
+    fetchApi<void>(`/api/product-purchases/${id}`, { method: 'DELETE' }),
 
   getDailyCashCloses: (fromYmd: string, toYmd: string) =>
     fetchApi<{ closes: DailyCashClose[] }>(

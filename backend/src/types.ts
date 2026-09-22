@@ -179,6 +179,8 @@ export interface ShopProduct {
   pointsReward: number;
   /** Precio unitario en ARS (texto como en servicios) para sumar a la factura AFIP. */
   unitPrice?: string | null;
+  /** Costo unitario del producto (precio de compra/reposición). */
+  cost?: string | null;
   sortOrder?: number;
   imageUrl?: string | null;
   description?: string | null;
@@ -186,6 +188,20 @@ export interface ShopProduct {
   webActive?: boolean;
   /** Unidades disponibles; `null` = sin control de stock. */
   stock?: number | null;
+}
+
+/** Compra de producto para control de gastos/inventario. */
+export interface ProductPurchase {
+  id: number;
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  purchaseDate: string;
+  notes?: string | null;
+  createdByUserId?: number | null;
+  createdAt?: string;
 }
 
 export interface ProductOrderLine {

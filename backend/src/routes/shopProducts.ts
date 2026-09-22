@@ -59,10 +59,11 @@ router.patch('/reorder/manual', requireAuth, requireStaffOrAdmin, async (req, re
 });
 
 router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
-  const { name, pointsReward, unitPrice, description, webActive, stock } = req.body as {
+  const { name, pointsReward, unitPrice, cost, description, webActive, stock } = req.body as {
     name?: string;
     pointsReward?: unknown;
     unitPrice?: unknown;
+    cost?: unknown;
     description?: unknown;
     webActive?: boolean;
     stock?: unknown;
@@ -76,6 +77,8 @@ router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
   }
   const up =
     unitPrice != null && String(unitPrice).trim() !== '' ? String(unitPrice).trim() : undefined;
+  const costVal =
+    cost != null && String(cost).trim() !== '' ? String(cost).trim() : undefined;
   let stockValue: number | null | undefined;
   if (stock !== undefined) {
     const parsed = repo.normalizeProductStock(stock);
@@ -89,6 +92,7 @@ router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
       name: name.trim(),
       pointsReward: pr,
       unitPrice: up,
+      cost: costVal,
       description: description != null ? String(description) : undefined,
       webActive,
       stock: stockValue,
@@ -101,10 +105,11 @@ router.post('/', requireAuth, requireStaffOrAdmin, async (req, res) => {
 });
 
 router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
-  const { name, pointsReward, unitPrice, description, imageUrl, webActive, stock } = req.body as {
+  const { name, pointsReward, unitPrice, cost, description, imageUrl, webActive, stock } = req.body as {
     name?: string;
     pointsReward?: unknown;
     unitPrice?: unknown;
+    cost?: unknown;
     description?: unknown;
     imageUrl?: unknown;
     webActive?: boolean;
@@ -121,6 +126,9 @@ router.patch('/:id', requireAuth, requireStaffOrAdmin, async (req, res) => {
   }
   if (unitPrice !== undefined) {
     updates.unitPrice = unitPrice != null && String(unitPrice).trim() !== '' ? String(unitPrice).trim() : null;
+  }
+  if (cost !== undefined) {
+    updates.cost = cost != null && String(cost).trim() !== '' ? String(cost).trim() : null;
   }
   if (description !== undefined) {
     updates.description = description != null ? String(description) : null;
