@@ -84,15 +84,31 @@ const PRODUCT_LIST_COLUMNS = `
   (image_data IS NOT NULL AND CHAR_LENGTH(image_data) > 0) AS has_image
 `;
 
+function isUnknownColumn(e: unknown, column: string): boolean {
+  const code = (e as { code?: string }).code;
+  const msg = e instanceof Error ? e.message : String(e);
+  return code === 'ER_BAD_FIELD_ERROR' && msg.toLowerCase().includes(column.toLowerCase());
+}
+
+/** Si la columna `cost` todavía no existe, el listado igual devuelve los productos. */
+async function selectShopProductRows(sql: string, params: unknown[] = []): Promise<DbShopProduct[]> {
+  try {
+    return await query<DbShopProduct[]>(sql, params);
+  } catch (e) {
+    if (!isUnknownColumn(e, 'cost')) throw e;
+    return query<DbShopProduct[]>(sql.replaceAll(', cost', ''), params);
+  }
+}
+
 export async function getAllShopProducts(): Promise<ShopProduct[]> {
-  const rows = await query<DbShopProduct[]>(
+  const rows = await selectShopProductRows(
     `SELECT ${PRODUCT_LIST_COLUMNS} FROM shop_products ORDER BY sort_order ASC, name ASC`
   );
   return rows.map(rowToProduct);
 }
 
 export async function getWebShopProducts(): Promise<ShopProduct[]> {
-  const rows = await query<DbShopProduct[]>(
+  const rows = await selectShopProductRows(
     `SELECT ${PRODUCT_LIST_COLUMNS}
      FROM shop_products
      WHERE web_active = 1
@@ -104,7 +120,7 @@ export async function getWebShopProducts(): Promise<ShopProduct[]> {
 }
 
 export async function getShopProductById(id: string): Promise<ShopProduct | null> {
-  const rows = await query<DbShopProduct[]>(
+  const rows = await selectShopProductRows(
     `SELECT ${PRODUCT_LIST_COLUMNS} FROM shop_products WHERE id = ? LIMIT 1`,
     [id]
   );
