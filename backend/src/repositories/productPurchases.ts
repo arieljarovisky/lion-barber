@@ -141,7 +141,7 @@ export async function updateProductPurchase(
   }
   const totalCost = Math.round(quantity * unitCost * 100) / 100;
 
-  let notes = current.notes;
+  let notes: string | null = current.notes ?? null;
   if (data.notes !== undefined) {
     notes = data.notes != null && String(data.notes).trim() !== '' ? String(data.notes).trim() : null;
   }
