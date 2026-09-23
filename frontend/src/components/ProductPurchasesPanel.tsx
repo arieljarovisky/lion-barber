@@ -1,8 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, Pencil, Package, ShoppingCart, Loader2 } from 'lucide-react';
 import { api, ApiError } from '../api';
 import type { ProductPurchase, ShopProduct } from '../api';
 import { formatArs } from '../utils/money';
+
+function asProductList(data: unknown): ShopProduct[] {
+  if (Array.isArray(data)) {
+    return data.filter((p): p is ShopProduct => Boolean(p) && typeof p.id === 'string' && typeof p.name === 'string');
+  }
+  if (data && typeof data === 'object' && Array.isArray((data as { products?: unknown }).products)) {
+    return asProductList((data as { products: unknown }).products);
+  }
+  return [];
+}
+
+function errorMessage(reason: unknown, fallback: string): string {
+  return reason instanceof ApiError ? reason.message : reason instanceof Error ? reason.message : fallback;
+}
 
 type Props = {
   fromYmd: string;
@@ -11,11 +26,16 @@ type Props = {
 };
 
 export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }: Props) {
+  const navigate = useNavigate();
   const [purchases, setPurchases] = useState<ProductPurchase[]>([]);
   const [products, setProducts] = useState<ShopProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [showNewProduct, setShowNewProduct] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [newProductPrice, setNewProductPrice] = useState('');
+  const [newProductCost, setNewProductCost] = useState('');
 
   const [productId, setProductId] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -35,18 +55,28 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
   const load = useCallback(async () => {
     setLoading(true);
     setErr('');
-    try {
-      const [purchasesRes, productsRes] = await Promise.all([
-        api.getProductPurchases(fromYmd, toYmd),
-        api.getShopProducts(),
-      ]);
-      setPurchases(purchasesRes.items);
-      setProducts(productsRes);
-    } catch (e) {
-      setErr(e instanceof ApiError ? e.message : 'Error al cargar datos');
-    } finally {
-      setLoading(false);
+    const [purchasesResult, productsResult] = await Promise.allSettled([
+      api.getProductPurchases(fromYmd, toYmd),
+      api.getShopProducts(),
+    ]);
+
+    const messages: string[] = [];
+
+    if (productsResult.status === 'fulfilled') {
+      setProducts(asProductList(productsResult.value));
+    } else {
+      setProducts([]);
+      messages.push(errorMessage(productsResult.reason, 'No se pudo cargar el catálogo de productos'));
     }
+
+    if (purchasesResult.status === 'fulfilled') {
+      setPurchases(purchasesResult.value.items ?? []);
+    } else {
+      messages.push(errorMessage(purchasesResult.reason, 'No se pudieron cargar las compras'));
+    }
+
+    setErr(messages.join(' · '));
+    setLoading(false);
   }, [fromYmd, toYmd]);
 
   useEffect(() => {
@@ -72,6 +102,35 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
     } finally {
       setSaving(false);
     }
+  };
+
+  const goToCatalog = () => {
+    navigate('/dashboard', { state: { openView: 'productos' } });
+  };
+
+  const handleCreateProduct = () => {
+    const name = newProductName.trim();
+    if (!name) {
+      setErr('Escribí el nombre del producto');
+      return;
+    }
+    const price = newProductPrice.trim();
+    const cost = newProductCost.trim();
+    void run(async () => {
+      const created = await api.createShopProduct({
+        name,
+        pointsReward: 0,
+        unitPrice: price || null,
+        cost: cost || null,
+      });
+      setNewProductName('');
+      setNewProductPrice('');
+      setNewProductCost('');
+      setShowNewProduct(false);
+      setProductId(created.id);
+      if (cost) setUnitCost(cost.replace(',', '.'));
+      else if (created.cost) setUnitCost(String(created.cost));
+    });
   };
 
   const handleAdd = () => {
@@ -155,8 +214,86 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
 
       <div className="p-5 border-b border-zinc-100 bg-zinc-50/80">
         <p className="text-xs text-zinc-600 mb-3">
-          Registrá las compras de productos (reposición de stock) para calcular los gastos.
+          Registrá las compras de productos (reposición de stock) para calcular los gastos. El desplegable usa el
+          catálogo del menú{' '}
+          <button type="button" onClick={goToCatalog} className="font-bold text-zinc-900 underline">
+            Productos
+          </button>
+          .
         </p>
+
+        {products.length === 0 && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+            No hay productos en el catálogo. Creá el primero acá abajo, o cargalo en Productos con nombre, precio, foto
+            y stock.
+          </div>
+        )}
+
+        {showNewProduct || products.length === 0 ? (
+          <div className="mb-3 rounded-xl border border-zinc-200 bg-white p-3">
+            <p className="mb-2 text-[10px] font-bold uppercase text-zinc-400">Nuevo producto</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[10rem] flex-1">
+                <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-400">Nombre</label>
+                <input
+                  type="text"
+                  value={newProductName}
+                  onChange={(e) => setNewProductName(e.target.value)}
+                  placeholder="Ej. Pomada matte"
+                  className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="w-28">
+                <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-400">Precio venta</label>
+                <input
+                  type="text"
+                  value={newProductPrice}
+                  onChange={(e) => setNewProductPrice(e.target.value)}
+                  placeholder="Opcional"
+                  className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="w-28">
+                <label className="mb-1 block text-[10px] font-bold uppercase text-zinc-400">Costo</label>
+                <input
+                  type="text"
+                  value={newProductCost}
+                  onChange={(e) => setNewProductCost(e.target.value)}
+                  placeholder="Opcional"
+                  className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={saving || !newProductName.trim()}
+                onClick={handleCreateProduct}
+                className="inline-flex items-center gap-1 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                <Plus size={16} />
+                Crear producto
+              </button>
+              {products.length > 0 && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setShowNewProduct(false)}
+                  className="rounded-xl border border-zinc-200 px-3 py-2 text-sm font-bold text-zinc-600"
+                >
+                  Cancelar
+                </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShowNewProduct(true)}
+            className="mb-3 text-xs font-bold text-zinc-800 underline"
+          >
+            + Nuevo producto
+          </button>
+        )}
+
         <div className="flex flex-wrap gap-2 items-end">
           <div className="w-36">
             <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Fecha</label>
@@ -182,7 +319,9 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
               }}
               className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm"
             >
-              <option value="">Seleccionar producto</option>
+              <option value="">
+                {products.length === 0 ? 'Sin productos en el catálogo' : 'Seleccionar producto'}
+              </option>
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -231,7 +370,7 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
             className="inline-flex items-center gap-1 rounded-xl bg-zinc-900 px-4 py-2 text-sm font-bold text-white hover:bg-zinc-800 disabled:opacity-50"
           >
             <Plus size={16} />
-            Registrar
+            Registrar compra
           </button>
         </div>
       </div>
