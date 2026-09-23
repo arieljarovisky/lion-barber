@@ -50,5 +50,7 @@ La API queda en **http://localhost:4000**. Al arrancar se crean las tablas y se 
 | POST | `/api/appointments` | Crear cita |
 | PATCH | `/api/appointments/:id` | Actualizar cita |
 | DELETE | `/api/appointments/:id` | Eliminar cita |
+| POST | `/api/cash-close/daily` | Cerrar caja del día |
+| DELETE | `/api/cash-close/daily/:date` | Reabrir el día |
 
 Los datos se persisten en **MySQL**.
