@@ -1,4 +1,4 @@
-import { query } from '../db.js';
+import pool, { query } from '../db.js';
 import type { ShopProduct } from '../types.js';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -9,6 +9,7 @@ interface DbShopProduct {
   points_reward: number;
   sort_order: number;
   unit_price?: string | null;
+  cost?: string | null;
   image_url?: string | null;
   image_data?: string | null;
   has_image?: number | boolean | null;
@@ -40,6 +41,8 @@ function rowToProduct(r: DbShopProduct): ShopProduct {
     pointsReward: r.points_reward,
     unitPrice:
       r.unit_price != null && String(r.unit_price).trim() !== '' ? String(r.unit_price).trim() : undefined,
+    cost:
+      r.cost != null && String(r.cost).trim() !== '' ? String(r.cost).trim() : undefined,
     sortOrder: r.sort_order,
     imageUrl: resolvePublicImageUrl(r),
     description:
@@ -77,7 +80,7 @@ export function parseProductImageDataUrl(dataUrl: string): { mime: string; buffe
 
 /** Columnas de listado sin cargar el blob completo de la imagen. */
 const PRODUCT_LIST_COLUMNS = `
-  id, name, points_reward, sort_order, unit_price, image_url, description, web_active, stock,
+  id, name, points_reward, sort_order, unit_price, cost, image_url, description, web_active, stock,
   (image_data IS NOT NULL AND CHAR_LENGTH(image_data) > 0) AS has_image
 `;
 
@@ -222,6 +225,7 @@ export async function createShopProduct(data: {
   name: string;
   pointsReward: number;
   unitPrice?: string | null;
+  cost?: string | null;
   description?: string | null;
   imageUrl?: string | null;
   webActive?: boolean;
@@ -239,6 +243,8 @@ export async function createShopProduct(data: {
   const pts = Math.max(0, Math.min(999_999, Math.floor(data.pointsReward)));
   const up =
     data.unitPrice != null && String(data.unitPrice).trim() !== '' ? String(data.unitPrice).trim() : null;
+  const costVal =
+    data.cost != null && String(data.cost).trim() !== '' ? String(data.cost).trim() : null;
   const desc =
     data.description != null && String(data.description).trim() !== ''
       ? String(data.description).trim()
@@ -246,9 +252,9 @@ export async function createShopProduct(data: {
   const stock = data.stock !== undefined ? data.stock : null;
   await query(
     `INSERT INTO shop_products
-      (id, name, points_reward, sort_order, unit_price, description, web_active, stock)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, data.name.trim(), pts, nextOrder, up, desc, data.webActive !== false ? 1 : 0, stock]
+      (id, name, points_reward, sort_order, unit_price, cost, description, web_active, stock)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, data.name.trim(), pts, nextOrder, up, costVal, desc, data.webActive !== false ? 1 : 0, stock]
   );
   const created = await getShopProductById(id);
   if (!created) throw new Error('Producto no creado');
@@ -258,7 +264,7 @@ export async function createShopProduct(data: {
 export async function updateShopProduct(
   id: string,
   data: Partial<
-    Pick<ShopProduct, 'name' | 'pointsReward' | 'unitPrice' | 'imageUrl' | 'description' | 'webActive' | 'stock'>
+    Pick<ShopProduct, 'name' | 'pointsReward' | 'unitPrice' | 'cost' | 'imageUrl' | 'description' | 'webActive' | 'stock'>
   >
 ): Promise<ShopProduct | null> {
   const current = await getShopProductById(id);
@@ -276,6 +282,16 @@ export async function updateShopProduct(
     unitPrice =
       current.unitPrice != null && String(current.unitPrice).trim() !== ''
         ? String(current.unitPrice).trim()
+        : null;
+  }
+  let cost: string | null;
+  if (data.cost !== undefined) {
+    cost =
+      data.cost != null && String(data.cost).trim() !== '' ? String(data.cost).trim() : null;
+  } else {
+    cost =
+      current.cost != null && String(current.cost).trim() !== ''
+        ? String(current.cost).trim()
         : null;
   }
   let description: string | null;
@@ -298,9 +314,9 @@ export async function updateShopProduct(
   }
 
   await query(
-    `UPDATE shop_products SET name = ?, points_reward = ?, unit_price = ?,
+    `UPDATE shop_products SET name = ?, points_reward = ?, unit_price = ?, cost = ?,
      description = ?, web_active = ?, stock = ? WHERE id = ?`,
-    [name, pointsReward, unitPrice, description, webActive ? 1 : 0, stock, id]
+    [name, pointsReward, unitPrice, cost, description, webActive ? 1 : 0, stock, id]
   );
   return getShopProductById(id);
 }
@@ -308,4 +324,38 @@ export async function updateShopProduct(
 export async function deleteShopProduct(id: string): Promise<boolean> {
   const res = await query<{ affectedRows: number }>('DELETE FROM shop_products WHERE id = ?', [id]);
   return (res as { affectedRows: number }).affectedRows > 0;
+}
+
+export async function reorderShopProducts(idsInOrder: string[]): Promise<ShopProduct[]> {
+  const ids = idsInOrder.map((x) => x.trim()).filter(Boolean);
+  if (ids.length === 0) return getAllShopProducts();
+
+  const rows = await query<{ id: string }[]>(
+    'SELECT id FROM shop_products ORDER BY sort_order ASC, name ASC'
+  );
+  const currentIds = rows.map((r) => r.id);
+  if (currentIds.length !== ids.length) {
+    throw new Error('La lista de productos no coincide con la cantidad actual.');
+  }
+  const currentSet = new Set(currentIds);
+  if (ids.some((id) => !currentSet.has(id))) {
+    throw new Error('La lista de productos contiene IDs inválidos.');
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    let sortOrder = 1;
+    for (const id of ids) {
+      await conn.execute('UPDATE shop_products SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+      sortOrder += 1;
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+  return getAllShopProducts();
 }

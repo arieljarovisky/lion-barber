@@ -32,12 +32,12 @@ export default function ProtectedRoute({
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (adminOnly && profile?.role !== 'admin') {
-    return <Navigate to="/" replace />;
-  }
-
   if (superAdminOnly && !isSuperAdmin) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (adminOnly && profile?.role !== 'admin' && !isSuperAdmin) {
+    return <Navigate to="/" replace />;
   }
 
   if (
