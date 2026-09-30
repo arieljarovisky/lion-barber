@@ -12,6 +12,8 @@ import { useAuth } from '../contexts/AuthContext';
 import type { AdminClientWithHistory, SubscriptionPlan } from '../api';
 import {
   adminAppointmentStatusBadge,
+  clientPreferredBarber,
+  clientVisitFrequency,
   formatAppointmentDateYmd,
   formatPhonesForInput,
   normalizeAppointmentTime,
@@ -61,6 +63,14 @@ export default function AdminClientDetailPage() {
   const invalidId = !Number.isFinite(idNum) || idNum < 1;
   const phones = client ? clientPhones(client) : [];
   const emailLocked = Boolean(client?.hasGoogleAccount);
+  const visitFrequency = useMemo(
+    () => (client ? clientVisitFrequency(client.appointments) : null),
+    [client]
+  );
+  const preferredBarber = useMemo(
+    () => (client ? clientPreferredBarber(client.appointments) : null),
+    [client]
+  );
 
   useEffect(() => {
     if (invalidId) {
@@ -467,6 +477,46 @@ export default function AdminClientDetailPage() {
                     )}
                   </div>
                 </div>
+                {visitFrequency && preferredBarber && (
+                  <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-xl border border-zinc-100 bg-white px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Frecuencia</p>
+                      <p className="mt-1 text-lg font-black text-zinc-900">{visitFrequency.label}</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">{visitFrequency.detail}</p>
+                    </div>
+                    <div className="rounded-xl border border-zinc-100 bg-white px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Visitas</p>
+                      <p className="mt-1 text-lg font-black tabular-nums text-zinc-900">
+                        {visitFrequency.visitCount}
+                      </p>
+                      <p className="mt-0.5 text-xs text-zinc-500">Turnos confirmados ya realizados</p>
+                    </div>
+                    <div className="rounded-xl border border-zinc-100 bg-white px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Última visita</p>
+                      <p className="mt-1 text-lg font-black tabular-nums text-zinc-900">
+                        {visitFrequency.lastVisitYmd
+                          ? formatAppointmentDateYmd(visitFrequency.lastVisitYmd)
+                          : '—'}
+                      </p>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        {visitFrequency.nextVisitYmd
+                          ? `${
+                              visitFrequency.nextVisitYmd < format(new Date(), 'yyyy-MM-dd')
+                                ? 'Debería haber vuelto aprox. el'
+                                : 'Vuelve aprox. el'
+                            } ${formatAppointmentDateYmd(visitFrequency.nextVisitYmd)}`
+                          : 'Sin fecha estimada de regreso'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-zinc-100 bg-white px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        Barbero preferido
+                      </p>
+                      <p className="mt-1 text-lg font-black text-zinc-900">{preferredBarber.name ?? '—'}</p>
+                      <p className="mt-0.5 text-xs text-zinc-500">{preferredBarber.detail}</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {clientAccountBalanceOwedArs(client.accountBalanceArs) > 0 && (
