@@ -327,7 +327,7 @@ export default function AfipInvoiceModal({
               {productsSubtotal > 0 ? ` y ${BARBER_PRODUCT_COMMISSION_PERCENT}% de los productos` : ''} (no reduce la factura).
             </p>
             {(appointment.tipAmount ?? 0) > 0 && (
-              <p className="mt-2 text-xs font-medium text-violet-700">
+              <p className="mt-2 text-xs font-medium text-[#6b2030]">
                 Propina del turno ($ {formatArs(appointment.tipAmount!)}): no se incluye en este comprobante AFIP.
               </p>
             )}

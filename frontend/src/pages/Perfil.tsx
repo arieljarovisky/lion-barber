@@ -4,7 +4,6 @@ import {
   User,
   Clock,
   Calendar,
-  Award,
   ChevronLeft,
   LogOut,
   LayoutDashboard,
@@ -608,17 +607,6 @@ export default function Perfil() {
             </section>
           );
         })()}
-
-        <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0">
-          <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#e5c185]/20 flex items-center justify-center flex-shrink-0">
-              <Award size={20} className="sm:w-[22px] sm:h-[22px] text-[#e5c185]" />
-            </div>
-            <h2 className="text-base sm:text-lg font-bold text-white">Mis puntos</h2>
-          </div>
-          <p className="text-3xl sm:text-4xl font-black text-[#e5c185]">{profile.points}</p>
-          <p className="text-zinc-500 text-xs sm:text-sm mt-2">Acumulás puntos en cada visita. Pronto podrás canjearlos.</p>
-        </section>
 
         {productOrders.length > 0 && (
           <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 mb-4 sm:mb-6 min-w-0">

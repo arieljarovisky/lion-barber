@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { Loader2, Megaphone, Pencil, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api';
 import { useConfirm } from '../contexts/ConfirmContext';
-import type { SitePromotion } from '../api';
+import type { Service, SitePromotion } from '../api';
 import {
   formatActiveWeekdays,
+  formatPromotionServices,
+  toggleIdInList,
   toggleWeekdayInList,
   WEEKDAY_OPTIONS,
 } from '../utils/sitePromotions';
@@ -18,6 +20,7 @@ import {
 
 type PromotionsPanelProps = {
   promotions: SitePromotion[];
+  services: Service[];
   loading: boolean;
   onRefresh: () => Promise<void>;
   showToast: (message: string, kind?: 'ok' | 'err') => void;
@@ -53,7 +56,48 @@ function WeekdayPicker({
   );
 }
 
+function ServicePicker({
+  services,
+  value,
+  onChange,
+}: {
+  services: Service[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const visible = services.filter((s) => !s.internal || value.includes(s.id));
+  if (visible.length === 0) {
+    return <p className="text-[11px] text-zinc-400">No hay servicios cargados.</p>;
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {visible.map((service) => {
+        const selected = value.includes(service.id);
+        return (
+          <button
+            key={service.id}
+            type="button"
+            onClick={() => onChange(toggleIdInList(value, service.id))}
+            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+              selected
+                ? 'bg-zinc-900 text-white'
+                : 'border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
+            }`}
+          >
+            {service.emoji ? `${service.emoji} ` : ''}
+            {service.name}
+            {service.internal ? ' (interno)' : ''}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function PromotionScheduleFields({
+  services,
+  serviceIds,
+  onServiceIdsChange,
   activeWeekdays,
   onActiveWeekdaysChange,
   discountPercent,
@@ -61,6 +105,9 @@ function PromotionScheduleFields({
   depositCoversFull,
   onDepositCoversFullChange,
 }: {
+  services: Service[];
+  serviceIds: string[];
+  onServiceIdsChange: (ids: string[]) => void;
   activeWeekdays: number[];
   onActiveWeekdaysChange: (days: number[]) => void;
   discountPercent: string;
@@ -74,12 +121,22 @@ function PromotionScheduleFields({
     <div className="grid gap-3 sm:col-span-2">
       <div>
         <p className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-500">
+          Servicios
+        </p>
+        <ServicePicker services={services} value={serviceIds} onChange={onServiceIdsChange} />
+        <p className="mt-1.5 text-[11px] text-zinc-400">
+          Sin selección = aplica a todos los servicios. Si elegís algunos, el descuento solo vale
+          al reservar esos.
+        </p>
+      </div>
+      <div>
+        <p className="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-500">
           Días activos
         </p>
         <WeekdayPicker value={activeWeekdays} onChange={onActiveWeekdaysChange} />
         <p className="mt-1.5 text-[11px] text-zinc-400">
-          Sin selección = el descuento aplica todos los días. Con días elegidos, el banner se ve
-          siempre pero el beneficio solo al reservar esos días.
+          Sin selección = el descuento aplica todos los días. Si elegís días, el cliente puede
+          reservar cualquier día abierto, pero el descuento solo entra si el turno cae en esos días.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -182,6 +239,7 @@ function PromotionCtaFields({
 
 export default function PromotionsPanel({
   promotions,
+  services,
   loading,
   onRefresh,
   showToast,
@@ -193,6 +251,7 @@ export default function PromotionsPanel({
   const [ctaLabel, setCtaLabel] = useState('Reservar turno');
   const [ctaHref, setCtaHref] = useState('#reserva');
   const [activeWeekdays, setActiveWeekdays] = useState<number[]>([]);
+  const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [discountPercent, setDiscountPercent] = useState('');
   const [depositCoversFull, setDepositCoversFull] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -204,6 +263,7 @@ export default function PromotionsPanel({
   const [editCtaHref, setEditCtaHref] = useState('');
   const [editActive, setEditActive] = useState(true);
   const [editActiveWeekdays, setEditActiveWeekdays] = useState<number[]>([]);
+  const [editServiceIds, setEditServiceIds] = useState<string[]>([]);
   const [editDiscountPercent, setEditDiscountPercent] = useState('');
   const [editDepositCoversFull, setEditDepositCoversFull] = useState(false);
 
@@ -231,6 +291,7 @@ export default function PromotionsPanel({
         ctaLabel: ctaLabel.trim() || undefined,
         ctaHref: ctaHref.trim() || undefined,
         activeWeekdays,
+        serviceIds,
         discountPercent: parseDiscount(discountPercent),
         depositCoversFull: depositCoversFull && parseDiscount(discountPercent) != null,
       });
@@ -240,6 +301,7 @@ export default function PromotionsPanel({
       setCtaLabel('Reservar turno');
       setCtaHref('#reserva');
       setActiveWeekdays([]);
+      setServiceIds([]);
       setDiscountPercent('');
       setDepositCoversFull(false);
       showToast('Promoción creada');
@@ -262,6 +324,7 @@ export default function PromotionsPanel({
     );
     setEditActive(p.active);
     setEditActiveWeekdays(p.activeWeekdays ?? []);
+    setEditServiceIds(p.serviceIds ?? []);
     setEditDiscountPercent(p.discountPercent != null ? String(p.discountPercent) : '');
     setEditDepositCoversFull(Boolean(p.depositCoversFull));
   };
@@ -281,6 +344,7 @@ export default function PromotionsPanel({
         ctaHref: editCtaHref.trim(),
         active: editActive,
         activeWeekdays: editActiveWeekdays,
+        serviceIds: editServiceIds,
         discountPercent: parseDiscount(editDiscountPercent),
         depositCoversFull:
           editDepositCoversFull && parseDiscount(editDiscountPercent) != null,
@@ -318,7 +382,7 @@ export default function PromotionsPanel({
           <h2 className="text-lg font-black text-zinc-900">Promociones del sitio</h2>
           <p className="text-sm text-zinc-500">
             Las promociones activas se muestran siempre en la web. El descuento y la seña promocional
-            solo aplican si el cliente reserva en los días que elijas abajo.
+            solo aplican en los servicios y los días que elijas abajo.
           </p>
         </div>
       </div>
@@ -352,6 +416,9 @@ export default function PromotionsPanel({
           onCtaLabelChange={setCtaLabel}
         />
         <PromotionScheduleFields
+          services={services}
+          serviceIds={serviceIds}
+          onServiceIdsChange={setServiceIds}
           activeWeekdays={activeWeekdays}
           onActiveWeekdaysChange={setActiveWeekdays}
           discountPercent={discountPercent}
@@ -405,6 +472,9 @@ export default function PromotionsPanel({
                     onCtaLabelChange={setEditCtaLabel}
                   />
                   <PromotionScheduleFields
+                    services={services}
+                    serviceIds={editServiceIds}
+                    onServiceIdsChange={setEditServiceIds}
                     activeWeekdays={editActiveWeekdays}
                     onActiveWeekdaysChange={setEditActiveWeekdays}
                     discountPercent={editDiscountPercent}
@@ -438,6 +508,8 @@ export default function PromotionsPanel({
                   </p>
                   {p.description && <p className="mt-1 text-sm text-zinc-500">{p.description}</p>}
                   <p className="mt-1 text-xs text-zinc-400">
+                    Servicios: {formatPromotionServices(p.serviceIds, services)}
+                    {' · '}
                     Días: {formatActiveWeekdays(p.activeWeekdays ?? [])}
                     {p.discountPercent != null && p.discountPercent > 0 && (
                       <>

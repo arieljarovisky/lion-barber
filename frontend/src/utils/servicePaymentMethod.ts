@@ -24,14 +24,20 @@ export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string>
   canje: 'Canje',
 };
 
+/** Color de un pago ya registrado (todos los medios, el mismo azul). */
+export const REGISTERED_PAYMENT_CLASS = 'border-blue-400 bg-blue-100 text-blue-950';
+
+/** Propina, aparte de los cobros del turno. */
+export const TIP_PAINTED_CLASS = 'border-[#7a2d3c] bg-[#f6e4e8] text-[#6b2030]';
+
 /** Color de la forma de pago cuando está seleccionada. */
 export const SERVICE_PAYMENT_METHOD_SELECTED_CLASS: Record<ServicePaymentMethod, string> = {
-  account: 'border-amber-400 bg-amber-100 text-amber-950',
-  mercadopago: 'border-sky-400 bg-sky-100 text-sky-950',
-  cash: 'border-emerald-500 bg-emerald-100 text-emerald-950',
-  card: 'border-indigo-400 bg-indigo-100 text-indigo-950',
-  subscription: 'border-violet-400 bg-violet-100 text-violet-950',
-  canje: 'border-fuchsia-400 bg-fuchsia-100 text-fuchsia-950',
+  account: REGISTERED_PAYMENT_CLASS,
+  mercadopago: REGISTERED_PAYMENT_CLASS,
+  cash: REGISTERED_PAYMENT_CLASS,
+  card: REGISTERED_PAYMENT_CLASS,
+  subscription: REGISTERED_PAYMENT_CLASS,
+  canje: REGISTERED_PAYMENT_CLASS,
 };
 
 /** Abono y canje de puntos: no ingresan efectivo en caja en el turno. */

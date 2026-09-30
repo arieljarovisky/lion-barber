@@ -27,20 +27,64 @@ export function formatActiveWeekdays(days: number[]): string {
     .join(', ');
 }
 
+/** Lista vacía = la promo aplica a todos los servicios. */
+export function promotionAppliesToService(
+  promo: Pick<SitePromotion, 'serviceIds'>,
+  serviceId: string | null | undefined
+): boolean {
+  const ids = promo.serviceIds ?? [];
+  if (!ids.length) return true;
+  if (!serviceId) return false;
+  return ids.includes(serviceId);
+}
+
+export function formatPromotionServices(
+  serviceIds: string[] | undefined,
+  services: { id: string; name: string }[]
+): string {
+  if (!serviceIds?.length) return 'Todos los servicios';
+  const names = serviceIds.map((id) => services.find((s) => s.id === id)?.name ?? id);
+  return names.join(', ');
+}
+
+export function toggleIdInList(ids: string[], id: string): string[] {
+  const set = new Set(ids);
+  if (set.has(id)) set.delete(id);
+  else set.add(id);
+  return [...set];
+}
+
 export function isPromotionActiveOnDate(promo: SitePromotion, dateStr: string): boolean {
   if (!promo.active) return false;
   if (!promo.activeWeekdays?.length) return true;
   const weekday = isoWeekdayFromDateString(dateStr);
-  return promo.activeWeekdays.includes(weekday);
+  return promo.activeWeekdays.some((day) => Number(day) === weekday);
+}
+
+/** Promos del servicio que no corren en esa fecha: se puede reservar igual, a precio normal. */
+export function promotionsOutsideSelectedDate(
+  promotions: SitePromotion[],
+  dateStr: string,
+  serviceId: string | null | undefined
+): SitePromotion[] {
+  if (!serviceId || !dateStr) return [];
+  return promotions.filter((promo) => {
+    if (!promo.active || !promo.discountPercent || promo.discountPercent <= 0) return false;
+    if (!promotionAppliesToService(promo, serviceId)) return false;
+    if (!promo.activeWeekdays?.length) return false;
+    return !isPromotionActiveOnDate(promo, dateStr);
+  });
 }
 
 export function resolveBookingPromotion(
   promotions: SitePromotion[],
-  dateStr: string
+  dateStr: string,
+  serviceId?: string | null
 ): SitePromotion | null {
   let best: SitePromotion | null = null;
   for (const promo of promotions) {
     if (!isPromotionActiveOnDate(promo, dateStr)) continue;
+    if (!promotionAppliesToService(promo, serviceId)) continue;
     const pct = promo.discountPercent;
     if (pct == null || pct <= 0 || pct > 100) continue;
     if (!best || pct < (best.discountPercent ?? 101)) {
@@ -61,9 +105,10 @@ export function calculateBookingDepositPreview(
   servicePriceArs: number,
   depositPercent: number,
   promotions: SitePromotion[],
-  dateStr: string | null | undefined
+  dateStr: string | null | undefined,
+  serviceId?: string | null
 ): PromotionalDepositPreview {
-  const promo = dateStr ? resolveBookingPromotion(promotions, dateStr) : null;
+  const promo = dateStr ? resolveBookingPromotion(promotions, dateStr, serviceId) : null;
   if (!promo?.discountPercent || promo.discountPercent <= 0) {
     return {
       amountArs: calculateDepositAmountArs(servicePriceArs, depositPercent),

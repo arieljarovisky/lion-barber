@@ -9,14 +9,7 @@ import {
 } from '../utils/servicePaymentMethod';
 
 /** Relleno fuerte del botón activo, para que se distinga del fondo del bloque. */
-const METHOD_BUTTON_ACTIVE_CLASS: Record<ServicePaymentMethod, string> = {
-  account: 'border-amber-700 bg-amber-500 text-white',
-  mercadopago: 'border-sky-700 bg-sky-500 text-white',
-  cash: 'border-emerald-700 bg-emerald-600 text-white',
-  card: 'border-indigo-700 bg-indigo-500 text-white',
-  subscription: 'border-violet-700 bg-violet-500 text-white',
-  canje: 'border-fuchsia-700 bg-fuchsia-600 text-white',
-};
+const METHOD_BUTTON_ACTIVE_CLASS = 'border-blue-700 bg-blue-600 text-white';
 import { formatArs, parseSignedArsInput } from '../utils/money';
 
 type Props = {
@@ -135,12 +128,12 @@ export default function ServicePaymentSplitsEditor({
                       compact
                         ? `rounded-lg border px-2 py-1 text-[10px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                             selected
-                              ? METHOD_BUTTON_ACTIVE_CLASS[m]
+                              ? METHOD_BUTTON_ACTIVE_CLASS
                               : 'border-white/80 bg-white text-zinc-600 hover:bg-white'
                           }`
                         : `rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                             selected
-                              ? METHOD_BUTTON_ACTIVE_CLASS[m]
+                              ? METHOD_BUTTON_ACTIVE_CLASS
                               : 'border-white/80 bg-white text-zinc-600 hover:bg-white'
                           }`
                     }

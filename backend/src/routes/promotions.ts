@@ -32,6 +32,18 @@ function parseWeekdaysInput(raw: unknown): number[] | undefined {
   );
 }
 
+function parseServiceIdsInput(raw: unknown): string[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) return [];
+  return [
+    ...new Set(
+      raw
+        .map((id) => String(id).trim())
+        .filter((id) => id.length > 0 && id.length <= 50)
+    ),
+  ].slice(0, 100);
+}
+
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   const {
     title,
@@ -43,6 +55,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     activeWeekdays,
     discountPercent,
     depositCoversFull,
+    serviceIds,
   } = req.body as {
     title?: string;
     description?: string;
@@ -53,6 +66,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     activeWeekdays?: unknown;
     discountPercent?: unknown;
     depositCoversFull?: boolean;
+    serviceIds?: unknown;
   };
   if (!title || typeof title !== 'string' || !title.trim()) {
     return res.status(400).json({ error: 'Se requiere título de la promoción' });
@@ -71,6 +85,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
           ? null
           : Number(discountPercent),
       depositCoversFull,
+      serviceIds: parseServiceIdsInput(serviceIds),
     });
     res.status(201).json(promotion);
   } catch (err) {
@@ -91,6 +106,7 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
     activeWeekdays,
     discountPercent,
     depositCoversFull,
+    serviceIds,
   } = req.body as {
     title?: string;
     description?: string;
@@ -102,6 +118,7 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
     activeWeekdays?: unknown;
     discountPercent?: unknown;
     depositCoversFull?: boolean;
+    serviceIds?: unknown;
   };
   const updates: Parameters<typeof repo.updatePromotion>[1] = {};
   if (title !== undefined) {
@@ -130,6 +147,9 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
       discountPercent === null || discountPercent === '' ? null : Number(discountPercent);
   }
   if (depositCoversFull !== undefined) updates.depositCoversFull = Boolean(depositCoversFull);
+  if (serviceIds !== undefined) {
+    updates.serviceIds = parseServiceIdsInput(serviceIds) ?? [];
+  }
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'Nada para actualizar' });
   }

@@ -607,7 +607,7 @@ export default function WeeklyCashClosePage() {
                             <td className="px-4 py-3 text-right tabular-nums font-medium">
                               ${formatArs(b.commission)}
                             </td>
-                            <td className="px-4 py-3 text-right tabular-nums text-violet-700">
+                            <td className="px-4 py-3 text-right tabular-nums text-[#6b2030]">
                               {b.tips > 0 ? `$${formatArs(b.tips)}` : '—'}
                             </td>
                             <td className="px-4 py-3 text-right tabular-nums">${formatArs(b.afipInvoiced)}</td>
@@ -626,7 +626,7 @@ export default function WeeklyCashClosePage() {
                             ${formatArs(summary.localPending)}
                           </td>
                           <td className="px-4 py-3 text-right">${formatArs(summary.commissions)}</td>
-                          <td className="px-4 py-3 text-right text-violet-800">
+                          <td className="px-4 py-3 text-right text-[#6b2030]">
                             {summary.tipsTotal > 0 ? `$${formatArs(summary.tipsTotal)}` : '—'}
                           </td>
                           <td className="px-4 py-3 text-right">${formatArs(summary.afipInvoicedTotal)}</td>
@@ -702,7 +702,7 @@ export default function WeeklyCashClosePage() {
                                 `$${formatArs(r.localPending)}`
                               )}
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-violet-700">
+                            <td className="px-3 py-2 text-right tabular-nums text-[#6b2030]">
                               {r.tipAmount > 0 ? `$${formatArs(r.tipAmount)}` : '—'}
                             </td>
                             <td className="max-w-[14rem] px-3 py-2 text-xs font-medium text-zinc-700">

@@ -48,6 +48,7 @@ import type { ProductOrderLine } from '../types.js';
 import {
   calculateBookingDepositArs,
   isPromotionActiveOnDate,
+  promotionAppliesToService,
   resolveBookingPromotion,
 } from '../services/sitePromotions.js';
 import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
@@ -191,12 +192,16 @@ async function createMercadoPagoSenaPreference(
     existingApp?.promotionId != null
       ? await getPromotionById(existingApp.promotionId)
       : null;
-  if (promo && !isPromotionActiveOnDate(promo, input.date)) {
+  if (
+    promo &&
+    (!isPromotionActiveOnDate(promo, input.date) ||
+      !promotionAppliesToService(promo, input.serviceId))
+  ) {
     promo = null;
   }
   if (!promo) {
     const activePromos = await getActivePromotions();
-    promo = resolveBookingPromotion(activePromos, input.date);
+    promo = resolveBookingPromotion(activePromos, input.date, input.serviceId);
   }
   const depositCalc = calculateBookingDepositArs(servicePriceArs, DEPOSIT_PERCENT, promo);
   amountArs = depositCalc.amountArs;
@@ -796,7 +801,7 @@ router.post('/sena', async (req, res) => {
   const serviceEntity = serviceId ? await getServiceById(serviceId) : null;
   const servicePriceArs = parseArsAmount(serviceEntity?.price ?? service);
   const activePromos = await getActivePromotions();
-  const bookingPromo = resolveBookingPromotion(activePromos, date);
+  const bookingPromo = resolveBookingPromotion(activePromos, date, serviceId);
   const depositCalc =
     servicePriceArs != null
       ? calculateBookingDepositArs(servicePriceArs, DEPOSIT_PERCENT, bookingPromo)
@@ -1272,7 +1277,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
 
   try {
     const activePromos = await getActivePromotions();
-    const bookingPromo = resolveBookingPromotion(activePromos, ref.d);
+    const bookingPromo = resolveBookingPromotion(activePromos, ref.d, ref.i);
     const serviceEntity = ref.i ? await getServiceById(ref.i) : null;
     const servicePriceArs = parseArsAmount(serviceEntity?.price ?? ref.s);
     const depositCalc =

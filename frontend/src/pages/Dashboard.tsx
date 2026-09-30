@@ -91,6 +91,7 @@ import {
   formatAppointmentPaymentDisplay,
   initialSplitsFromAppointment,
   SERVICE_PAYMENT_METHOD_SELECTED_CLASS,
+  TIP_PAINTED_CLASS,
 } from '../utils/servicePaymentMethod';
 import { formatAppointmentProductsSummary, sumAppointmentProducts } from '../utils/appointmentProducts';
 import { appointmentModifyBlockedReason, canUpdateAppointmentPayments } from '../utils/appointmentModifyPermission';
@@ -2384,8 +2385,12 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                                   <AppointmentPaymentBadge app={app} className="mt-1" />
                                   {renderPaymentSplitsTrigger(app, true)}
                                   {(app.tipAmount ?? 0) > 0 && (
-                                    <p className="text-[10px] font-semibold text-violet-700 mt-0.5">
-                                      Propina ${formatArs(app.tipAmount!)}
+                                    <p className="mt-0.5">
+                                      <span
+                                        className={`inline-block rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${TIP_PAINTED_CLASS}`}
+                                      >
+                                        Propina ${formatArs(app.tipAmount!)}
+                                      </span>
                                     </p>
                                   )}
                                   <p className="text-zinc-500 text-[10px] mt-0.5 tabular-nums">
@@ -2935,8 +2940,12 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                       <div className="lg:hidden">{renderPaymentSplitsTrigger(app, true)}</div>
                       <div className="hidden lg:block">{renderPaymentSplitsTrigger(app)}</div>
                       {(app.tipAmount ?? 0) > 0 && (
-                        <p className="text-[11px] font-semibold text-violet-700 mt-1.5">
-                          Propina ${formatArs(app.tipAmount!)}
+                        <p className="mt-1.5">
+                          <span
+                            className={`inline-block rounded-md border px-1.5 py-0.5 text-[11px] font-semibold ${TIP_PAINTED_CLASS}`}
+                          >
+                            Propina ${formatArs(app.tipAmount!)}
+                          </span>
                         </p>
                       )}
                     </div>
@@ -3400,6 +3409,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         {view === 'promociones' && isAdmin && (
           <PromotionsPanel
             promotions={promotions}
+            services={services}
             loading={promotionsLoading}
             onRefresh={loadPromotionsPanel}
             showToast={showToast}

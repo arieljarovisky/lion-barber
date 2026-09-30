@@ -1,5 +1,10 @@
 import { query } from '../db.js';
-import { parseActiveWeekdays, serializeActiveWeekdays } from '../services/sitePromotions.js';
+import {
+  parseActiveWeekdays,
+  parseServiceIds,
+  serializeActiveWeekdays,
+  serializeServiceIds,
+} from '../services/sitePromotions.js';
 import { isoWeekdayFromDateString } from '../weekdayUtils.js';
 
 export interface SitePromotion {
@@ -17,6 +22,8 @@ export interface SitePromotion {
   discountPercent: number | null;
   /** Si true, la seña online cubre todo el importe promocional (sin saldo en local). */
   depositCoversFull: boolean;
+  /** Ids de servicios. Vacío = todos los servicios. */
+  serviceIds: string[];
 }
 
 interface DbPromotion {
@@ -31,6 +38,7 @@ interface DbPromotion {
   active_weekdays?: string | null;
   discount_percent?: number | null;
   deposit_covers_full?: number | boolean | null;
+  service_ids?: string | null;
 }
 
 function rowToPromotion(r: DbPromotion): SitePromotion {
@@ -51,6 +59,7 @@ function rowToPromotion(r: DbPromotion): SitePromotion {
     activeWeekdays: parseActiveWeekdays(r.active_weekdays),
     discountPercent,
     depositCoversFull: Boolean(r.deposit_covers_full),
+    serviceIds: parseServiceIds(r.service_ids),
   };
 }
 
@@ -111,6 +120,7 @@ export async function createPromotion(data: {
   activeWeekdays?: number[];
   discountPercent?: number | null;
   depositCoversFull?: boolean;
+  serviceIds?: string[];
 }): Promise<SitePromotion> {
   let id = slugFromTitle(data.title);
   const existing = await getPromotionById(id);
@@ -122,13 +132,14 @@ export async function createPromotion(data: {
   );
   const nextOrder = Number(maxRows[0]?.maxOrder ?? 0) + 1;
   const weekdaysStr = serializeActiveWeekdays(data.activeWeekdays);
+  const serviceIdsStr = serializeServiceIds(data.serviceIds);
   const discountPercent = normalizeDiscountPercent(data.discountPercent);
   const depositCoversFull = Boolean(data.depositCoversFull) && discountPercent != null;
   await query(
     `INSERT INTO site_promotions
       (id, title, description, badge_text, cta_label, cta_href, active, sort_order,
-       active_weekdays, discount_percent, deposit_covers_full)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       active_weekdays, discount_percent, deposit_covers_full, service_ids)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       data.title.trim(),
@@ -141,6 +152,7 @@ export async function createPromotion(data: {
       weekdaysStr,
       discountPercent,
       depositCoversFull ? 1 : 0,
+      serviceIdsStr,
     ]
   );
   const created = await getPromotionById(id);
@@ -163,6 +175,7 @@ export async function updatePromotion(
       | 'activeWeekdays'
       | 'discountPercent'
       | 'depositCoversFull'
+      | 'serviceIds'
     >
   >
 ): Promise<SitePromotion | null> {
@@ -178,7 +191,7 @@ export async function updatePromotion(
   await query(
     `UPDATE site_promotions SET title = ?, description = ?, badge_text = ?, cta_label = ?,
      cta_href = ?, active = ?, sort_order = ?, active_weekdays = ?, discount_percent = ?,
-     deposit_covers_full = ? WHERE id = ?`,
+     deposit_covers_full = ?, service_ids = ? WHERE id = ?`,
     [
       updated.title.trim(),
       updated.description.trim() || null,
@@ -190,6 +203,7 @@ export async function updatePromotion(
       serializeActiveWeekdays(updated.activeWeekdays),
       discountPercent,
       depositCoversFull ? 1 : 0,
+      serializeServiceIds(updated.serviceIds),
       id,
     ]
   );

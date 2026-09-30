@@ -398,6 +398,8 @@ export interface SitePromotion {
   discountPercent?: number | null;
   /** La seña online cubre todo el importe promocional. */
   depositCoversFull?: boolean;
+  /** Ids de servicios. Vacío = todos los servicios. */
+  serviceIds?: string[];
 }
 
 export interface ClientSubscriptionMember {
@@ -604,6 +606,7 @@ export const api = {
     activeWeekdays?: number[];
     discountPercent?: number | null;
     depositCoversFull?: boolean;
+    serviceIds?: string[];
   }) =>
     fetchApi<SitePromotion>('/api/promotions', {
       method: 'POST',
@@ -623,6 +626,7 @@ export const api = {
       activeWeekdays: number[];
       discountPercent: number | null;
       depositCoversFull: boolean;
+      serviceIds: string[];
     }>
   ) =>
     fetchApi<SitePromotion>(`/api/promotions/${encodeURIComponent(id)}`, {

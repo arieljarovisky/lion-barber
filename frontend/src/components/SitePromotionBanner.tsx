@@ -1,9 +1,10 @@
 import React from 'react';
-import type { SitePromotion } from '../api';
-import { formatActiveWeekdays } from '../utils/sitePromotions';
+import type { Service, SitePromotion } from '../api';
+import { formatActiveWeekdays, formatPromotionServices } from '../utils/sitePromotions';
 
 type SitePromotionBannerProps = {
   promotions: SitePromotion[];
+  services?: Service[];
 };
 
 function promoDiscountLabel(promo: SitePromotion): string | null {
@@ -13,7 +14,10 @@ function promoDiscountLabel(promo: SitePromotion): string | null {
   return null;
 }
 
-export default function SitePromotionBanner({ promotions }: SitePromotionBannerProps) {
+export default function SitePromotionBanner({
+  promotions,
+  services = [],
+}: SitePromotionBannerProps) {
   if (promotions.length === 0) return null;
 
   return (
@@ -52,18 +56,30 @@ export default function SitePromotionBanner({ promotions }: SitePromotionBannerP
                   </p>
                 )}
 
-                {(promo.activeWeekdays?.length || promo.discountPercent) && (
+                {(promo.activeWeekdays?.length ||
+                  promo.serviceIds?.length ||
+                  promo.discountPercent) && (
                   <p className="mt-1 line-clamp-2 text-[8px] text-zinc-500 sm:mt-2 sm:text-xs">
                     {promo.discountPercent != null && promo.discountPercent > 0 ? (
                       <>
-                        Al reservar:{' '}
+                        Reservá cualquier día
                         {promo.activeWeekdays?.length
-                          ? formatActiveWeekdays(promo.activeWeekdays)
-                          : 'todos los días'}
+                          ? ` · descuento solo ${formatActiveWeekdays(promo.activeWeekdays)}`
+                          : ' · descuento todos los días'}
+                        {promo.serviceIds?.length
+                          ? ` · ${formatPromotionServices(promo.serviceIds, services)}`
+                          : ''}
                         {promo.depositCoversFull ? ' · seña = todo pago' : ''}
                       </>
-                    ) : promo.activeWeekdays?.length ? (
-                      <>Vigente: {formatActiveWeekdays(promo.activeWeekdays)}</>
+                    ) : promo.activeWeekdays?.length || promo.serviceIds?.length ? (
+                      <>
+                        {promo.activeWeekdays?.length
+                          ? `Vigente: ${formatActiveWeekdays(promo.activeWeekdays)}`
+                          : null}
+                        {promo.serviceIds?.length
+                          ? `${promo.activeWeekdays?.length ? ' · ' : ''}${formatPromotionServices(promo.serviceIds, services)}`
+                          : null}
+                      </>
                     ) : null}
                   </p>
                 )}

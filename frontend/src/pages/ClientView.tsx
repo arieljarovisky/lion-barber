@@ -26,6 +26,9 @@ import { DEPOSIT_PAYMENT_MINUTES } from '../constants/depositPayment';
 import { parseArsAmount } from '../utils/money';
 import {
   calculateBookingDepositPreview,
+  formatActiveWeekdays,
+  promotionsOutsideSelectedDate,
+  resolveBookingPromotion,
 } from '../utils/sitePromotions';
 import {
   format,
@@ -282,9 +285,20 @@ export default function ClientView() {
       price,
       DEPOSIT_PERCENT,
       publicPromotions,
-      selectedDate || null
+      selectedDate || null,
+      selectedServiceRow.id
     );
   }, [selectedServiceRow, profile?.depositExempt, publicPromotions, selectedDate]);
+
+  const promosOutsideSelectedDate = useMemo(
+    () =>
+      promotionsOutsideSelectedDate(
+        publicPromotions,
+        selectedDate,
+        selectedServiceRow?.id
+      ),
+    [publicPromotions, selectedDate, selectedServiceRow]
+  );
 
   const visibleCatalogServices = useMemo(() => {
     if (servicesExpanded || services.length <= SERVICES_PREVIEW_COUNT) return services;
@@ -893,7 +907,7 @@ export default function ClientView() {
 
       </section>
 
-      <SitePromotionBanner promotions={publicPromotions} />
+      <SitePromotionBanner promotions={publicPromotions} services={services} />
 
       {/* Services Section */}
       <section id="servicios" className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 bg-zinc-950 border-y border-zinc-900">
@@ -1271,6 +1285,10 @@ export default function ClientView() {
                             const dateStr = format(date, 'yyyy-MM-dd');
                             const isSelected = selectedDate === dateStr;
                             const isPastDay = isBefore(startOfDay(date), startOfToday());
+                            const promoOnDay = Boolean(
+                              selectedService &&
+                                resolveBookingPromotion(publicPromotions, dateStr, selectedService)
+                            );
                             return (
                               <button
                                 key={dateStr}
@@ -1303,6 +1321,14 @@ export default function ClientView() {
                                 <span className="text-[10px] font-bold uppercase tracking-widest mt-1">
                                   {format(date, 'MMM', { locale: es }).replace('.', '')}
                                 </span>
+                                {promoOnDay && !isPastDay && (
+                                  <span
+                                    className={`mt-1 h-1.5 w-1.5 rounded-full ${
+                                      isSelected ? 'bg-black' : 'bg-[#e5c185]'
+                                    }`}
+                                    title="Día con promoción"
+                                  />
+                                )}
                               </button>
                             );
                           })}
@@ -1488,6 +1514,20 @@ export default function ClientView() {
                           Se cobran juntos en un solo pago con Mercado Pago.
                         </p>
                       </div>
+                    )}
+                    {promosOutsideSelectedDate.length > 0 && (
+                      <p className="text-center text-xs text-zinc-500 break-words">
+                        Podés reservar este día. El descuento
+                        {promosOutsideSelectedDate.length === 1
+                          ? ` de «${promosOutsideSelectedDate[0].title}» aplica solo ${formatActiveWeekdays(promosOutsideSelectedDate[0].activeWeekdays ?? [])}`
+                          : ` aplica solo ${promosOutsideSelectedDate
+                              .map(
+                                (promo) =>
+                                  `${formatActiveWeekdays(promo.activeWeekdays ?? [])} (${promo.title})`
+                              )
+                              .join(' · ')}`}
+                        . Esta fecha se cobra a precio normal.
+                      </p>
                     )}
                     {depositPreview != null && (
                       <p className="text-center text-sm text-zinc-400 break-words">
@@ -1762,6 +1802,13 @@ export default function ClientView() {
                 const isCurrentMonth = isSameMonth(day, startOfMonth(currentMonth));
                 const ymd = format(day, 'yyyy-MM-dd');
                 const isClosedDay = !openWeekdays.includes(getISODay(day)) || closedDates.includes(ymd);
+                const promoOnDay =
+                  !isPast &&
+                  !isClosedDay &&
+                  Boolean(
+                    selectedService &&
+                      resolveBookingPromotion(publicPromotions, ymd, selectedService)
+                  );
                 
                 return (
                   <button
@@ -1782,6 +1829,7 @@ export default function ClientView() {
                       ${!isCurrentMonth ? 'text-zinc-700' : ''}
                       ${isPast || isClosedDay ? 'opacity-30 cursor-not-allowed' : 'hover:bg-zinc-900 hover:text-[#e5c185]'}
                       ${isSelected ? 'bg-[#e5c185] text-black font-bold shadow-[0_0_15px_rgba(229,193,133,0.3)] hover:bg-[#d4b074] hover:text-black' : (isCurrentMonth && !isPast && !isClosedDay ? 'text-zinc-300' : '')}
+                      ${promoOnDay && !isSelected ? 'ring-1 ring-[#e5c185]/70' : ''}
                     `}
                   >
                     {format(day, 'd')}
