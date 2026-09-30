@@ -456,63 +456,6 @@ async function sendMail(opts: SendOpts): Promise<void> {
   await sendMailViaSmtp(opts);
 }
 
-/** Aviso al cliente: turno reservado y esperando que se pague la seña. */
-export async function sendDepositPendingEmail(
-  email: string,
-  app: Appointment,
-  options: { paymentUrl?: string; paymentDueAt?: string | null; depositMinutes: number }
-): Promise<void> {
-  if (!isRealClientEmail(email)) return;
-  if (!isEmailProviderConfigured()) {
-    console.warn('[Email] OMITIDO sendDepositPendingEmail: no hay proveedor configurado (RESEND_API_KEY o SMTP_*).');
-    return;
-  }
-  const shopName = getShopNameForEmails();
-
-  const subscription = await loadSubscriptionForAppointment(app);
-  const { text: detailsText, html: detailsHtml, subscriptionNoticeHtml } =
-    mergeAppointmentAndSubscriptionDetails(app, subscription);
-  const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
-  const minutes = options.depositMinutes;
-
-  const text = [
-    `${greetingName}, reservamos tu turno y estamos esperando que se acredite el pago de la seña.`,
-    '',
-    'Detalles del turno:',
-    detailsText,
-    '',
-    `Tenés ${minutes} minutos para completar el pago, si no se cancela automáticamente.`,
-    options.paymentUrl ? `Pagar ahora: ${options.paymentUrl}` : '',
-    '',
-    `Reprogramar u otro horario: ${getClientPerfilRescheduleUrl(app.id)}`,
-    '',
-    `Gracias por elegir ${shopName}.`,
-  ]
-    .filter(Boolean)
-    .join('\n');
-
-  const html = renderBrandedEmail({
-    title: 'Tu turno está reservado',
-    greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
-    intro: 'Reservamos tu horario y estamos esperando que se acredite el pago de la seña para confirmarlo.',
-    detailsHtml,
-    noticeColor: 'amber',
-    noticeHtml: subscriptionNoticeHtml
-      ? `${subscriptionNoticeHtml}<br /><br />Tenés <strong>${minutes} minutos</strong> para completar el pago. Si no se acredita en ese plazo, la reserva se cancela automáticamente.`
-      : `Tenés <strong>${minutes} minutos</strong> para completar el pago. Si no se acredita en ese plazo, la reserva se cancela automáticamente.`,
-    cta: options.paymentUrl ? { label: 'Pagar la seña', url: options.paymentUrl } : undefined,
-    secondaryCta: { label: 'Reprogramar turno', url: getClientPerfilRescheduleUrl(app.id) },
-    outro: 'También podés gestionar tus turnos desde tu perfil en nuestro sitio.',
-  });
-
-  await sendMail({
-    to: email,
-    subject: `Tu turno en ${shopName} está esperando el pago de la seña`,
-    text,
-    html,
-  });
-}
-
 /** Aviso al cliente: el turno fue agendado (sin pago de seña, ej. desde el panel del admin). */
 export async function sendAppointmentScheduledEmail(
   email: string,
@@ -735,7 +678,7 @@ export async function sendAppointmentCancelledEmail(
   });
 }
 
-/** Recordatorio ~2 h 30 min antes del turno (solo turnos scheduled con cuenta). */
+/** Recordatorio 2 horas antes del turno (solo turnos scheduled con cuenta). */
 export async function sendAppointmentReminder1hEmail(email: string, app: Appointment): Promise<void> {
   if (!isRealClientEmail(email)) return;
   if (!isEmailProviderConfigured()) {
@@ -745,37 +688,35 @@ export async function sendAppointmentReminder1hEmail(email: string, app: Appoint
   const shopName = getShopNameForEmails();
   const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
-  const reproUrl = getClientPerfilRescheduleUrl(app.id);
+  const perfilUrl = getClientPerfilUrl();
 
   const text = [
-    `${greetingName}, en aproximadamente 2 horas y media tenés turno en ${shopName}.`,
+    `${greetingName}, en aproximadamente 2 horas tenés turno en ${shopName}.`,
     '',
     'Detalles del turno:',
     detailsText,
     '',
-    'Si necesitás cancelar o reprogramar, hacelo desde el sitio con al menos 2 horas de anticipación al horario del turno.',
+    'Recordá que hay 10 minutos de tolerancia desde la hora del turno.',
     '',
-    `Reprogramar o ver tus turnos: ${reproUrl}`,
+    `Ver tu turno: ${perfilUrl}`,
     '',
-    `Te esperamos.`,
+    'Te esperamos.',
   ].join('\n');
 
   const html = renderBrandedEmail({
-    title: 'Recordatorio: tu turno es en 2 horas y media',
+    title: 'Recordatorio: tu turno es en 2 horas',
     greeting: `Hola <strong>${escapeHtml(greetingName)}</strong>,`,
-    intro:
-      'Te recordamos que en aproximadamente <strong>2 horas y media</strong> comienza tu turno. Si ya no podés asistir, cancelá o reprogramá desde el sitio <strong>antes de que falten 2 horas</strong> para el horario pactado.',
+    intro: 'Te recordamos que en aproximadamente <strong>2 horas</strong> comienza tu turno.',
     detailsHtml,
     noticeColor: 'zinc',
-    noticeHtml:
-      'Recordá la tolerancia de <strong>10 minutos</strong> desde la hora pactada. Con menos de <strong>2 horas</strong> de anticipación no podés cancelar ni reprogramar desde la web; la seña no se reembolsa en ese caso.',
-    cta: { label: 'Reprogramar turno', url: reproUrl },
+    noticeHtml: 'Recordá la tolerancia de <strong>10 minutos</strong> desde la hora pactada.',
+    cta: { label: 'Ver tu turno', url: perfilUrl },
     outro: `Equipo ${shopName}`,
   });
 
   await sendMail({
     to: email,
-    subject: `Recordatorio: tu turno en ${shopName} es en 2 horas y media`,
+    subject: `Recordatorio: tu turno en ${shopName} es en 2 horas`,
     text,
     html,
   });

@@ -794,7 +794,7 @@ export async function syncOrphanAppointmentsForClientPhones(userId: number): Pro
   return total;
 }
 
-/** Para el job de recordatorio (~2 h 30 min antes): turnos futuros con cuenta y flag pendiente. */
+/** Para el job de recordatorio (2 horas antes): turnos futuros con cuenta y flag pendiente. */
 export async function listScheduledAppointmentIdsForReminderScan(): Promise<string[]> {
   const rows = await query<{ id: number }[]>(
     `SELECT id FROM appointments

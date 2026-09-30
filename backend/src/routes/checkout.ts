@@ -15,7 +15,6 @@ import { notifyBarberByWhatsappOnDepositPaid } from '../services/whatsapp.js';
 import { notifyShopPhoneAppointmentCreated } from '../services/mobileNotifications.js';
 import {
   sendDepositConfirmedEmail,
-  sendDepositPendingEmail,
   sendAppointmentScheduledEmail,
   sendLatePaymentRefundedEmail,
   notifyClientSubscriptionActivated,
@@ -874,21 +873,6 @@ router.post('/sena', async (req, res) => {
       ? { productOrderId, productsTotalArs: resolvedProducts.totalArs }
       : {}),
   });
-
-  void (async () => {
-    try {
-      const user = await findUserById(uid);
-      if (user && isRealClientEmail(user.email)) {
-        await sendDepositPendingEmail(user.email, pending, {
-          paymentUrl: pref.url,
-          paymentDueAt,
-          depositMinutes,
-        });
-      }
-    } catch (err) {
-      console.error('[Email] No se pudo enviar aviso de seña pendiente', err);
-    }
-  })();
 });
 
 /**
@@ -976,21 +960,6 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
       appointmentId: app.id,
       paymentDueAt: app.paymentDueAt,
     });
-
-    void (async () => {
-      try {
-        const user = await findUserById(authReq.user!.id);
-        if (user && isRealClientEmail(user.email)) {
-          await sendDepositPendingEmail(user.email, app, {
-            paymentUrl: pref.url,
-            paymentDueAt: app.paymentDueAt,
-            depositMinutes: getPendingPaymentMinutes(),
-          });
-        }
-      } catch (err) {
-        console.error('[Email] No se pudo reenviar aviso de seña pendiente', err);
-      }
-    })();
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al preparar el pago' });

@@ -5,8 +5,8 @@ import { sendAppointmentReminder1hEmail, isRealClientEmail } from '../services/e
 
 const DEFAULT_ZONE = 'America/Argentina/Buenos_Aires';
 
-/** Recordatorio ~2 h 30 min antes del turno (30 min antes del plazo usual de cancelar/reprogramar). */
-const REMINDER_TARGET_MINUTES = 150;
+/** Recordatorio 2 horas antes del turno. */
+const REMINDER_TARGET_MINUTES = 120;
 /** Ventana ±8 min (el job corre cada 5 min). */
 const REMINDER_MIN_MINUTES = REMINDER_TARGET_MINUTES - 8;
 const REMINDER_MAX_MINUTES = REMINDER_TARGET_MINUTES + 8;
@@ -17,7 +17,7 @@ function shopTimeZone(): string {
 }
 
 /**
- * Envía recordatorio por email ~2 h 30 min antes del turno (turnos scheduled con user_id).
+ * Envía recordatorio por email 2 horas antes del turno (turnos scheduled con user_id).
  * Idempotente vía columna reminder_1h_sent. Ejecutar cada pocos minutos (p. ej. desde index.ts).
  */
 export async function runAppointmentReminderEmails(): Promise<void> {
