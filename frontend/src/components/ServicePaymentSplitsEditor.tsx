@@ -58,7 +58,9 @@ export default function ServicePaymentSplitsEditor({
   const addRow = () => {
     const method = nextUnusedMethod(splits, excludedMethods);
     if (!method) return;
-    onChange([...splits, { method, amount: 0 }]);
+    const covered = sumServicePaymentSplits(splits);
+    const remaining = expected > 0 ? Math.max(0, Math.round(expected - covered)) : 0;
+    onChange([...splits, { method, amount: remaining }]);
   };
 
   const updateRow = (index: number, patch: Partial<ServicePaymentSplit>) => {

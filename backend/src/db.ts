@@ -538,6 +538,11 @@ export async function initDb(): Promise<void> {
       KEY idx_product_purchases_product (product_id)
     )
   `);
+  if (!(await tableHasColumn('product_purchases', 'stock_applied'))) {
+    await pool.execute(
+      'ALTER TABLE product_purchases ADD COLUMN stock_applied TINYINT(1) NOT NULL DEFAULT 0'
+    );
+  }
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS points_redemption_options (
       id VARCHAR(50) PRIMARY KEY,

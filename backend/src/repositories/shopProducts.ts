@@ -1,3 +1,4 @@
+import type { PoolConnection } from 'mysql2/promise';
 import pool, { query } from '../db.js';
 import type { ShopProduct } from '../types.js';
 
@@ -209,6 +210,45 @@ export async function restoreProductStock(productId: string, quantity: number): 
      WHERE id = ? AND stock IS NOT NULL`,
     [qty, productId]
   );
+}
+
+/**
+ * Ajusta el stock por una compra de reposición.
+ * Si el producto no controlaba unidades (`stock` null) y el delta es positivo, empieza a controlarlas.
+ * Un delta negativo sobre stock null no hace nada: esa compra no había sumado unidades.
+ */
+export async function applyPurchaseStockDelta(
+  conn: PoolConnection,
+  productId: string,
+  delta: number
+): Promise<void> {
+  const change = Math.trunc(delta);
+  if (!Number.isFinite(change) || change === 0) return;
+
+  const [rows] = await conn.execute(
+    'SELECT name, stock FROM shop_products WHERE id = ? FOR UPDATE',
+    [productId]
+  );
+  const row = (rows as { name: string; stock: number | string | null }[])[0];
+  if (!row) {
+    if (change < 0) return;
+    throw new Error('Producto no encontrado.');
+  }
+
+  const untracked = row.stock == null;
+  if (untracked && change < 0) return;
+
+  const current = untracked ? 0 : Math.floor(Number(row.stock));
+  const next = current + change;
+  if (next < 0) {
+    throw new Error(
+      `No se puede ajustar el stock de «${row.name}»: hay ${current} y este cambio pide ${change}.`
+    );
+  }
+  if (next > 999_999) {
+    throw new Error(`El stock de «${row.name}» superaría el máximo permitido.`);
+  }
+  await conn.execute('UPDATE shop_products SET stock = ? WHERE id = ?', [next, productId]);
 }
 
 export async function syncAppointmentProductStock(

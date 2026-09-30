@@ -64,6 +64,9 @@ export default function AppointmentPaymentSplitsModal({
   const [pickQty, setPickQty] = useState('1');
   const [productsError, setProductsError] = useState('');
   const [clientSubscription, setClientSubscription] = useState<ClientSubscriptionInfo | null>(null);
+  /** userId para el que ya terminó la consulta de abono (evita precargar efectivo antes de saber si hay cupo). */
+  const [subscriptionUserId, setSubscriptionUserId] = useState<number | null>(null);
+  const [subscriptionResolved, setSubscriptionResolved] = useState(false);
   /** Subtotal vigente de productos: lo usamos para repartir el delta (agregar/quitar) entre los cobros. */
   const productsSubtotalRef = useRef(0);
   /** Evita pisar montos que el usuario ya empezó a cargar (p. ej. al llegar el abono o refrescar servicios). */
@@ -74,16 +77,26 @@ export default function AppointmentPaymentSplitsModal({
   useEffect(() => {
     if (!app?.userId) {
       setClientSubscription(null);
+      setSubscriptionUserId(null);
+      setSubscriptionResolved(true);
       return;
     }
+    const userId = app.userId;
+    setSubscriptionResolved(false);
     let cancelled = false;
     api
-      .getAdminClient(app.userId)
+      .getAdminClient(userId)
       .then((r) => {
         if (!cancelled) setClientSubscription(r.client.subscription ?? null);
       })
       .catch(() => {
         if (!cancelled) setClientSubscription(null);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSubscriptionUserId(userId);
+          setSubscriptionResolved(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -115,20 +128,41 @@ export default function AppointmentPaymentSplitsModal({
     setProductsError('');
   }, [app?.id, depositPercent]);
 
-  /** Prefill de abono cuando termina de cargar, sin borrar lo que el usuario ya escribió. */
+  const subscriptionReady =
+    app?.userId == null || (subscriptionResolved && subscriptionUserId === app.userId);
+
+  /**
+   * Si el turno no tiene cobros guardados, el primer monto sale con lo que falta pagar
+   * (servicio − seña + productos). Con abono y cupo, ese saldo del servicio va en Abono.
+   */
   useEffect(() => {
-    if (!app || splitsTouchedRef.current || app.servicePaymentSplits?.length) return;
-    if (!clientSubscription || clientSubscription.cutsRemaining <= 0 || app.userId == null) return;
+    if (!app || !subscriptionReady || splitsTouchedRef.current || app.servicePaymentSplits?.length) return;
     const productsTotal = productsSubtotalRef.current;
-    const prefill = buildSubscriptionPrefillSplits(
-      app,
-      servicesRef.current,
-      depositPercent,
-      productsTotal
-    );
-    if (prefill.length === 0) return;
-    setSplits((prev) => (prev.length === 0 ? prefill : prev));
-  }, [app, clientSubscription, depositPercent]);
+    const target = appointmentSplitsTargetArs(app, servicesRef.current, depositPercent, productsTotal);
+    if (target <= 0) return;
+
+    if (clientSubscription && clientSubscription.cutsRemaining > 0 && app.userId != null) {
+      const prefill = buildSubscriptionPrefillSplits(
+        app,
+        servicesRef.current,
+        depositPercent,
+        productsTotal
+      );
+      if (prefill.length > 0) {
+        setSplits((prev) => (prev.length === 0 ? prefill : prev));
+        return;
+      }
+    }
+
+    setSplits((prev) => {
+      if (prev.length > 0) return prev;
+      const method =
+        app.servicePaymentMethod && app.servicePaymentMethod !== 'mercadopago'
+          ? app.servicePaymentMethod
+          : 'cash';
+      return [{ method, amount: target }];
+    });
+  }, [app, subscriptionReady, clientSubscription, depositPercent]);
 
   const handleSplitsChange = useCallback((next: ServicePaymentSplit[]) => {
     splitsTouchedRef.current = true;

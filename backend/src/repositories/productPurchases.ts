@@ -1,6 +1,6 @@
 import pool, { query } from '../db.js';
 import type { ProductPurchase } from '../types.js';
-import { getShopProductById } from './shopProducts.js';
+import { applyPurchaseStockDelta, getShopProductById } from './shopProducts.js';
 
 interface DbProductPurchase {
   id: number;
@@ -13,7 +13,10 @@ interface DbProductPurchase {
   notes?: string | null;
   created_by_user_id?: number | null;
   created_at: string | Date;
+  stock_applied?: number | boolean | null;
 }
+
+type StoredPurchase = ProductPurchase & { stockApplied: boolean };
 
 function parseDecimal(raw: string | number): number {
   const n = Number(raw);
@@ -21,7 +24,7 @@ function parseDecimal(raw: string | number): number {
   return Math.round(n * 100) / 100;
 }
 
-function rowToPurchase(r: DbProductPurchase): ProductPurchase {
+function rowToPurchase(r: DbProductPurchase): StoredPurchase {
   const d = r.purchase_date;
   const purchaseDate =
     typeof d === 'string'
@@ -46,6 +49,22 @@ function rowToPurchase(r: DbProductPurchase): ProductPurchase {
     notes: r.notes ?? null,
     createdByUserId: r.created_by_user_id ?? null,
     createdAt,
+    stockApplied: Number(r.stock_applied) === 1,
+  };
+}
+
+function toPublicPurchase(p: StoredPurchase): ProductPurchase {
+  return {
+    id: p.id,
+    productId: p.productId,
+    productName: p.productName,
+    quantity: p.quantity,
+    unitCost: p.unitCost,
+    totalCost: p.totalCost,
+    purchaseDate: p.purchaseDate,
+    notes: p.notes,
+    createdByUserId: p.createdByUserId,
+    createdAt: p.createdAt,
   };
 }
 
@@ -60,15 +79,20 @@ export async function listProductPurchasesInRange(
      ORDER BY purchase_date DESC, id DESC`,
     [fromYmd, toYmd]
   );
-  return rows.map(rowToPurchase);
+  return rows.map((row) => toPublicPurchase(rowToPurchase(row)));
 }
 
-export async function getProductPurchaseById(id: number): Promise<ProductPurchase | null> {
+async function getStoredProductPurchaseById(id: number): Promise<StoredPurchase | null> {
   const rows = await query<DbProductPurchase[]>(
-    'SELECT id, product_id, product_name, quantity, unit_cost, total_cost, purchase_date, notes, created_by_user_id, created_at FROM product_purchases WHERE id = ?',
+    'SELECT id, product_id, product_name, quantity, unit_cost, total_cost, purchase_date, notes, created_by_user_id, created_at, stock_applied FROM product_purchases WHERE id = ?',
     [id]
   );
   return rows[0] ? rowToPurchase(rows[0]) : null;
+}
+
+export async function getProductPurchaseById(id: number): Promise<ProductPurchase | null> {
+  const row = await getStoredProductPurchaseById(id);
+  return row ? toPublicPurchase(row) : null;
 }
 
 export async function createProductPurchase(data: {
@@ -92,12 +116,24 @@ export async function createProductPurchase(data: {
   const totalCost = Math.round(quantity * unitCost * 100) / 100;
   const notes = data.notes != null && String(data.notes).trim() !== '' ? String(data.notes).trim() : null;
 
-  const [res] = await pool.execute(
-    `INSERT INTO product_purchases (product_id, product_name, quantity, unit_cost, total_cost, purchase_date, notes, created_by_user_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [data.productId, product.name, quantity, unitCost, totalCost, date, notes, data.createdByUserId ?? null]
-  );
-  const id = (res as { insertId: number }).insertId;
+  const conn = await pool.getConnection();
+  let id = 0;
+  try {
+    await conn.beginTransaction();
+    const [res] = await conn.execute(
+      `INSERT INTO product_purchases (product_id, product_name, quantity, unit_cost, total_cost, purchase_date, notes, created_by_user_id, stock_applied)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+      [data.productId, product.name, quantity, unitCost, totalCost, date, notes, data.createdByUserId ?? null]
+    );
+    id = (res as { insertId: number }).insertId;
+    await applyPurchaseStockDelta(conn, data.productId, quantity);
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
   const created = await getProductPurchaseById(id);
   if (!created) throw new Error('No se pudo crear la compra.');
   return created;
@@ -113,7 +149,7 @@ export async function updateProductPurchase(
     notes: string | null;
   }>
 ): Promise<ProductPurchase | null> {
-  const current = await getProductPurchaseById(id);
+  const current = await getStoredProductPurchaseById(id);
   if (!current) return null;
 
   let productId = current.productId;
@@ -146,16 +182,69 @@ export async function updateProductPurchase(
     notes = data.notes != null && String(data.notes).trim() !== '' ? String(data.notes).trim() : null;
   }
 
-  await pool.execute(
-    `UPDATE product_purchases SET product_id = ?, product_name = ?, quantity = ?, unit_cost = ?, total_cost = ?, purchase_date = ?, notes = ? WHERE id = ?`,
-    [productId, productName, quantity, unitCost, totalCost, purchaseDate, notes, id]
-  );
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [lockedRows] = await conn.execute(
+      'SELECT product_id, quantity, stock_applied FROM product_purchases WHERE id = ? FOR UPDATE',
+      [id]
+    );
+    const locked = (lockedRows as { product_id: string; quantity: number; stock_applied: number }[])[0];
+    if (!locked) {
+      await conn.rollback();
+      return null;
+    }
+    await conn.execute(
+      `UPDATE product_purchases SET product_id = ?, product_name = ?, quantity = ?, unit_cost = ?, total_cost = ?, purchase_date = ?, notes = ? WHERE id = ?`,
+      [productId, productName, quantity, unitCost, totalCost, purchaseDate, notes, id]
+    );
+    const lockedQty = Math.max(1, Math.floor(Number(locked.quantity)));
+    const stockApplied = Number(locked.stock_applied) === 1;
+    if (stockApplied && productId !== locked.product_id) {
+      await applyPurchaseStockDelta(conn, locked.product_id, -lockedQty);
+      await applyPurchaseStockDelta(conn, productId, quantity);
+    } else if (stockApplied && quantity !== lockedQty) {
+      await applyPurchaseStockDelta(conn, productId, quantity - lockedQty);
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
   return getProductPurchaseById(id);
 }
 
 export async function deleteProductPurchase(id: number): Promise<boolean> {
-  const [res] = await pool.execute('DELETE FROM product_purchases WHERE id = ?', [id]);
-  return (res as { affectedRows: number }).affectedRows > 0;
+  const current = await getStoredProductPurchaseById(id);
+  if (!current) return false;
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [lockedRows] = await conn.execute(
+      'SELECT product_id, quantity, stock_applied FROM product_purchases WHERE id = ? FOR UPDATE',
+      [id]
+    );
+    const locked = (lockedRows as { product_id: string; quantity: number; stock_applied: number }[])[0];
+    if (!locked) {
+      await conn.rollback();
+      return false;
+    }
+    if (Number(locked.stock_applied) === 1) {
+      await applyPurchaseStockDelta(conn, locked.product_id, -Math.max(1, Math.floor(Number(locked.quantity))));
+    }
+    const [res] = await conn.execute('DELETE FROM product_purchases WHERE id = ?', [id]);
+    const ok = (res as { affectedRows: number }).affectedRows > 0;
+    await conn.commit();
+    return ok;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 export async function sumProductPurchasesInRange(fromYmd: string, toYmd: string): Promise<number> {

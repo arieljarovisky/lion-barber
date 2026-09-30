@@ -25,6 +25,11 @@ function errorMessage(reason: unknown, fallback: string): string {
   return reason instanceof ApiError ? reason.message : reason instanceof Error ? reason.message : fallback;
 }
 
+function productOptionLabel(p: ShopProduct): string {
+  if (p.stock == null) return `${p.name} · sin control de stock`;
+  return `${p.name} · stock ${p.stock}`;
+}
+
 type Props = {
   fromYmd: string;
   toYmd: string;
@@ -184,7 +189,7 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
   };
 
   const handleDelete = (p: ProductPurchase) => {
-    if (!window.confirm(`¿Eliminar la compra de «${p.productName}»?`)) return;
+    if (!window.confirm(`¿Eliminar la compra de «${p.productName}»? Se descuenta esa cantidad del stock.`)) return;
     void run(() => api.deleteProductPurchase(p.id).then(() => {}));
   };
 
@@ -217,7 +222,7 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
 
       <div className="p-5 border-b border-zinc-100 bg-zinc-50/80">
         <p className="text-xs text-zinc-600 mb-3">
-          Registrá las compras de productos (reposición de stock) para calcular los gastos. El desplegable usa el
+          Registrá las compras para calcular los gastos. La cantidad se suma al stock del producto. El desplegable usa el
           catálogo del menú{' '}
           <button type="button" onClick={goToCatalog} className="font-bold text-zinc-900 underline">
             Productos
@@ -329,7 +334,7 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
               </option>
               {products.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {productOptionLabel(p)}
                 </option>
               ))}
             </select>
@@ -409,7 +414,7 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
                         className="w-full rounded border border-zinc-200 px-2 py-1.5 text-sm"
                       >
                         {products.map((pr) => (
-                          <option key={pr.id} value={pr.id}>{pr.name}</option>
+                          <option key={pr.id} value={pr.id}>{productOptionLabel(pr)}</option>
                         ))}
                       </select>
                     </div>
@@ -539,7 +544,7 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
                         >
                           {products.map((pr) => (
                             <option key={pr.id} value={pr.id}>
-                              {pr.name}
+                              {productOptionLabel(pr)}
                             </option>
                           ))}
                         </select>
