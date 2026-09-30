@@ -24,6 +24,16 @@ export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string>
   canje: 'Canje',
 };
 
+/** Color de la forma de pago cuando está seleccionada. */
+export const SERVICE_PAYMENT_METHOD_SELECTED_CLASS: Record<ServicePaymentMethod, string> = {
+  account: 'border-amber-400 bg-amber-100 text-amber-950',
+  mercadopago: 'border-sky-400 bg-sky-100 text-sky-950',
+  cash: 'border-emerald-500 bg-emerald-100 text-emerald-950',
+  card: 'border-indigo-400 bg-indigo-100 text-indigo-950',
+  subscription: 'border-violet-400 bg-violet-100 text-violet-950',
+  canje: 'border-fuchsia-400 bg-fuchsia-100 text-fuchsia-950',
+};
+
 /** Abono y canje de puntos: no ingresan efectivo en caja en el turno. */
 export const NON_CASH_LOCAL_PAYMENT_METHODS: ServicePaymentMethod[] = ['subscription', 'canje'];
 
@@ -201,19 +211,25 @@ export function initialSplitsFromAppointment(
   return [];
 }
 
-/** Texto para agenda / modal: seña MP + cobros en local. */
-export function formatAppointmentPaymentDisplay(
+export type AppointmentPaymentDisplayPart = {
+  text: string;
+  method: ServicePaymentMethod | null;
+};
+
+/** Partes de cobro para agenda / modal, con el método para pintar cada una. */
+export function appointmentPaymentDisplayParts(
   app: Appointment,
   services: Service[],
   depositPercent: number,
   productsSubtotal = 0
-): string {
-  const parts: string[] = [];
+): AppointmentPaymentDisplayPart[] {
+  const parts: AppointmentPaymentDisplayPart[] = [];
   const deposit = appointmentDepositAmountArs(app, services, depositPercent);
   if (deposit > 0) {
-    parts.push(
-      `${SERVICE_PAYMENT_METHOD_LABELS.mercadopago} $${deposit.toLocaleString('es-AR')} (seña)`
-    );
+    parts.push({
+      method: 'mercadopago',
+      text: `${SERVICE_PAYMENT_METHOD_LABELS.mercadopago} $${deposit.toLocaleString('es-AR')} (seña)`,
+    });
   }
 
   const localTarget = appointmentSplitsTargetArs(app, services, depositPercent, productsSubtotal);
@@ -223,9 +239,10 @@ export function formatAppointmentPaymentDisplay(
     for (const s of splits) {
       if (!isValidSplitAmount(s.method, s.amount)) continue;
       if (s.method === 'account' && s.amount < 0) {
-        parts.push(
-          `${SERVICE_PAYMENT_METHOD_LABELS.account} −$${Math.abs(s.amount).toLocaleString('es-AR')} (debe)`
-        );
+        parts.push({
+          method: 'account',
+          text: `${SERVICE_PAYMENT_METHOD_LABELS.account} −$${Math.abs(s.amount).toLocaleString('es-AR')} (debe)`,
+        });
         continue;
       }
       if (s.amount > 0) {
@@ -235,9 +252,10 @@ export function formatAppointmentPaymentDisplay(
             : s.method === 'canje'
               ? ' (puntos)'
               : '';
-        parts.push(
-          `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}${suffix}`
-        );
+        parts.push({
+          method: s.method,
+          text: `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}${suffix}`,
+        });
       }
     }
   } else if (
@@ -245,13 +263,25 @@ export function formatAppointmentPaymentDisplay(
     app.servicePaymentMethod !== 'mercadopago' &&
     localTarget > 0
   ) {
-    parts.push(
-      `${SERVICE_PAYMENT_METHOD_LABELS[app.servicePaymentMethod]} $${localTarget.toLocaleString('es-AR')}`
-    );
+    parts.push({
+      method: app.servicePaymentMethod,
+      text: `${SERVICE_PAYMENT_METHOD_LABELS[app.servicePaymentMethod]} $${localTarget.toLocaleString('es-AR')}`,
+    });
   }
 
+  return parts;
+}
+
+/** Texto para agenda / modal: seña MP + cobros en local. */
+export function formatAppointmentPaymentDisplay(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number,
+  productsSubtotal = 0
+): string {
+  const parts = appointmentPaymentDisplayParts(app, services, depositPercent, productsSubtotal);
   if (parts.length === 0) return 'Sin registrar';
-  return parts.join(' + ');
+  return parts.map((p) => p.text).join(' + ');
 }
 
 export function cleanServicePaymentSplits(splits: ServicePaymentSplit[]): ServicePaymentSplit[] | null {

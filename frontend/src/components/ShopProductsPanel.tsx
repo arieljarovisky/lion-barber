@@ -66,7 +66,7 @@ function ProductImageField({
         }`}
       >
         {resolvedImage ? (
-          <img src={resolvedImage} alt="" className="h-full w-full object-cover" />
+          <img src={resolvedImage} alt="" className="h-full w-full bg-white object-contain object-center p-1" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-zinc-300">
             <ImagePlus size={compact ? 18 : 32} aria-hidden />
@@ -536,7 +536,7 @@ export default function ShopProductsPanel({
             <div className="mt-1 flex flex-wrap items-center gap-3">
               <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
                 {pendingImageData ? (
-                  <img src={pendingImageData} alt="" className="h-full w-full object-cover" />
+                  <img src={pendingImageData} alt="" className="h-full w-full bg-white object-contain object-center p-1" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-zinc-300">
                     <ImagePlus size={24} aria-hidden />

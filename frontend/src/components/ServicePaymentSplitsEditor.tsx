@@ -4,8 +4,19 @@ import type { ServicePaymentMethod, ServicePaymentSplit } from '../api';
 import {
   SERVICE_PAYMENT_METHODS,
   SERVICE_PAYMENT_METHOD_LABELS,
+  SERVICE_PAYMENT_METHOD_SELECTED_CLASS,
   sumServicePaymentSplits,
 } from '../utils/servicePaymentMethod';
+
+/** Relleno fuerte del botón activo, para que se distinga del fondo del bloque. */
+const METHOD_BUTTON_ACTIVE_CLASS: Record<ServicePaymentMethod, string> = {
+  account: 'border-amber-700 bg-amber-500 text-white',
+  mercadopago: 'border-sky-700 bg-sky-500 text-white',
+  cash: 'border-emerald-700 bg-emerald-600 text-white',
+  card: 'border-indigo-700 bg-indigo-500 text-white',
+  subscription: 'border-violet-700 bg-violet-500 text-white',
+  canje: 'border-fuchsia-700 bg-fuchsia-600 text-white',
+};
 import { formatArs, parseSignedArsInput } from '../utils/money';
 
 type Props = {
@@ -88,9 +99,14 @@ export default function ServicePaymentSplitsEditor({
     });
   };
 
-  const rowClass = compact
-    ? 'flex flex-wrap items-center gap-1.5'
-    : 'flex flex-wrap items-center gap-2';
+  const selectMethod = (index: number, method: ServicePaymentMethod) => {
+    const row = splits[index];
+    if (!row || row.method === method) return;
+    const amount = method !== 'account' && row.amount < 0 ? 0 : row.amount;
+    clearAmountDraft(row.method);
+    clearAmountDraft(method);
+    updateRow(index, { method, amount });
+  };
 
   return (
     <div className="space-y-2">
@@ -100,38 +116,42 @@ export default function ServicePaymentSplitsEditor({
         </p>
       ) : (
         splits.map((row, index) => (
-          <div key={`${row.method}-${index}`} className={rowClass}>
-            <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <select
-              value={row.method}
-              disabled={disabled}
-              onChange={(e) => {
-                const method = e.target.value as ServicePaymentMethod;
-                const amount =
-                  method !== 'account' && row.amount < 0 ? 0 : row.amount;
-                clearAmountDraft(row.method);
-                clearAmountDraft(method);
-                updateRow(index, { method, amount });
-              }}
-              className={
-                compact
-                  ? 'min-w-[6.5rem] flex-1 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-semibold'
-                  : 'min-w-[8rem] flex-1 rounded-xl border border-zinc-200 px-3 py-2 text-sm'
-              }
-            >
-              {availableMethods.map((m) => (
-                <option
-                  key={m}
-                  value={m}
-                  disabled={splits.some((s, j) => j !== index && s.method === m)}
-                >
-                  {SERVICE_PAYMENT_METHOD_LABELS[m]}
-                </option>
-              ))}
-            </select>
+          <div
+            key={`${row.method}-${index}`}
+            className={`rounded-xl border px-2 py-2 ${SERVICE_PAYMENT_METHOD_SELECTED_CLASS[row.method]}`}
+          >
+            <div className="flex flex-wrap gap-1">
+              {availableMethods.map((m) => {
+                const selected = row.method === m;
+                const taken = splits.some((s, j) => j !== index && s.method === m);
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={disabled || taken}
+                    aria-pressed={selected}
+                    onClick={() => selectMethod(index, m)}
+                    className={
+                      compact
+                        ? `rounded-lg border px-2 py-1 text-[10px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                            selected
+                              ? METHOD_BUTTON_ACTIVE_CLASS[m]
+                              : 'border-white/80 bg-white text-zinc-600 hover:bg-white'
+                          }`
+                        : `rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                            selected
+                              ? METHOD_BUTTON_ACTIVE_CLASS[m]
+                              : 'border-white/80 bg-white text-zinc-600 hover:bg-white'
+                          }`
+                    }
+                  >
+                    {SERVICE_PAYMENT_METHOD_LABELS[m]}
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex items-center gap-1">
-              <span className="text-xs text-zinc-400">$</span>
+            <div className="mt-2 flex items-center gap-1">
+              <span className="text-xs font-semibold opacity-70">$</span>
               <input
                 type="text"
                 inputMode="decimal"
@@ -162,28 +182,20 @@ export default function ServicePaymentSplitsEditor({
                 placeholder={row.method === 'account' ? '0 o -5000' : '0'}
                 className={
                   compact
-                    ? `no-number-spin w-24 rounded-lg border px-2 py-1 text-[11px] tabular-nums ${
-                        row.method === 'account' && row.amount < 0
-                          ? 'border-amber-300 bg-amber-50 text-amber-950'
-                          : 'border-zinc-200'
-                      }`
-                    : `no-number-spin w-28 rounded-xl border px-3 py-2 text-sm tabular-nums ${
-                        row.method === 'account' && row.amount < 0
-                          ? 'border-amber-300 bg-amber-50 text-amber-950'
-                          : 'border-zinc-200'
-                      }`
+                    ? 'no-number-spin w-24 rounded-lg border border-white/80 bg-white px-2 py-1 text-[11px] tabular-nums text-zinc-900'
+                    : 'no-number-spin w-28 rounded-xl border border-white/80 bg-white px-3 py-2 text-sm tabular-nums text-zinc-900'
                 }
               />
-            </div>
             <button
               type="button"
               disabled={disabled}
               onClick={() => removeRow(index)}
-              className="p-1.5 text-zinc-400 hover:text-red-600 rounded-lg hover:bg-red-50"
+              className="p-1.5 text-zinc-700 hover:text-red-700 rounded-lg hover:bg-white"
               title="Quitar"
             >
               <Trash2 size={compact ? 14 : 16} />
             </button>
+            </div>
           </div>
         ))
       )}

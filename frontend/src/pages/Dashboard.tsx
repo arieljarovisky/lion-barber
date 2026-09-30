@@ -85,10 +85,12 @@ import type {
   type BarberInvoicingUsage,
 } from '../api';
 import {
+  appointmentPaymentDisplayParts,
   appointmentSplitsTargetArs,
   cleanServicePaymentSplits,
   formatAppointmentPaymentDisplay,
   initialSplitsFromAppointment,
+  SERVICE_PAYMENT_METHOD_SELECTED_CLASS,
 } from '../utils/servicePaymentMethod';
 import { formatAppointmentProductsSummary, sumAppointmentProducts } from '../utils/appointmentProducts';
 import { appointmentModifyBlockedReason, canUpdateAppointmentPayments } from '../utils/appointmentModifyPermission';
@@ -1249,9 +1251,13 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       DEPOSIT_PERCENT,
       sumAppointmentProducts(app.products)
     );
-    const parts =
-      label === 'Sin registrar' ? [label] : label.split(' + ').map((p) => p.trim()).filter(Boolean);
-    const isUnset = label === 'Sin registrar';
+    const parts = appointmentPaymentDisplayParts(
+      app,
+      services,
+      DEPOSIT_PERCENT,
+      sumAppointmentProducts(app.products)
+    );
+    const isUnset = parts.length === 0;
     return (
       <button
         type="button"
@@ -1278,16 +1284,16 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
               compact ? 'text-[10px]' : 'text-[11px]'
             } font-semibold leading-snug`}
           >
-            {parts.map((part, i) => (
+            {(isUnset ? [{ text: label, method: null }] : parts).map((part, i) => (
               <span
-                key={`${part}-${i}`}
+                key={`${part.text}-${i}`}
                 className={
-                  isUnset
-                    ? 'text-zinc-500 italic font-medium'
-                    : 'inline-block rounded-md bg-zinc-50 border border-zinc-100 px-1.5 py-0.5 text-zinc-800'
+                  part.method
+                    ? `inline-block rounded-md border px-1.5 py-0.5 ${SERVICE_PAYMENT_METHOD_SELECTED_CLASS[part.method]}`
+                    : 'text-zinc-500 italic font-medium'
                 }
               >
-                {part}
+                {part.text}
               </span>
             ))}
           </span>

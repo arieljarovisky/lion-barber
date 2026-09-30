@@ -93,12 +93,12 @@ export default function ShopCatalogSection({
                 key={product.id}
                 className="flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/50 sm:rounded-2xl"
               >
-                <div className="aspect-square overflow-hidden bg-zinc-950">
+                <div className="aspect-square overflow-hidden bg-white">
                   {imageSrc ? (
                     <img
                       src={imageSrc}
                       alt={product.name}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-contain object-center p-4 sm:p-6"
                       loading="lazy"
                     />
                   ) : (
