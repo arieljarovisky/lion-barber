@@ -56,6 +56,16 @@ function WeekdayPicker({
   );
 }
 
+function serviceEmojiMark(emoji?: string): { src?: string; text?: string } {
+  const raw = (emoji ?? '').trim();
+  if (!raw) return {};
+  const lower = raw.toLowerCase();
+  if (lower.startsWith('data:image/') || lower.endsWith('.svg') || lower.startsWith('http')) {
+    return { src: raw };
+  }
+  return { text: raw };
+}
+
 function ServicePicker({
   services,
   value,
@@ -73,20 +83,27 @@ function ServicePicker({
     <div className="flex flex-wrap gap-2">
       {visible.map((service) => {
         const selected = value.includes(service.id);
+        const mark = serviceEmojiMark(service.emoji);
         return (
           <button
             key={service.id}
             type="button"
             onClick={() => onChange(toggleIdInList(value, service.id))}
-            className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
+            className={`inline-flex max-w-full items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
               selected
                 ? 'bg-zinc-900 text-white'
                 : 'border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50'
             }`}
           >
-            {service.emoji ? `${service.emoji} ` : ''}
-            {service.name}
-            {service.internal ? ' (interno)' : ''}
+            {mark.src ? (
+              <img src={mark.src} alt="" className="h-4 w-4 shrink-0 object-contain" />
+            ) : mark.text ? (
+              <span aria-hidden>{mark.text}</span>
+            ) : null}
+            <span className="truncate">
+              {service.name}
+              {service.internal ? ' (interno)' : ''}
+            </span>
           </button>
         );
       })}

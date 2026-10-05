@@ -9,7 +9,6 @@ import {
   UserPlus,
   Users,
   Settings,
-  Award,
   ShoppingBag,
   Receipt,
   Banknote,
@@ -165,20 +164,6 @@ export default function DashboardPanelShell({
             <Ban size={18} className="flex-shrink-0" />
             Horarios
           </button>
-          {(profile?.role === 'admin' || profile?.role === 'staff') && (
-            <button
-              type="button"
-              onClick={() => go('puntos')}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
-                activePanel === 'puntos'
-                  ? 'bg-[#e5c185] text-zinc-950'
-                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-              }`}
-            >
-              <Award size={18} className="flex-shrink-0" />
-              Puntos
-            </button>
-          )}
           {(profile?.role === 'admin' || profile?.role === 'staff') && (
             <button
               type="button"
