@@ -12,6 +12,7 @@ import {
   Award,
   ShoppingBag,
   Receipt,
+  Banknote,
   Repeat,
   Megaphone,
   LogOut,
@@ -20,6 +21,22 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { LION_LOGO_URL } from '../constants/brandLogo';
+
+/** Rutas propias del panel. El resto se abre dentro de /dashboard. */
+export function dashboardPanelHref(panel: DashboardPanelId): string | null {
+  switch (panel) {
+    case 'clientes':
+      return '/dashboard/clientes';
+    case 'estadisticas':
+      return '/dashboard/estadisticas';
+    case 'cierreCaja':
+      return '/dashboard/cierre-caja';
+    case 'gastos':
+      return '/dashboard/gastos';
+    default:
+      return null;
+  }
+}
 
 export type DashboardPanelId =
   | 'agenda'
@@ -32,6 +49,7 @@ export type DashboardPanelId =
   | 'facturacion'
   | 'estadisticas'
   | 'cierreCaja'
+  | 'gastos'
   | 'equipo'
   | 'clientes'
   | 'configuracion';
@@ -243,6 +261,20 @@ export default function DashboardPanelShell({
             >
               <Wallet size={18} className="flex-shrink-0" />
               Cierre de caja
+            </button>
+          )}
+          {isSuperAdmin && (
+            <button
+              type="button"
+              onClick={() => go('gastos')}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
+                activePanel === 'gastos'
+                  ? 'bg-[#e5c185] text-zinc-950'
+                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              <Banknote size={18} className="flex-shrink-0" />
+              Gastos
             </button>
           )}
           {isAdmin && (

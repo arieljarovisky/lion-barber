@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Lock, Printer, Unlock, Wallet } from 'lucide-react';
-import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
+import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api, ApiError } from '../api';
 import type { Appointment, Barber, DailyCashClose, Service, AdminClientWithHistory } from '../api';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,11 +27,8 @@ import {
   exportWeeklyCashClosePdf,
   type WeeklyCashCloseExportData,
 } from '../utils/weeklyCashCloseExport';
-import CashCloseExpensesSection from '../components/CashCloseExpensesSection';
-import ProductPurchasesPanel from '../components/ProductPurchasesPanel';
-import { prorateFixedMonthlyExpenses, sumCashExpenses } from '../utils/expenseProration';
 import { appointmentsWithCashCloseSnapshots } from '../utils/cashCloseSnapshot';
-import type { CashExpense, FixedMonthlyExpense, AppointmentCashClosePaymentSnapshot } from '../api';
+import type { AppointmentCashClosePaymentSnapshot } from '../api';
 
 export default function WeeklyCashClosePage() {
   const navigate = useNavigate();
@@ -44,14 +41,11 @@ export default function WeeklyCashClosePage() {
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
-  const [fixedExpenses, setFixedExpenses] = useState<FixedMonthlyExpense[]>([]);
-  const [cashExpenses, setCashExpenses] = useState<CashExpense[]>([]);
   const [dailyClose, setDailyClose] = useState<DailyCashClose | null>(null);
   const [closingDay, setClosingDay] = useState(false);
   const [closeActionError, setCloseActionError] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [paymentSnapshots, setPaymentSnapshots] = useState<AppointmentCashClosePaymentSnapshot[]>([]);
-  const [productPurchasesTotal, setProductPurchasesTotal] = useState(0);
 
   const { start, end, fromYmd, toYmd } = useMemo(
     () => periodBoundsFromAnchor(periodAnchor, periodMode),
@@ -61,32 +55,15 @@ export default function WeeklyCashClosePage() {
 
   const handlePanelNavigate = useCallback(
     (panel: DashboardPanelId) => {
-      if (panel === 'clientes') {
-        navigate('/dashboard/clientes');
-        return;
-      }
-      if (panel === 'estadisticas') {
-        navigate('/dashboard/estadisticas');
-        return;
-      }
-      if (panel === 'cierreCaja') {
-        navigate('/dashboard/cierre-caja');
+      const href = dashboardPanelHref(panel);
+      if (href) {
+        navigate(href);
         return;
       }
       navigate('/dashboard', { state: { openView: panel } });
     },
     [navigate]
   );
-
-  const loadExpenses = useCallback(() => {
-    return Promise.all([
-      api.getFixedMonthlyExpenses(),
-      api.getCashExpenses(fromYmd, toYmd),
-    ]).then(([fixedRes, cashRes]) => {
-      setFixedExpenses(fixedRes.items);
-      setCashExpenses(cashRes.items);
-    });
-  }, [fromYmd, toYmd]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,18 +73,14 @@ export default function WeeklyCashClosePage() {
       api.getAppointments(),
       api.getBarbers(),
       api.getServices(),
-      api.getFixedMonthlyExpenses(),
-      api.getCashExpenses(fromYmd, toYmd),
       api.getAdminClientsWithHistory(),
       api.getCashClosePaymentSnapshots(fromYmd, toYmd),
     ])
-      .then(([apps, barberList, serviceList, fixedRes, cashRes, clientsRes, snapshotsRes]) => {
+      .then(([apps, barberList, serviceList, clientsRes, snapshotsRes]) => {
         if (cancelled) return;
         setAppointments(apps);
         setBarbers(barberList);
         setServices(serviceList);
-        setFixedExpenses(fixedRes.items);
-        setCashExpenses(cashRes.items);
         setAdminClients(clientsRes.clients);
         setPaymentSnapshots(snapshotsRes.snapshots);
       })
@@ -190,12 +163,6 @@ export default function WeeklyCashClosePage() {
     [appointmentsForClose, services, barbers, start, end]
   );
 
-  const { lines: proratedFixed, total: proratedFixedTotal } = useMemo(
-    () => prorateFixedMonthlyExpenses(fixedExpenses, fromYmd, toYmd),
-    [fixedExpenses, fromYmd, toYmd]
-  );
-  const cashExpensesTotal = useMemo(() => sumCashExpenses(cashExpenses), [cashExpenses]);
-
   const exportData = useMemo<WeeklyCashCloseExportData>(
     () => ({
       periodMode,
@@ -265,7 +232,7 @@ export default function WeeklyCashClosePage() {
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
                 Resumen de turnos confirmados por día, semana (lunes a domingo) o mes calendario: señas por Mercado Pago, saldo en local,
                 comisión del barbero ({BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de
-                productos facturados en el turno), facturación AFIP y gastos fijos / de caja. No incluye turnos con seña
+                productos facturados en el turno) y facturación AFIP. Los gastos se cargan en la solapa Gastos. No incluye turnos con seña
                 pendiente.
               </p>
             </div>
@@ -734,34 +701,6 @@ export default function WeeklyCashClosePage() {
                   </div>
                 )}
               </section>
-
-              <CashCloseExpensesSection
-                periodMode={periodMode}
-                fromYmd={fromYmd}
-                toYmd={toYmd}
-                fixedItems={fixedExpenses}
-                proratedFixed={proratedFixed}
-                proratedFixedTotal={proratedFixedTotal}
-                cashItems={cashExpenses}
-                cashTotal={cashExpensesTotal}
-                shopNetEstimate={summary.shopNetEstimate}
-                onReload={() => void loadExpenses()}
-              />
-
-              <div className="no-print mt-6">
-                <ProductPurchasesPanel
-                  fromYmd={fromYmd}
-                  toYmd={toYmd}
-                  onTotalChange={setProductPurchasesTotal}
-                />
-                {productPurchasesTotal > 0 && (
-                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-                    <p className="text-xs text-amber-800">
-                      Las compras de productos (${formatArs(productPurchasesTotal)}) representan gastos adicionales para reposición de inventario.
-                    </p>
-                  </div>
-                )}
-              </div>
 
               <p className="mt-6 text-xs text-zinc-500 max-w-3xl">
                 Las señas son el {DEPOSIT_PERCENT}% del servicio. La comisión de productos ({BARBER_PRODUCT_COMMISSION_PERCENT}

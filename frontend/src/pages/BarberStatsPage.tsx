@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
+import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api } from '../api';
 import type { Appointment, Barber, Service, AdminClientWithHistory } from '../api';
 import { resolveAppointmentServiceAmountArs } from '../utils/money';
@@ -47,16 +47,9 @@ export default function BarberStatsPage() {
 
   const handlePanelNavigate = useCallback(
     (panel: DashboardPanelId) => {
-      if (panel === 'clientes') {
-        navigate('/dashboard/clientes');
-        return;
-      }
-      if (panel === 'estadisticas') {
-        navigate('/dashboard/estadisticas');
-        return;
-      }
-      if (panel === 'cierreCaja') {
-        navigate('/dashboard/cierre-caja');
+      const href = dashboardPanelHref(panel);
+      if (href) {
+        navigate(href);
         return;
       }
       navigate('/dashboard', { state: { openView: panel } });

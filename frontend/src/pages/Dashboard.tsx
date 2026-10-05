@@ -42,7 +42,7 @@ import {
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
-import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
+import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import BarberDayCalendarsGrid from '../components/BarberDayCalendarsGrid';
 import PointsProgramPanel from '../components/PointsProgramPanel';
 import PointsRedemptionPanel from '../components/PointsRedemptionPanel';
@@ -1865,16 +1865,9 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   }, [dateStr]);
 
   const handlePanelNavigate = useCallback((panel: DashboardPanelId) => {
-    if (panel === 'clientes') {
-      navigate('/dashboard/clientes');
-      return;
-    }
-    if (panel === 'estadisticas') {
-      navigate('/dashboard/estadisticas');
-      return;
-    }
-    if (panel === 'cierreCaja') {
-      navigate('/dashboard/cierre-caja');
+    const href = dashboardPanelHref(panel);
+    if (href) {
+      navigate(href);
       return;
     }
     setView(panel);

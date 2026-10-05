@@ -17,7 +17,7 @@ import {
   ShieldCheck,
   StickyNote,
 } from 'lucide-react';
-import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
+import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
 import type { AdminClientWithHistory } from '../api';
@@ -117,16 +117,9 @@ export default function AdminClientsListPage() {
 
   const handlePanelNavigate = useCallback(
     (panel: DashboardPanelId) => {
-      if (panel === 'clientes') {
-        navigate('/dashboard/clientes');
-        return;
-      }
-      if (panel === 'estadisticas') {
-        navigate('/dashboard/estadisticas');
-        return;
-      }
-      if (panel === 'cierreCaja') {
-        navigate('/dashboard/cierre-caja');
+      const href = dashboardPanelHref(panel);
+      if (href) {
+        navigate(href);
         return;
       }
       navigate('/dashboard', { state: { openView: panel } });

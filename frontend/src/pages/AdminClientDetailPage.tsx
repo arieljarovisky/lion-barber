@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, Trash2, ShieldCheck, StickyNote, Save, Repeat, UserPlus, Users, X } from 'lucide-react';
-import DashboardPanelShell, { type DashboardPanelId } from '../components/DashboardPanelShell';
+import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import ClientSearchInput from '../components/ClientSearchInput';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
@@ -148,16 +148,9 @@ export default function AdminClientDetailPage() {
 
   const handlePanelNavigate = useCallback(
     (panel: DashboardPanelId) => {
-      if (panel === 'clientes') {
-        navigate('/dashboard/clientes');
-        return;
-      }
-      if (panel === 'estadisticas') {
-        navigate('/dashboard/estadisticas');
-        return;
-      }
-      if (panel === 'cierreCaja') {
-        navigate('/dashboard/cierre-caja');
+      const href = dashboardPanelHref(panel);
+      if (href) {
+        navigate(href);
         return;
       }
       navigate('/dashboard', { state: { openView: panel } });

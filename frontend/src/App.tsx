@@ -5,6 +5,7 @@ import BarberAgendasPage from './pages/BarberAgendasPage';
 import Dashboard from './pages/Dashboard';
 import BarberStatsPage from './pages/BarberStatsPage';
 import WeeklyCashClosePage from './pages/WeeklyCashClosePage';
+import ExpensesPage from './pages/ExpensesPage';
 import AdminClientsListPage from './pages/AdminClientsListPage';
 import AdminClientDetailPage from './pages/AdminClientDetailPage';
 import Login from './pages/Login';
@@ -60,6 +61,14 @@ export default function App() {
             element={
               <ProtectedRoute dashboardAccess adminOnly superAdminOnly>
                 <WeeklyCashClosePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/gastos"
+            element={
+              <ProtectedRoute dashboardAccess adminOnly superAdminOnly>
+                <ExpensesPage />
               </ProtectedRoute>
             }
           />
