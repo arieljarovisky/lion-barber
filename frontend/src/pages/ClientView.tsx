@@ -255,6 +255,22 @@ export default function ClientView() {
     });
   }, []);
 
+  const startBookingWithService = useCallback(
+    (serviceId: string) => {
+      setSelectedService(serviceId);
+      scrollToReserva();
+    },
+    [scrollToReserva]
+  );
+
+  const startBookingWithBarber = useCallback(
+    (barberId: string) => {
+      setSelectedBarber(barberId);
+      scrollToReserva();
+    },
+    [scrollToReserva]
+  );
+
   const selectedWeekday = getISODay(parse(selectedDate, 'yyyy-MM-dd', new Date()));
   const isSelectedDateClosed = !openWeekdays.includes(selectedWeekday) || closedDates.includes(selectedDate);
   const selectedDayHours = shopWeekdayHours[selectedWeekday] ?? { openTime: '10:00', closeTime: shopCloseTime };
@@ -275,6 +291,7 @@ export default function ClientView() {
     'absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80';
 
   const selectedServiceRow = services.find((s) => s.id === selectedService);
+  const selectedBarberRow = barbers.find((b) => b.id === selectedBarber);
   const selectedServiceDuration = selectedServiceRow?.duration ?? 30;
   const serviceSelected = Boolean(selectedService);
   const depositPreview = useMemo(() => {
@@ -310,8 +327,8 @@ export default function ClientView() {
   const visibleBarbers = useMemo(() => {
     if (!selectedDate || !selectedService) return barbers;
     const set = new Set(availableBarberIds);
-    return barbers.filter((b) => set.has(b.id));
-  }, [barbers, selectedDate, selectedService, availableBarberIds]);
+    return barbers.filter((b) => set.has(b.id) || b.id === selectedBarber);
+  }, [barbers, selectedDate, selectedService, availableBarberIds, selectedBarber]);
 
   const visibleTimeSlots = useMemo(
     () => filterPastSlotsForToday(availableSlots, selectedDate),
@@ -319,10 +336,7 @@ export default function ClientView() {
   );
 
   useEffect(() => {
-    if (!selectedService) {
-      setSelectedBarber('');
-      setSelectedTime('');
-    }
+    if (!selectedService) setSelectedTime('');
   }, [selectedService]);
 
   useEffect(() => {
@@ -918,8 +932,20 @@ export default function ClientView() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
-            {visibleCatalogServices.map((service) => (
-              <div key={service.id} className="bg-zinc-900/50 border border-zinc-800 p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl hover:border-[#e5c185]/50 transition-colors group min-w-0">
+            {visibleCatalogServices.map((service) => {
+              const isSelected = selectedService === service.id;
+              return (
+              <button
+                key={service.id}
+                type="button"
+                onClick={() => startBookingWithService(service.id)}
+                aria-pressed={isSelected}
+                className={`bg-zinc-900/50 border p-5 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl transition-colors group min-w-0 text-left cursor-pointer ${
+                  isSelected
+                    ? 'border-[#e5c185] ring-1 ring-[#e5c185]/40'
+                    : 'border-zinc-800 hover:border-[#e5c185]/50'
+                }`}
+              >
                 <div className="w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] bg-zinc-950 border border-zinc-800 rounded-lg sm:rounded-xl flex items-center justify-center text-[#e5c185] mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
                   <span className="text-xl sm:text-2xl font-black tracking-wider select-none">
                     {getServiceInitials(service.name)}
@@ -933,8 +959,13 @@ export default function ClientView() {
                     <Clock size={14} className="flex-shrink-0" /> {service.duration} min
                   </span>
                 </div>
-              </div>
-            ))}
+                <span className="mt-4 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wider text-[#e5c185]">
+                  Reservar turno
+                  <ChevronRight size={14} aria-hidden />
+                </span>
+              </button>
+              );
+            })}
           </div>
 
           {hasMoreServices && (
@@ -993,29 +1024,43 @@ export default function ClientView() {
           </motion.div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
-            {barbers.map((barber, index) => (
-              <motion.div 
-                key={barber.id} 
+            {barbers.map((barber, index) => {
+              const isSelected = selectedBarber === barber.id;
+              return (
+              <motion.button
+                key={barber.id}
+                type="button"
+                onClick={() => startBookingWithBarber(barber.id)}
+                aria-pressed={isSelected}
                 initial={{ opacity: 0, y: 50 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-50px" }}
                 transition={{ duration: 0.6, delay: index * 0.2 }}
-                className="bg-zinc-900/50 border border-zinc-800 rounded-xl sm:rounded-2xl overflow-hidden hover:border-[#e5c185]/50 transition-colors group min-w-0"
+                className={`bg-zinc-900/50 border rounded-xl sm:rounded-2xl overflow-hidden transition-colors group min-w-0 text-left cursor-pointer ${
+                  isSelected
+                    ? 'border-[#e5c185] ring-1 ring-[#e5c185]/40'
+                    : 'border-zinc-800 hover:border-[#e5c185]/50'
+                }`}
               >
                 <div className="aspect-[4/5] min-h-[280px] sm:min-h-0 overflow-hidden relative">
                   <img 
                     src={barber.photo} 
-                    alt={barber.name} 
+                    alt="" 
                     className={barberPhotoClasses}
                     referrerPolicy="no-referrer"
                   />
                   <div className={barberOverlayClasses}></div>
                   <div className="absolute bottom-0 left-0 w-full p-4 sm:p-6">
                     <h3 className="text-2xl sm:text-3xl font-serif font-black text-white">{barber.name}</h3>
+                    <span className="mt-1 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wider text-[#e5c185]">
+                      Reservar turno
+                      <ChevronRight size={14} aria-hidden />
+                    </span>
                   </div>
                 </div>
-              </motion.div>
-            ))}
+              </motion.button>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -1181,7 +1226,9 @@ export default function ClientView() {
                       </select>
                       {!serviceSelected && (
                         <p className="text-xs text-zinc-500 mt-1">
-                          Elegí un servicio para continuar con barbero, fecha y hora.
+                          {selectedBarberRow
+                            ? `Elegí un servicio para continuar. ${selectedBarberRow.name} ya quedó seleccionado.`
+                            : 'Elegí un servicio para continuar con barbero, fecha y hora.'}
                         </p>
                       )}
                     </div>
