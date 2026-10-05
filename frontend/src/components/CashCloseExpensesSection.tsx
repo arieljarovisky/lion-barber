@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Trash2, Receipt, Wallet } from 'lucide-react';
 import { api, ApiError } from '../api';
 import type { CashExpense, FixedMonthlyExpense } from '../api';
@@ -37,6 +37,10 @@ export default function CashCloseExpensesSection({
   const [cashDesc, setCashDesc] = useState('');
   const [cashAmount, setCashAmount] = useState('');
   const [cashDate, setCashDate] = useState(fromYmd);
+
+  useEffect(() => {
+    setCashDate(fromYmd);
+  }, [fromYmd]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 

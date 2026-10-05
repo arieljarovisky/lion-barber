@@ -1870,7 +1870,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       navigate(href);
       return;
     }
-    setView(panel);
+    setView(panel as ViewType);
   }, [navigate]);
 
   const toggleShopDay = (day: number) => {
