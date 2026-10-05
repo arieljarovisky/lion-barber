@@ -267,8 +267,17 @@ export function buildWeeklyCashClose(
     const canjeAmount = appointmentCanjeLocalAmountArs(app, services, depositPercent);
     const collectibleLocal = appointmentCollectibleLocalArs(app, services, depositPercent);
     const { key, name, commissionPercent } = resolveBarber(app, barbers);
+
+    const hasLocalPaymentRegistered =
+      app.servicePaymentMethod != null ||
+      (app.servicePaymentSplits != null && app.servicePaymentSplits.length > 0);
+
+    const noLocalPaymentNeeded = collectibleLocal <= 0;
+
+    const localPaymentComplete = hasLocalPaymentRegistered || noLocalPaymentNeeded;
+
     const depositAmount =
-      app.depositPaid && serviceAmount > 0
+      app.depositPaid && serviceAmount > 0 && localPaymentComplete
         ? resolveAppointmentDepositAmountArs(app, services, depositPercent)
         : 0;
     const commissions = barberCommissionsForAppointment(app, serviceAmount, commissionPercent);
