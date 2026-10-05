@@ -51,6 +51,7 @@ import SubscriptionPlansPanel from '../components/SubscriptionPlansPanel';
 import PromotionsPanel from '../components/PromotionsPanel';
 import ProductPointsPanel from '../components/ProductPointsPanel';
 import BillingPanel from '../components/BillingPanel';
+import ExpensesPanel from '../components/ExpensesPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplitsModal';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
@@ -797,13 +798,16 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   }, [view, scheduleBarberId, loadSchedule]);
 
   useEffect(() => {
-    if (!isAdmin && (view === 'servicios' || view === 'equipo' || view === 'configuracion' || view === 'abonos' || view === 'promociones')) {
+    if (!isAdmin && (view === 'equipo' || view === 'promociones' || view === 'puntos')) {
       setView('agenda');
     }
-    if (!isSuperAdmin && view === 'facturacion') {
+    if (!isSuperAdmin && (view === 'facturacion' || view === 'estadisticas' || view === 'cierreCaja')) {
       setView('agenda');
     }
-  }, [isAdmin, isSuperAdmin, view]);
+    if (!canAccessDashboard && (view === 'servicios' || view === 'abonos' || view === 'configuracion' || view === 'gastos' || view === 'productos')) {
+      setView('agenda');
+    }
+  }, [isAdmin, isSuperAdmin, canAccessDashboard, view]);
 
   /** Cierre y horario por día de la barbería para la grilla de agenda. Sin esto, solo se aplicaba al abrir Configuración. */
   useEffect(() => {
@@ -1980,12 +1984,17 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                     title: 'Facturación',
                     subtitle: 'Facturas electrónicas AFIP por turno; al emitir podés sumar productos de venta.',
                   }
-                : view === 'configuracion'
-              ? {
-                  title: 'Configuración del local',
-                  subtitle: 'Plazo de gestión, seña online, días abiertos y comisiones por barbero.',
-                }
-              : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
+                : view === 'gastos'
+                  ? {
+                      title: 'Gastos',
+                      subtitle: 'Gastos fijos mensuales y gastos de caja del local.',
+                    }
+                  : view === 'configuracion'
+                    ? {
+                        title: 'Configuración del local',
+                        subtitle: 'Plazo de gestión, seña online, días abiertos y comisiones por barbero.',
+                      }
+                    : { title: 'Equipo', subtitle: 'Invitaciones para el panel (empleados).' };
 
   return (
     <div className={`${agendasOnly ? 'h-screen overflow-hidden' : 'min-h-screen'} bg-zinc-50 text-zinc-900 font-sans flex`}>
@@ -3355,7 +3364,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           </div>
         )}
 
-        {view === 'puntos' && (profile?.role === 'admin' || profile?.role === 'staff') && (
+        {view === 'puntos' && isAdmin && (
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_minmax(280px,380px)] gap-8 lg:gap-10 items-start">
             <div className="space-y-10 min-w-0">
               <PointsProgramPanel
@@ -3380,7 +3389,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           </div>
         )}
 
-        {view === 'productos' && (profile?.role === 'admin' || profile?.role === 'staff') && (
+        {view === 'productos' && canAccessDashboard && (
           <ShopProductsPanel
             shopProducts={shopProducts}
             loading={shopProductsPanelLoading}
@@ -3390,7 +3399,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           />
         )}
 
-        {view === 'abonos' && isAdmin && (
+        {view === 'abonos' && canAccessDashboard && (
           <SubscriptionPlansPanel
             plans={subscriptionPlans}
             loading={subscriptionPlansLoading}
@@ -3430,6 +3439,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
             barberInvoicingLoading={barberInvoicingLoading}
           />
         )}
+
+        {view === 'gastos' && canAccessDashboard && <ExpensesPanel />}
 
         {view === 'equipo' && isAdmin && (
           <div className="max-w-2xl space-y-6">
@@ -3600,7 +3611,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           </div>
         )}
 
-        {view === 'configuracion' && isAdmin && (
+        {view === 'configuracion' && canAccessDashboard && (
           <div className="max-w-3xl space-y-6">
             {shopError && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{shopError}</div>

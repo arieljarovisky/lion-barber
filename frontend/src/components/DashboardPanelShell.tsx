@@ -11,9 +11,7 @@ import {
   Settings,
   ShoppingBag,
   Receipt,
-  Banknote,
   Repeat,
-  Megaphone,
   LogOut,
   Menu,
   X,
@@ -138,7 +136,7 @@ export default function DashboardPanelShell({
             <CalendarIcon size={18} className="flex-shrink-0" />
             Agenda
           </button>
-          {isAdmin && (
+          {canAccessDashboard && (
             <button
               type="button"
               onClick={() => go('servicios')}
@@ -164,7 +162,7 @@ export default function DashboardPanelShell({
             <Ban size={18} className="flex-shrink-0" />
             Horarios
           </button>
-          {(profile?.role === 'admin' || profile?.role === 'staff') && (
+          {canAccessDashboard && (
             <button
               type="button"
               onClick={() => go('productos')}
@@ -178,7 +176,7 @@ export default function DashboardPanelShell({
               Productos
             </button>
           )}
-          {isAdmin && (
+          {canAccessDashboard && (
             <button
               type="button"
               onClick={() => go('abonos')}
@@ -190,20 +188,6 @@ export default function DashboardPanelShell({
             >
               <Repeat size={18} className="flex-shrink-0" />
               Abonos
-            </button>
-          )}
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => go('promociones')}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
-                activePanel === 'promociones'
-                  ? 'bg-[#e5c185] text-zinc-950'
-                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-              }`}
-            >
-              <Megaphone size={18} className="flex-shrink-0" />
-              Promociones
             </button>
           )}
           {isSuperAdmin && (
@@ -248,20 +232,6 @@ export default function DashboardPanelShell({
               Cierre de caja
             </button>
           )}
-          {isSuperAdmin && (
-            <button
-              type="button"
-              onClick={() => go('gastos')}
-              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
-                activePanel === 'gastos'
-                  ? 'bg-[#e5c185] text-zinc-950'
-                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
-              }`}
-            >
-              <Banknote size={18} className="flex-shrink-0" />
-              Gastos
-            </button>
-          )}
           {isAdmin && (
             <button
               type="button"
@@ -288,7 +258,21 @@ export default function DashboardPanelShell({
               Clientes
             </button>
           )}
-          {isAdmin && (
+          {canAccessDashboard && (
+            <button
+              type="button"
+              onClick={() => go('gastos')}
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-bold ${
+                activePanel === 'gastos'
+                  ? 'bg-[#e5c185] text-zinc-950'
+                  : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'
+              }`}
+            >
+              <Wallet size={18} className="flex-shrink-0" />
+              Gastos
+            </button>
+          )}
+          {canAccessDashboard && (
             <button
               type="button"
               onClick={() => go('configuracion')}
