@@ -222,6 +222,30 @@ export type AppointmentPaymentDisplayPart = {
   method: ServicePaymentMethod | null;
 };
 
+function formatRegisteredPaymentAmount(amount: number): string {
+  return `$${amount.toLocaleString('es-AR')}`;
+}
+
+/**
+ * Seña y saldo en Mercado Pago se muestran como un solo cobro.
+ * Si el saldo usa otro método, la seña sigue aparte.
+ */
+function collapseMercadoPagoParts(
+  parts: AppointmentPaymentDisplayPart[],
+  mercadoPagoTotal: number,
+  mercadoPagoCount: number
+): AppointmentPaymentDisplayPart[] {
+  if (mercadoPagoCount < 2 || mercadoPagoTotal <= 0) return parts;
+  const text = `${SERVICE_PAYMENT_METHOD_LABELS.mercadopago} ${formatRegisteredPaymentAmount(mercadoPagoTotal)}`;
+  let placed = false;
+  return parts.flatMap((part) => {
+    if (part.method !== 'mercadopago') return [part];
+    if (placed) return [];
+    placed = true;
+    return [{ method: 'mercadopago', text }];
+  });
+}
+
 /** Partes de cobro para agenda / modal, con el método para pintar cada una. */
 export function appointmentPaymentDisplayParts(
   app: Appointment,
@@ -230,11 +254,15 @@ export function appointmentPaymentDisplayParts(
   productsSubtotal = 0
 ): AppointmentPaymentDisplayPart[] {
   const parts: AppointmentPaymentDisplayPart[] = [];
+  let mercadoPagoTotal = 0;
+  let mercadoPagoCount = 0;
   const deposit = appointmentDepositAmountArs(app, services, depositPercent);
   if (deposit > 0) {
+    mercadoPagoTotal += deposit;
+    mercadoPagoCount += 1;
     parts.push({
       method: 'mercadopago',
-      text: `${SERVICE_PAYMENT_METHOD_LABELS.mercadopago} $${deposit.toLocaleString('es-AR')} (seña)`,
+      text: `${SERVICE_PAYMENT_METHOD_LABELS.mercadopago} ${formatRegisteredPaymentAmount(deposit)} (seña)`,
     });
   }
 
@@ -247,11 +275,15 @@ export function appointmentPaymentDisplayParts(
       if (s.method === 'account' && s.amount < 0) {
         parts.push({
           method: 'account',
-          text: `${SERVICE_PAYMENT_METHOD_LABELS.account} −$${Math.abs(s.amount).toLocaleString('es-AR')} (debe)`,
+          text: `${SERVICE_PAYMENT_METHOD_LABELS.account} −${formatRegisteredPaymentAmount(Math.abs(s.amount))} (debe)`,
         });
         continue;
       }
       if (s.amount > 0) {
+        if (s.method === 'mercadopago') {
+          mercadoPagoTotal += s.amount;
+          mercadoPagoCount += 1;
+        }
         const suffix =
           s.method === 'subscription' && app.subscriptionCutApplied
             ? ' (1 corte)'
@@ -260,7 +292,7 @@ export function appointmentPaymentDisplayParts(
               : '';
         parts.push({
           method: s.method,
-          text: `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} $${s.amount.toLocaleString('es-AR')}${suffix}`,
+          text: `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} ${formatRegisteredPaymentAmount(s.amount)}${suffix}`,
         });
       }
     }
@@ -271,11 +303,11 @@ export function appointmentPaymentDisplayParts(
   ) {
     parts.push({
       method: app.servicePaymentMethod,
-      text: `${SERVICE_PAYMENT_METHOD_LABELS[app.servicePaymentMethod]} $${localTarget.toLocaleString('es-AR')}`,
+      text: `${SERVICE_PAYMENT_METHOD_LABELS[app.servicePaymentMethod]} ${formatRegisteredPaymentAmount(localTarget)}`,
     });
   }
 
-  return parts;
+  return collapseMercadoPagoParts(parts, mercadoPagoTotal, mercadoPagoCount);
 }
 
 /** Texto para agenda / modal: seña MP + cobros en local. */
