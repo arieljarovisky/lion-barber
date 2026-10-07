@@ -475,7 +475,7 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Comisiones barberos"
                   value={`$${formatArs(summary.commissions)}`}
-                  hint="Sobre valor del servicio (incluye abono y canje)"
+                  hint="Sobre el valor del servicio, también si fue abono, canje o cuenta corriente"
                 />
                 <SummaryCard
                   label="Neto en caja (est.)"
