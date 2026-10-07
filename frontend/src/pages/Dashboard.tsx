@@ -1473,6 +1473,14 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           }
           tipAmount = Math.round(tipAmount * 100) / 100;
         }
+        const chargesAccount = form.servicePaymentSplits.some(
+          (s) => s.method === 'account' && s.amount !== 0
+        );
+        if (chargesAccount && editingAppointment.userId == null) {
+          setError('Vinculá el turno a un cliente para cargarlo en cuenta corriente.');
+          setSaving(false);
+          return;
+        }
         const updated = await api.updateAppointment(editingAppointment.id, {
           name: form.name,
           phone: form.phone,
@@ -1545,7 +1553,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         if (owedArs > 0 && matchedClient) {
           const { confirmed: proceed } = await confirm({
             title: 'Cliente con deuda',
-            message: `${matchedClient.name} debe $${formatArs(owedArs)} en cuenta corriente. ¿Agendar el turno igualmente?`,
+            message: `${matchedClient.name} debe $${formatArs(owedArs)} en cuenta corriente: no pagó un turno anterior. Puede pagarlo ahora o cuando pueda. ¿Agendar el turno igualmente?`,
             confirmLabel: 'Agendar turno',
           });
           if (!proceed) {
@@ -4129,6 +4137,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         onClose={() => setPaymentSplitsModalApp(null)}
         onSaved={(updated) => {
           patchAppointmentInState(updated);
+          void loadAdminClients();
           showToast('Cobros guardados', 'ok');
         }}
         onError={(msg) => showToast(msg, 'err')}
@@ -4286,6 +4295,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                     <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                       <strong>{formMatchedClient.name}</strong> debe{' '}
                       <strong className="tabular-nums">${formatArs(owed)}</strong> en cuenta corriente.
+                      No pagó un turno anterior: puede saldarlo ahora o cuando pueda.
                     </div>
                   );
                 })()}
@@ -4408,7 +4418,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                     />
                     <p className="mt-1 text-xs text-zinc-500">
                       Combiná métodos y montos hasta cubrir el saldo del turno. La seña por Mercado Pago no se incluye
-                      acá. En cuenta corriente podés cargar un monto negativo si el cliente debe.
+                      acá. Cuenta corriente significa que no pagó: el monto queda como deuda y se avisa al agendar.
                     </p>
                   </div>
                     <div>

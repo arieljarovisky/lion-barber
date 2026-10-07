@@ -3,8 +3,19 @@ export type ServicePaymentMethod = 'account' | 'mercadopago' | 'cash' | 'card' |
 
 export interface ServicePaymentSplit {
   method: ServicePaymentMethod;
-  /** Monto en pesos. En cuenta corriente puede ser negativo (= el cliente debe). */
+  /** Monto en pesos. En cuenta corriente es deuda: el cliente no pagó ese importe. */
   amount: number;
+}
+
+/** Importe fiado en cuenta corriente. No entró plata: el cliente lo debe. */
+export function accountDebtArsFromSplits(splits: ServicePaymentSplit[] | null | undefined): number {
+  if (!splits?.length) return 0;
+  let total = 0;
+  for (const split of splits) {
+    if (split.method !== 'account' || !Number.isFinite(split.amount) || split.amount === 0) continue;
+    total += Math.abs(Math.round(split.amount));
+  }
+  return total;
 }
 
 export const SERVICE_PAYMENT_METHODS: ServicePaymentMethod[] = [

@@ -441,7 +441,7 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Ingreso en caja (servicios)"
                   value={`$${formatArs(summary.serviceGross)}`}
-                  hint="Seña MP + cobrado en local (sin abono)"
+                  hint="Seña MP + cobrado en local. La cuenta corriente no entra: es deuda"
                 />
                 <SummaryCard
                   label="Señas (Mercado Pago)"
@@ -452,9 +452,16 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Cobrado en local"
                   value={`$${formatArs(summary.localPending)}`}
-                  hint="Efectivo, tarjeta, cuenta, etc."
+                  hint="Efectivo, tarjeta y Mercado Pago. Sin lo fiado"
                   accent="amber"
                 />
+                {summary.localByMethod.account > 0 && (
+                  <SummaryCard
+                    label="Cuenta corriente (deuda)"
+                    value={`$${formatArs(summary.localByMethod.account)}`}
+                    hint="El cliente no pagó: lo cobra la próxima o cuando pueda"
+                  />
+                )}
                 {summary.nonCashServiceTotal > 0 && (
                   <SummaryCard
                     label="Abono y canje"
@@ -504,7 +511,7 @@ export default function WeeklyCashClosePage() {
                 <div className="border-b border-zinc-100 bg-zinc-50/80 px-4 py-3">
                   <h2 className="font-black text-zinc-900">Cobros en local por método</h2>
                   <p className="mt-0.5 text-xs text-zinc-500">
-                    Saldo cobrado en el turno (sin abono). El abono por cortes no suma acá.
+                    Saldo del turno por método. Cuenta corriente es deuda del cliente y no entra en caja. El abono por cortes no suma acá.
                   </p>
                 </div>
                 <div className="cash-close-table-wrap overflow-x-auto p-4">

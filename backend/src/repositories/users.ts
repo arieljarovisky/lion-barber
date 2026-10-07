@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import type { Pool, PoolConnection } from 'mysql2/promise';
 import pool, { query } from '../db.js';
+
+type SqlExecutor = Pool | PoolConnection;
 
 /** Email técnico para fichas sin correo (único, válido para la columna NOT NULL). */
 export const PLACEHOLDER_EMAIL_HOST = 'sin-email.lion-barber.internal';
@@ -113,6 +116,35 @@ export function parseDbAccountBalanceArs(raw: unknown): number {
   const n = typeof raw === 'number' ? raw : Number(String(raw).replace(',', '.'));
   if (!Number.isFinite(n)) return 0;
   return normalizeAccountBalanceArs(n);
+}
+
+/**
+ * Ajusta la deuda de cuenta corriente.
+ * `deltaDebtArs` > 0: el cliente debe más (el saldo baja).
+ * `deltaDebtArs` < 0: se revierte deuda (el saldo sube).
+ */
+export async function adjustClientAccountDebt(
+  userId: number,
+  deltaDebtArs: number,
+  exec: SqlExecutor = pool
+): Promise<void> {
+  const delta = Math.round(Number(deltaDebtArs) * 100) / 100;
+  if (!Number.isFinite(delta) || delta === 0) return;
+
+  const [rows] = await exec.execute(
+    'SELECT role, account_balance_ars FROM users WHERE id = ? LIMIT 1 FOR UPDATE',
+    [userId]
+  );
+  const row = (rows as { role: string; account_balance_ars: unknown }[])[0];
+  if (!row || row.role !== 'client') {
+    throw new Error('Vinculá el turno a un cliente para cargarlo en cuenta corriente.');
+  }
+  const next = normalizeAccountBalanceArs(parseDbAccountBalanceArs(row.account_balance_ars) - delta);
+  await exec.execute('UPDATE users SET account_balance_ars = ? WHERE id = ? AND role = ?', [
+    next,
+    userId,
+    'client',
+  ]);
 }
 
 /** Actualiza ficha de cliente (panel admin). */

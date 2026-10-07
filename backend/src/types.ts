@@ -58,6 +58,11 @@ export interface Appointment {
   servicePaymentMethod?: ServicePaymentMethod | null;
   /** Cobro del saldo en local repartido entre métodos (suma de montos). */
   servicePaymentSplits?: ServicePaymentSplit[] | null;
+  /**
+   * Deuda de cuenta corriente ya descontada del saldo del cliente por este turno.
+   * null = todavía no se sincronizó.
+   */
+  accountDebtAppliedArs?: number | null;
   /** Productos vendidos junto con el turno (cera, pomada, etc.). Aparecen en historial. */
   products?: AppointmentProductLine[] | null;
   /** Si el turno consumió un corte del abono del cliente. */

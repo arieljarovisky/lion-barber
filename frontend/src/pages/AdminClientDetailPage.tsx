@@ -48,6 +48,8 @@ export default function AdminClientDetailPage() {
   const [formPhones, setFormPhones] = useState('');
   const [formPoints, setFormPoints] = useState('0');
   const [formAccountBalance, setFormAccountBalance] = useState('0');
+  const [debtPaymentAmount, setDebtPaymentAmount] = useState('');
+  const [payingDebt, setPayingDebt] = useState(false);
   const [formNotes, setFormNotes] = useState('');
   const [formExempt, setFormExempt] = useState(false);
   const [formSubscriptionPlanId, setFormSubscriptionPlanId] = useState('');
@@ -254,6 +256,33 @@ export default function AdminClientDetailPage() {
     availablePlans,
     emailLocked,
   ]);
+
+  const handleRegisterDebtPayment = useCallback(async () => {
+    if (!client || payingDebt) return;
+    const parsed = parseSignedArsInput(debtPaymentAmount);
+    if (parsed === 'invalid' || parsed <= 0) {
+      setError('Ingresá el monto que pagó, mayor a 0.');
+      setSaveOk('');
+      return;
+    }
+    const current = client.accountBalanceArs ?? 0;
+    const next = Math.round((current + parsed) * 100) / 100;
+    setPayingDebt(true);
+    setError('');
+    setSaveOk('');
+    try {
+      const res = await api.updateAdminClient(client.id, { accountBalanceArs: next });
+      setClient(res.client);
+      setDebtPaymentAmount('');
+      setSaveOk(`Se registró un pago de $${formatArs(parsed)}.`);
+    } catch (e) {
+      const msg =
+        e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'No se pudo registrar el cobro.';
+      setError(msg);
+    } finally {
+      setPayingDebt(false);
+    }
+  }, [client, payingDebt, debtPaymentAmount]);
 
   const handleDeleteClient = useCallback(async () => {
     if (!client || deleting) return;
@@ -519,7 +548,8 @@ export default function AdminClientDetailPage() {
                     <span className="tabular-nums">
                       ${formatArs(clientAccountBalanceOwedArs(client.accountBalanceArs))}
                     </span>{' '}
-                    en cuenta corriente.
+                    en cuenta corriente. No pagó y puede saldarlo ahora o cuando pueda. Al agendar un turno, el
+                    panel avisa esta deuda.
                   </p>
                 </div>
               )}
@@ -611,8 +641,34 @@ export default function AdminClientDetailPage() {
                   placeholder="0 o -5000"
                 />
                 <p className="mt-1 text-[11px] text-zinc-500">
-                  Negativo = el cliente debe plata. Al agendar un turno, el panel avisa si hay deuda.
+                  Si el turno se cobra con cuenta corriente, este saldo baja solo: el cliente no pagó y lo debe.
+                  Al agendar otro turno, el panel avisa. Cuando pague, registrá el cobro.
                 </p>
+                {clientAccountBalanceOwedArs(client?.accountBalanceArs) > 0 && (
+                  <div className="mt-3 flex flex-wrap items-end gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-1">
+                        Cobro de la deuda
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={debtPaymentAmount}
+                        onChange={(e) => setDebtPaymentAmount(e.target.value)}
+                        placeholder="Monto que pagó"
+                        className="w-40 rounded-xl border border-zinc-200 px-3 py-2 text-sm tabular-nums"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={payingDebt || saving}
+                      onClick={() => void handleRegisterDebtPayment()}
+                      className="rounded-xl bg-amber-800 px-4 py-2 text-sm font-bold text-white hover:bg-amber-900 disabled:opacity-50"
+                    >
+                      {payingDebt ? 'Registrando…' : 'Registrar cobro'}
+                    </button>
+                  </div>
+                )}
                 {clientAccountBalanceOwedArs(client?.accountBalanceArs) > 0 && (
                   <p className="mt-2 text-sm font-semibold text-amber-800">
                     Debe ${formatArs(clientAccountBalanceOwedArs(client?.accountBalanceArs))}

@@ -1,7 +1,11 @@
 import { mysqlDatetimeUtcNaiveFromDate, mysqlUtcNaiveToIsoInstant } from '../mysqlUtcDatetime.js';
 import pool, { query } from '../db.js';
 import type { AfipInvoiceDetail, Appointment, AppointmentStatus, ServicePaymentMethod } from '../types.js';
-import { parseServicePaymentMethod, parseServicePaymentSplits } from '../servicePaymentMethod.js';
+import {
+  accountDebtArsFromSplits,
+  parseServicePaymentMethod,
+  parseServicePaymentSplits,
+} from '../servicePaymentMethod.js';
 import { parseAppointmentProductLines } from '../appointmentProducts.js';
 import * as userRepo from './users.js';
 import { getBarberById, getAllBarbers } from './barbers.js';
@@ -72,6 +76,7 @@ interface DbAppointment {
   reminder_1h_sent?: number;
   service_payment_method?: string | null;
   service_payment_splits?: string | unknown | null;
+  account_debt_applied_ars?: number | string | null;
   client_chose_any_barber?: number;
   tip_amount?: number | string | null;
   products?: string | unknown | null;
@@ -124,6 +129,10 @@ function rowToAppointment(row: DbAppointment): Appointment {
     afipInvoiceDetail: parseAfipDetail(row.afip_invoice_detail),
     servicePaymentMethod: parseServicePaymentMethod(row.service_payment_method),
     servicePaymentSplits: parseServicePaymentSplits(row.service_payment_splits),
+    accountDebtAppliedArs:
+      row.account_debt_applied_ars == null || row.account_debt_applied_ars === ''
+        ? null
+        : Math.round(Number(row.account_debt_applied_ars) * 100) / 100,
     products: parseAppointmentProductLines(row.products),
     subscriptionCutApplied: Boolean(row.subscription_cut_applied),
     promotionId: row.promotion_id ?? undefined,
@@ -570,30 +579,63 @@ export async function updateAppointment(id: string, data: Partial<Appointment>):
     await onAppointmentCancelled(current);
   }
 
-  await query(
-    `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?, tip_amount = ?, products = ?, updated_by_user_id = ?
-     WHERE id = ?`,
-    [
-      updated.name,
-      updated.phone,
-      updated.service,
-      updated.serviceId ?? null,
-      barberName ?? null,
-      updated.barberId ?? null,
-      updated.date,
-      updated.time,
-      durationMinutes,
-      updated.depositPaid ? 1 : 0,
-      updated.status ?? 'scheduled',
-      updated.paymentDueAt ?? null,
-      servicePaymentMethod,
-      splitsJson,
-      tipAmount,
-      productsJson,
-      data.updatedByUserId ?? null,
-      id,
-    ]
-  );
+  const nextStatus = data.status ?? current.status ?? 'scheduled';
+  const paymentTouched =
+    data.servicePaymentSplits !== undefined || data.servicePaymentMethod !== undefined;
+  const cancelling = nextStatus === 'cancelled' && current.status !== 'cancelled';
+  const shouldSyncDebt = paymentTouched || cancelling;
+  const prevApplied =
+    current.status === 'cancelled' || current.accountDebtAppliedArs == null
+      ? 0
+      : current.accountDebtAppliedArs;
+  const nextApplied = nextStatus === 'cancelled' ? 0 : accountDebtArsFromSplits(servicePaymentSplits);
+  const debtDelta = shouldSyncDebt ? nextApplied - prevApplied : 0;
+  const accountDebtAppliedArs = shouldSyncDebt ? nextApplied : current.accountDebtAppliedArs ?? null;
+  const accountUserId = current.userId != null ? Number(current.userId) : null;
+  if (debtDelta !== 0 && nextApplied > 0 && (accountUserId == null || !Number.isFinite(accountUserId))) {
+    throw new Error('Vinculá el turno a un cliente para cargarlo en cuenta corriente.');
+  }
+
+  const updateSql = `UPDATE appointments SET name = ?, phone = ?, service = ?, service_id = ?, barber = ?, barber_id = ?, date = ?, time = ?, duration_minutes = ?, deposit_paid = ?, status = ?, payment_due_at = ?, service_payment_method = ?, service_payment_splits = ?, tip_amount = ?, products = ?, account_debt_applied_ars = ?, updated_by_user_id = ?
+     WHERE id = ?`;
+  const updateParams = [
+    updated.name,
+    updated.phone,
+    updated.service,
+    updated.serviceId ?? null,
+    barberName ?? null,
+    updated.barberId ?? null,
+    updated.date,
+    updated.time,
+    durationMinutes,
+    updated.depositPaid ? 1 : 0,
+    nextStatus,
+    updated.paymentDueAt ?? null,
+    servicePaymentMethod,
+    splitsJson,
+    tipAmount,
+    productsJson,
+    accountDebtAppliedArs,
+    data.updatedByUserId ?? null,
+    id,
+  ];
+
+  if (debtDelta !== 0 && accountUserId != null && Number.isFinite(accountUserId)) {
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.execute(updateSql, updateParams);
+      await userRepo.adjustClientAccountDebt(accountUserId, debtDelta, conn);
+      await conn.commit();
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  } else {
+    await query(updateSql, updateParams);
+  }
   const saved = await getAppointmentById(id);
   if (saved && saved.userId != null) {
     const p = String(saved.phone ?? '').trim();
@@ -726,15 +768,53 @@ export async function cancelAppointmentByUser(id: string, userId: number): Promi
   if (!app || app.userId !== userId) return null;
   if (app.status === 'cancelled') return app;
   await onAppointmentCancelled(app);
-  await pool.execute(`UPDATE appointments SET status = 'cancelled' WHERE id = ? AND user_id = ?`, [id, userId]);
+  const debt = app.accountDebtAppliedArs != null && app.accountDebtAppliedArs > 0 ? app.accountDebtAppliedArs : 0;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [res] = await conn.execute(
+      `UPDATE appointments SET status = 'cancelled', account_debt_applied_ars = 0 WHERE id = ? AND user_id = ? AND status != 'cancelled'`,
+      [id, userId]
+    );
+    if ((res as { affectedRows: number }).affectedRows === 0) {
+      throw new Error('No se pudo cancelar el turno');
+    }
+    if (debt > 0) {
+      await userRepo.adjustClientAccountDebt(userId, -debt, conn);
+    }
+    await conn.commit();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
   return getAppointmentById(id);
 }
 
 export async function deleteAppointment(id: string): Promise<boolean> {
   const app = await getAppointmentById(id);
-  if (app) await onAppointmentCancelled(app);
-  const [res] = await pool.execute('DELETE FROM appointments WHERE id = ?', [id]);
-  return (res as { affectedRows: number }).affectedRows > 0;
+  if (!app) return false;
+  await onAppointmentCancelled(app);
+  const debt =
+    app.status === 'cancelled' || app.accountDebtAppliedArs == null || app.accountDebtAppliedArs <= 0
+      ? 0
+      : app.accountDebtAppliedArs;
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    if (debt > 0 && app.userId != null) {
+      await userRepo.adjustClientAccountDebt(Number(app.userId), -debt, conn);
+    }
+    const [res] = await conn.execute('DELETE FROM appointments WHERE id = ?', [id]);
+    await conn.commit();
+    return (res as { affectedRows: number }).affectedRows > 0;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 export async function setAppointmentAfipInvoice(

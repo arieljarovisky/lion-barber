@@ -19,7 +19,11 @@ import { es } from 'date-fns/locale';
 import type { Appointment, Barber, Service, ServicePaymentMethod, ServicePaymentSplit } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { resolveAppointmentDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
-import { SERVICE_PAYMENT_METHODS, applySplitsToMethodTotals } from './servicePaymentMethod';
+import {
+  SERVICE_PAYMENT_METHODS,
+  accountDebtArsFromSplits,
+  applySplitsToMethodTotals,
+} from './servicePaymentMethod';
 import {
   appointmentCanjeLocalAmountArs,
   appointmentCollectibleLocalArs,
@@ -170,6 +174,13 @@ export type WeeklyCashSummary = {
   depositsMpByMethod: PaymentMethodTotals;
   tipsTotal: number;
 };
+
+function rowAccountDebtArs(row: WeeklyCashRow): number {
+  const fromSplits = accountDebtArsFromSplits(row.servicePaymentSplits);
+  if (fromSplits > 0) return fromSplits;
+  if (row.servicePaymentMethod === 'account' && !row.servicePaymentSplits?.length) return row.localPending;
+  return 0;
+}
 
 function resolveBarber(
   app: Appointment,
@@ -335,10 +346,11 @@ export function buildWeeklyCashClose(
       };
       byBarberMap.set(r.barberKey, b);
     }
+    const cashLocal = Math.max(0, r.localPending - rowAccountDebtArs(r));
     b.appointments += 1;
-    b.serviceGross += r.depositAmount + r.localPending;
+    b.serviceGross += r.depositAmount + cashLocal;
     b.depositsMp += r.depositAmount;
-    b.localPending += r.localPending;
+    b.localPending += cashLocal;
     b.commission += r.commissionAmount;
     if (r.afipTotal != null) b.afipInvoiced += r.afipTotal;
     b.tips += r.tipAmount;
@@ -393,6 +405,12 @@ export function buildWeeklyCashClose(
     }
   );
   summary.tipsTotal = rows.reduce((s, r) => s + r.tipAmount, 0);
+  const fiadoEnCaja = rows.reduce(
+    (sum, r) => sum + Math.min(r.localPending, rowAccountDebtArs(r)),
+    0
+  );
+  summary.serviceGross = Math.max(0, summary.serviceGross - fiadoEnCaja);
+  summary.localPending = Math.max(0, summary.localPending - fiadoEnCaja);
   summary.shopNetEstimate = summary.serviceGross - summary.commissions;
 
   return { rows, byBarber, summary };

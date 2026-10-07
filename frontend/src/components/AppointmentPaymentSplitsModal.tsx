@@ -20,7 +20,12 @@ import {
   pricedShopProducts,
   sumAppointmentProducts,
 } from '../utils/appointmentProducts';
-import { formatArs, parseArsAmount, resolveAppointmentServiceAmountArs } from '../utils/money';
+import {
+  clientAccountBalanceOwedArs,
+  formatArs,
+  parseArsAmount,
+  resolveAppointmentServiceAmountArs,
+} from '../utils/money';
 
 type Props = {
   app: Appointment | null;
@@ -64,6 +69,7 @@ export default function AppointmentPaymentSplitsModal({
   const [pickQty, setPickQty] = useState('1');
   const [productsError, setProductsError] = useState('');
   const [clientSubscription, setClientSubscription] = useState<ClientSubscriptionInfo | null>(null);
+  const [clientAccountBalanceArs, setClientAccountBalanceArs] = useState<number | null>(null);
   /** userId para el que ya terminó la consulta de abono (evita precargar efectivo antes de saber si hay cupo). */
   const [subscriptionUserId, setSubscriptionUserId] = useState<number | null>(null);
   const [subscriptionResolved, setSubscriptionResolved] = useState(false);
@@ -77,6 +83,7 @@ export default function AppointmentPaymentSplitsModal({
   useEffect(() => {
     if (!app?.userId) {
       setClientSubscription(null);
+      setClientAccountBalanceArs(null);
       setSubscriptionUserId(null);
       setSubscriptionResolved(true);
       return;
@@ -87,10 +94,16 @@ export default function AppointmentPaymentSplitsModal({
     api
       .getAdminClient(userId)
       .then((r) => {
-        if (!cancelled) setClientSubscription(r.client.subscription ?? null);
+        if (!cancelled) {
+          setClientSubscription(r.client.subscription ?? null);
+          setClientAccountBalanceArs(r.client.accountBalanceArs ?? 0);
+        }
       })
       .catch(() => {
-        if (!cancelled) setClientSubscription(null);
+        if (!cancelled) {
+          setClientSubscription(null);
+          setClientAccountBalanceArs(null);
+        }
       })
       .finally(() => {
         if (!cancelled) {
@@ -314,6 +327,11 @@ export default function AppointmentPaymentSplitsModal({
       onError('La propina debe ser un número ≥ 0.');
       return;
     }
+    const chargesAccount = splits.some((s) => s.method === 'account' && s.amount !== 0);
+    if (chargesAccount && app.userId == null) {
+      onError('Vinculá el turno a un cliente para cargarlo en cuenta corriente.');
+      return;
+    }
     setSaving(true);
     try {
       const normalized = normalizeAppointmentPaymentSplits(
@@ -431,8 +449,22 @@ export default function AppointmentPaymentSplitsModal({
             )}
             {!app.userId && (
               <p className="mb-3 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Vinculá este turno a un cliente registrado para poder cobrar con abono.
+                Vinculá este turno a un cliente registrado para poder cobrar con abono o cuenta corriente.
               </p>
+            )}
+            {clientAccountBalanceOwedArs(clientAccountBalanceArs) > 0 && (
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                  Deuda en cuenta corriente
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-amber-950 tabular-nums">
+                  Debe ${formatArs(clientAccountBalanceOwedArs(clientAccountBalanceArs))}
+                </p>
+                <p className="mt-1 text-[11px] text-amber-900/90">
+                  No pagó un turno anterior. Puede saldarlo ahora o cuando pueda. Si volvés a usar cuenta
+                  corriente, la deuda aumenta.
+                </p>
+              </div>
             )}
             <ServicePaymentSplitsEditor
               splits={splits}
@@ -442,8 +474,8 @@ export default function AppointmentPaymentSplitsModal({
             />
             <p className="text-xs text-zinc-500 mt-1">
               {depositAmount > 0
-                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago, abono u otro método. En cuenta corriente podés usar un monto negativo si debe.'
-                : 'Podés combinar métodos (incluido Abono si el cliente tiene cupo). En cuenta corriente, un monto negativo registra deuda del cliente.'}
+                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago, abono u otro método. Cuenta corriente significa que no pagó: el monto queda como deuda.'
+                : 'Podés combinar métodos (incluido Abono si el cliente tiene cupo). Cuenta corriente significa que no pagó: el monto queda como deuda en su ficha.'}
             </p>
           </div>
 

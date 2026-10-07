@@ -174,7 +174,7 @@ export default function ServicePaymentSplitsEditor({
                 }}
                 onBlur={() => clearAmountDraft(row.method)}
                 onWheel={(e) => e.currentTarget.blur()}
-                placeholder={row.method === 'account' ? '0 o -5000' : '0'}
+                placeholder="0"
                 className={
                   compact
                     ? 'no-number-spin w-24 rounded-lg border border-white/80 bg-white px-2 py-1 text-[11px] tabular-nums text-zinc-900'
@@ -218,9 +218,9 @@ export default function ServicePaymentSplitsEditor({
           </p>
         )}
       </div>
-      {splits.some((s) => s.method === 'account' && s.amount < 0) && (
+      {splits.some((s) => s.method === 'account' && s.amount !== 0) && (
         <p className={`text-amber-800/90 ${compact ? 'text-[10px]' : 'text-xs'}`}>
-          Monto negativo en cuenta corriente = el cliente debe esa plata (no ingresa en caja).
+          Cuenta corriente: el cliente no pagó ese monto. Queda en su cuenta y se avisa al agendar el próximo turno.
         </p>
       )}
     </div>

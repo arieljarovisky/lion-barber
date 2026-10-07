@@ -56,11 +56,22 @@ export function formatServicePaymentMethod(
 
 /** Monto que cuenta para cubrir el saldo del turno (deuda en CC = valor absoluto). */
 export function effectiveSplitAmountArs(split: ServicePaymentSplit): number {
-  if (split.method === 'account' && split.amount < 0) {
+  if (split.method === 'account' && split.amount !== 0) {
     return Math.round(Math.abs(split.amount));
   }
   if (split.amount > 0) return split.amount;
   return 0;
+}
+
+/** Importe fiado en cuenta corriente: el cliente no pagó esa plata. */
+export function accountDebtArsFromSplits(splits: ServicePaymentSplit[] | null | undefined): number {
+  if (!splits?.length) return 0;
+  let total = 0;
+  for (const split of splits) {
+    if (split.method !== 'account' || !Number.isFinite(split.amount) || split.amount === 0) continue;
+    total += Math.abs(Math.round(split.amount));
+  }
+  return total;
 }
 
 export function isValidSplitAmount(method: ServicePaymentMethod, amount: number): boolean {
@@ -84,8 +95,8 @@ export function formatServicePaymentSplits(
     return splits
       .map((s) => {
         const label = SERVICE_PAYMENT_METHOD_LABELS[s.method];
-        if (s.method === 'account' && s.amount < 0) {
-          return `${label} −$${Math.abs(s.amount).toLocaleString('es-AR')} (debe)`;
+        if (s.method === 'account') {
+          return `${label} $${Math.abs(s.amount).toLocaleString('es-AR')} (debe)`;
         }
         return `${label} $${s.amount.toLocaleString('es-AR')}`;
       })
@@ -272,10 +283,10 @@ export function appointmentPaymentDisplayParts(
   if (splits?.length) {
     for (const s of splits) {
       if (!isValidSplitAmount(s.method, s.amount)) continue;
-      if (s.method === 'account' && s.amount < 0) {
+      if (s.method === 'account') {
         parts.push({
           method: 'account',
-          text: `${SERVICE_PAYMENT_METHOD_LABELS.account} −${formatRegisteredPaymentAmount(Math.abs(s.amount))} (debe)`,
+          text: `${SERVICE_PAYMENT_METHOD_LABELS.account} ${formatRegisteredPaymentAmount(Math.abs(s.amount))} (debe)`,
         });
         continue;
       }
@@ -340,11 +351,17 @@ export function applySplitsToMethodTotals(
     let assigned = 0;
     for (const s of splits) {
       if (isNonCashLocalPaymentMethod(s.method)) continue;
+      if (s.method === 'account') {
+        const debt = Math.abs(Math.round(s.amount));
+        if (debt > 0) {
+          totals.account += debt;
+          assigned += debt;
+        }
+        continue;
+      }
       if (s.amount > 0 && SERVICE_PAYMENT_METHODS.includes(s.method)) {
         totals[s.method] += s.amount;
         assigned += s.amount;
-      } else if (s.method === 'account' && s.amount < 0) {
-        assigned += Math.abs(s.amount);
       }
     }
     const remainder = localPending - assigned;
@@ -416,7 +433,7 @@ export function appointmentNonCashLocalAmountArs(
   return Math.min(localTarget, subscription + canje);
 }
 
-/** Saldo en local que entra a caja (efectivo, tarjeta, cuenta corriente, etc.), sin abono. */
+/** Saldo en local a cobrar en el turno (incluye lo fiado en cuenta corriente), sin abono. */
 export function appointmentCollectibleLocalArs(
   app: Appointment,
   services: Service[],
