@@ -99,6 +99,7 @@ import { appointmentModifyBlockedReason, canUpdateAppointmentPayments } from '..
 import {
   adminClientMatchesPhoneDigits,
   adminClientPrimaryPhone,
+  foldSearchText,
   normalizePhoneDigits,
   resolveClientForNewAppointment,
 } from '../utils/adminClientLookup';
@@ -430,14 +431,14 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
 
   const clientNameSuggestions = useMemo(() => {
     if (!canAccessDashboard || editingAppointment || !modalOpen) return [];
-    const q = form.name.trim().toLowerCase();
+    const q = foldSearchText(form.name.trim());
     const phoneDigits = normalizePhoneDigits(form.phone);
     if (q.length < 1 && phoneDigits.length < 6) return [];
     return adminClients
       .filter((c) => {
         const nameOrEmail =
           q.length >= 1 &&
-          (c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q));
+          (foldSearchText(c.name).includes(q) || foldSearchText(c.email).includes(q));
         const byPhone = adminClientMatchesPhoneDigits(c, phoneDigits);
         return nameOrEmail || byPhone;
       })
@@ -1509,7 +1510,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         if (canAccessDashboard && !editingAppointment) {
           if (linkedClientId != null) {
             const c = adminClients.find((x) => x.id === linkedClientId);
-            if (c && c.name.trim().toLowerCase() === nameForApp.toLowerCase()) {
+            if (c && foldSearchText(c.name.trim()) === foldSearchText(nameForApp)) {
               userId = c.id;
               nameForApp = c.name;
             }
@@ -4166,7 +4167,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                         if (prev == null) return null;
                         const c = adminClients.find((x) => x.id === prev);
                         if (!c) return null;
-                        if (c.name.trim().toLowerCase() === v.trim().toLowerCase()) return prev;
+                        if (foldSearchText(c.name.trim()) === foldSearchText(v.trim())) return prev;
                         return null;
                       });
                       if (canAccessDashboard && !editingAppointment) {
@@ -4188,10 +4189,10 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                     }}
                     onBlur={() => {
                       if (!canAccessDashboard || editingAppointment) return;
-                      const t = form.name.trim().toLowerCase();
+                      const t = foldSearchText(form.name.trim());
                       if (!t) return;
                       const matches = adminClients.filter(
-                        (c) => c.name.trim().toLowerCase() === t
+                        (c) => foldSearchText(c.name.trim()) === t
                       );
                       if (matches.length === 1) {
                         setLinkedClientId(matches[0].id);

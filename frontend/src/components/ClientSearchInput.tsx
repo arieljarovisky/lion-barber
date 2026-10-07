@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import type { AdminClientWithHistory } from '../api';
+import { foldSearchText } from '../utils/adminClientLookup';
 import { displayClientEmail } from '../utils/manualClientEmail';
 
 function clientPhones(client: AdminClientWithHistory): string[] {
@@ -12,12 +13,12 @@ function clientPhones(client: AdminClientWithHistory): string[] {
 }
 
 function matchesClientQuery(client: AdminClientWithHistory, query: string): boolean {
-  const q = query.trim().toLowerCase();
+  const q = foldSearchText(query.trim());
   if (!q) return true;
   return (
-    client.name.toLowerCase().includes(q) ||
-    client.email.toLowerCase().includes(q) ||
-    clientPhones(client).some((p) => p.toLowerCase().includes(q))
+    foldSearchText(client.name).includes(q) ||
+    foldSearchText(client.email).includes(q) ||
+    clientPhones(client).some((p) => foldSearchText(p).includes(q))
   );
 }
 

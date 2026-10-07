@@ -22,6 +22,7 @@ import AdminClientAvatar from '../components/AdminClientAvatar';
 import { api, ApiError } from '../api';
 import type { AdminClientWithHistory } from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import { foldSearchText } from '../utils/adminClientLookup';
 import { displayClientEmail, isPlaceholderManualClientEmail } from '../utils/manualClientEmail';
 import { formatPhonesForInput, parsePhonesInput } from '../utils/adminClientHistory';
 import { exportAdminClientsExcel } from '../utils/adminClientsExport';
@@ -198,14 +199,14 @@ export default function AdminClientsListPage() {
 
   const filteredClients = useMemo(() => {
     let list = [...clients];
-    const q = searchQuery.trim().toLowerCase();
+    const q = foldSearchText(searchQuery.trim());
     if (q) {
       list = list.filter(
         (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.email.toLowerCase().includes(q) ||
-          (c.adminNotes ?? '').toLowerCase().includes(q) ||
-          clientPhones(c).some((p) => p.toLowerCase().includes(q))
+          foldSearchText(c.name).includes(q) ||
+          foldSearchText(c.email).includes(q) ||
+          foldSearchText(c.adminNotes ?? '').includes(q) ||
+          clientPhones(c).some((p) => foldSearchText(p).includes(q))
       );
     }
     const cutoffNew = subDays(new Date(), NEW_CLIENT_DAYS).getTime();

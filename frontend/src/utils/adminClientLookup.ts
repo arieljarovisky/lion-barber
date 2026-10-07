@@ -1,5 +1,10 @@
 import type { AdminClientWithHistory } from '../api';
 
+/** Minúsculas y sin tildes, para que «José» coincida con «jose». */
+export function foldSearchText(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
 export function normalizePhoneDigits(phone: string): string {
   return phone.replace(/\D/g, '');
 }
@@ -31,9 +36,9 @@ export function resolveClientForNewAppointment(
     const byId = adminClients.find((c) => c.id === linkedClientId);
     if (byId) return byId;
   }
-  const nameNorm = name.trim().toLowerCase();
+  const nameNorm = foldSearchText(name.trim());
   if (nameNorm) {
-    const byName = adminClients.filter((c) => c.name.trim().toLowerCase() === nameNorm);
+    const byName = adminClients.filter((c) => foldSearchText(c.name.trim()) === nameNorm);
     if (byName.length === 1) return byName[0];
   }
   const phoneDigits = normalizePhoneDigits(phone);
