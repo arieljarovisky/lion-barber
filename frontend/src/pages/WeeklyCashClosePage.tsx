@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Lock, Printer, Unlock, Wallet } from 'lucide-react';
 import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api, ApiError } from '../api';
-import type { Appointment, Barber, DailyCashClose, Service, AdminClientWithHistory } from '../api';
+import type { Appointment, Barber, CashExpense, DailyCashClose, Service, AdminClientWithHistory } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
@@ -46,6 +46,7 @@ export default function WeeklyCashClosePage() {
   const [closeActionError, setCloseActionError] = useState('');
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [paymentSnapshots, setPaymentSnapshots] = useState<AppointmentCashClosePaymentSnapshot[]>([]);
+  const [cashExpenses, setCashExpenses] = useState<CashExpense[]>([]);
 
   const { start, end, fromYmd, toYmd } = useMemo(
     () => periodBoundsFromAnchor(periodAnchor, periodMode),
@@ -75,14 +76,16 @@ export default function WeeklyCashClosePage() {
       api.getServices(),
       api.getAdminClientsWithHistory(),
       api.getCashClosePaymentSnapshots(fromYmd, toYmd),
+      api.getCashExpenses(fromYmd, toYmd),
     ])
-      .then(([apps, barberList, serviceList, clientsRes, snapshotsRes]) => {
+      .then(([apps, barberList, serviceList, clientsRes, snapshotsRes, cashRes]) => {
         if (cancelled) return;
         setAppointments(apps);
         setBarbers(barberList);
         setServices(serviceList);
         setAdminClients(clientsRes.clients);
         setPaymentSnapshots(snapshotsRes.snapshots);
+        setCashExpenses(cashRes.items);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -173,8 +176,9 @@ export default function WeeklyCashClosePage() {
       summary,
       byBarber,
       rows,
+      cashExpenses,
     }),
-    [periodMode, periodLabel, fromYmd, toYmd, summary, byBarber, rows]
+    [periodMode, periodLabel, fromYmd, toYmd, summary, byBarber, rows, cashExpenses]
   );
 
   const handlePrint = () => {
@@ -232,7 +236,7 @@ export default function WeeklyCashClosePage() {
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
                 Resumen de turnos confirmados por día, semana (lunes a domingo) o mes calendario: señas por Mercado Pago, saldo en local,
                 comisión del barbero ({BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de
-                los productos cargados en el turno) y facturación AFIP. Los gastos se cargan en la solapa Gastos. No incluye turnos con seña
+                los productos cargados en el turno) y facturación AFIP. Los gastos de caja se cargan en Gastos y acá figura quién los registró. No incluye turnos con seña
                 pendiente.
               </p>
             </div>
@@ -700,6 +704,51 @@ export default function WeeklyCashClosePage() {
                               ) : (
                                 <span className="text-[10px] text-zinc-400">No</span>
                               )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              <section className="mb-8 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 bg-zinc-50/80 px-4 py-3">
+                  <div>
+                    <h2 className="font-black text-zinc-900">Gastos de caja</h2>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      Quién cargó cada gasto en este período.
+                    </p>
+                  </div>
+                  <p className="text-sm font-bold tabular-nums text-red-800">
+                    ${formatArs(cashExpenses.reduce((sum, item) => sum + item.amount, 0))}
+                  </p>
+                </div>
+                {cashExpenses.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-sm text-zinc-500">
+                    Sin gastos de caja en{' '}
+                    {periodMode === 'day' ? 'este día' : periodMode === 'month' ? 'este mes' : 'esta semana'}.
+                  </p>
+                ) : (
+                  <div className="cash-close-table-wrap overflow-x-auto">
+                    <table className="w-full min-w-[520px] text-left text-sm">
+                      <thead className="bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                        <tr>
+                          <th className="px-4 py-3">Fecha</th>
+                          <th className="px-4 py-3">Concepto</th>
+                          <th className="px-4 py-3">Cargó</th>
+                          <th className="px-4 py-3 text-right">Monto</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {cashExpenses.map((item) => (
+                          <tr key={item.id}>
+                            <td className="px-4 py-2 tabular-nums text-zinc-600">{item.expenseDate}</td>
+                            <td className="px-4 py-2 font-medium text-zinc-900">{item.description}</td>
+                            <td className="px-4 py-2 text-zinc-700">{item.createdByName?.trim() || '—'}</td>
+                            <td className="px-4 py-2 text-right font-semibold tabular-nums text-red-800">
+                              ${formatArs(item.amount)}
                             </td>
                           </tr>
                         ))}

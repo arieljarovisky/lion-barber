@@ -361,6 +361,8 @@ export interface CashExpense {
   expenseDate: string;
   description: string;
   amount: number;
+  createdByUserId?: number | null;
+  createdByName?: string | null;
   createdAt: string;
 }
 

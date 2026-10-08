@@ -301,6 +301,7 @@ export default function ExpensesPanel() {
                     <tr>
                       <th className="px-4 py-2">Fecha</th>
                       <th className="px-4 py-2">Concepto</th>
+                      <th className="px-4 py-2">Cargó</th>
                       <th className="px-4 py-2 text-right">Monto</th>
                       <th className="px-4 py-2 w-16" />
                     </tr>
@@ -310,6 +311,7 @@ export default function ExpensesPanel() {
                       <tr key={item.id}>
                         <td className="px-4 py-2 tabular-nums text-zinc-600">{item.expenseDate}</td>
                         <td className="px-4 py-2 font-medium">{item.description}</td>
+                        <td className="px-4 py-2 text-zinc-700">{item.createdByName?.trim() || '—'}</td>
                         <td className="px-4 py-2 text-right tabular-nums font-semibold text-red-800">
                           ${formatArs(item.amount)}
                         </td>

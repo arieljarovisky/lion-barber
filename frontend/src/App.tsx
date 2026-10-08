@@ -67,7 +67,7 @@ export default function App() {
           <Route
             path="/dashboard/gastos"
             element={
-              <ProtectedRoute dashboardAccess adminOnly superAdminOnly>
+              <ProtectedRoute dashboardAccess>
                 <ExpensesPage />
               </ProtectedRoute>
             }

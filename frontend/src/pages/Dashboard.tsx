@@ -52,6 +52,7 @@ import PromotionsPanel from '../components/PromotionsPanel';
 import ProductPointsPanel from '../components/ProductPointsPanel';
 import BillingPanel from '../components/BillingPanel';
 import ExpensesPanel from '../components/ExpensesPanel';
+import BarberCashExpensesPanel from '../components/BarberCashExpensesPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplitsModal';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
@@ -1995,8 +1996,10 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                   }
                 : view === 'gastos'
                   ? {
-                      title: 'Gastos',
-                      subtitle: 'Gastos fijos mensuales y gastos de caja del local.',
+                      title: isSuperAdmin ? 'Gastos' : 'Gastos de caja',
+                      subtitle: isSuperAdmin
+                        ? 'Gastos fijos mensuales y gastos de caja del local.'
+                        : 'Cargá un gasto del local. En el cierre de caja figura quién lo registró.',
                     }
                   : view === 'configuracion'
                     ? {
@@ -3449,7 +3452,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           />
         )}
 
-        {view === 'gastos' && canAccessDashboard && <ExpensesPanel />}
+        {view === 'gastos' && canAccessDashboard && (isSuperAdmin ? <ExpensesPanel /> : <BarberCashExpensesPanel />)}
 
         {view === 'equipo' && isAdmin && (
           <div className="max-w-2xl space-y-6">

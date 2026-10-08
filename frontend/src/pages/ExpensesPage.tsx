@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Banknote, ChevronLeft, ChevronRight } from 'lucide-react';
 import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
+import BarberCashExpensesPanel from '../components/BarberCashExpensesPanel';
 import CashCloseExpensesSection from '../components/CashCloseExpensesSection';
 import ProductPurchasesPanel from '../components/ProductPurchasesPanel';
 import { api } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 import type {
   Appointment,
   AppointmentCashClosePaymentSnapshot,
@@ -28,6 +30,7 @@ import { appointmentsWithCashCloseSnapshots } from '../utils/cashCloseSnapshot';
 
 export default function ExpensesPage() {
   const navigate = useNavigate();
+  const { isSuperAdmin } = useAuth();
   const [periodMode, setPeriodMode] = useState<CashClosePeriodMode>('month');
   const [periodAnchor, setPeriodAnchor] = useState(() => new Date());
   const [loading, setLoading] = useState(true);
@@ -68,6 +71,7 @@ export default function ExpensesPage() {
   }, [fromYmd, toYmd]);
 
   useEffect(() => {
+    if (!isSuperAdmin) return;
     let cancelled = false;
     setLoading(true);
     setError('');
@@ -98,7 +102,7 @@ export default function ExpensesPage() {
     return () => {
       cancelled = true;
     };
-  }, [fromYmd, toYmd]);
+  }, [fromYmd, toYmd, isSuperAdmin]);
 
   const appointmentsForClose = useMemo(
     () => appointmentsWithCashCloseSnapshots(appointments, paymentSnapshots),
@@ -113,6 +117,25 @@ export default function ExpensesPage() {
     [fixedExpenses, fromYmd, toYmd]
   );
   const cashExpensesTotal = useMemo(() => sumCashExpenses(cashExpenses), [cashExpenses]);
+
+  if (!isSuperAdmin) {
+    return (
+      <div className="flex min-h-screen bg-zinc-50 font-sans text-zinc-900">
+        <DashboardPanelShell activePanel="gastos" onNavigate={handlePanelNavigate}>
+          <div className="mb-6">
+            <h1 className="flex items-center gap-2 text-2xl font-black tracking-tight sm:text-3xl">
+              <Banknote className="text-[#b39055]" size={28} />
+              Gastos de caja
+            </h1>
+            <p className="mt-1 max-w-xl text-sm text-zinc-500">
+              Cargá un gasto del local. En el cierre de caja figura quién lo registró.
+            </p>
+          </div>
+          <BarberCashExpensesPanel />
+        </DashboardPanelShell>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 font-sans flex">

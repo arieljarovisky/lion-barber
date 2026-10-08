@@ -868,10 +868,18 @@ export async function initDb(): Promise<void> {
       expense_date DATE NOT NULL,
       description VARCHAR(255) NOT NULL,
       amount DECIMAL(14,2) NOT NULL,
+      created_by_user_id INT NULL,
+      created_by_name VARCHAR(255) NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       KEY idx_cash_expense_date (expense_date)
     )
   `);
+  if (!(await tableHasColumn('cash_expenses', 'created_by_user_id'))) {
+    await pool.execute('ALTER TABLE cash_expenses ADD COLUMN created_by_user_id INT NULL');
+  }
+  if (!(await tableHasColumn('cash_expenses', 'created_by_name'))) {
+    await pool.execute('ALTER TABLE cash_expenses ADD COLUMN created_by_name VARCHAR(255) NULL');
+  }
 
   const serviceCountRows = await query<{ count: number }[]>('SELECT COUNT(*) as count FROM services');
   if (serviceCountRows[0].count === 0) {

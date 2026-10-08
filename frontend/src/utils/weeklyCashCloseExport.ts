@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import type { CashExpense } from '../api';
 import type {
   CashClosePeriodMode,
   WeeklyBarberSummary,
@@ -22,6 +23,7 @@ export type WeeklyCashCloseExportData = {
   summary: WeeklyCashSummary;
   byBarber: WeeklyBarberSummary[];
   rows: WeeklyCashRow[];
+  cashExpenses?: CashExpense[];
 };
 
 function fileBase(data: WeeklyCashCloseExportData): string {
@@ -142,6 +144,17 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
     ]),
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detalleRows), 'Detalle');
+
+  const expenseRows: (string | number)[][] = [
+    ['Fecha', 'Concepto', 'Cargó', 'Monto (ARS)'],
+    ...(data.cashExpenses ?? []).map((item) => [
+      item.expenseDate,
+      item.description,
+      item.createdByName?.trim() || NA,
+      item.amount,
+    ]),
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(expenseRows), 'Gastos de caja');
 
   XLSX.writeFile(wb, `${fileBase(data)}.xlsx`);
 }
@@ -276,6 +289,26 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
     },
     margin: { left: 10, right: 10 },
   });
+
+  const cashExpenses = data.cashExpenses ?? [];
+  if (cashExpenses.length > 0) {
+    y = nextY(doc);
+    y = addSectionTitle(doc, 'Gastos de caja', y);
+    autoTable(doc, {
+      startY: y,
+      head: [['Fecha', 'Concepto', 'Cargó', 'Monto']],
+      body: cashExpenses.map((item) => [
+        item.expenseDate,
+        item.description,
+        item.createdByName?.trim() || NA,
+        `$${item.amount.toLocaleString('es-AR')}`,
+      ]),
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: PDF_GOLD, textColor: [30, 30, 30], fontStyle: 'bold' },
+      columnStyles: { 3: { halign: 'right' } },
+      margin: { left: 14, right: 14 },
+    });
+  }
 
   const pageCount = doc.getNumberOfPages();
   const generatedAt = new Date().toLocaleString('es-AR');

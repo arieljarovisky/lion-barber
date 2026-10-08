@@ -13,6 +13,8 @@ export interface CashExpense {
   expenseDate: string;
   description: string;
   amount: number;
+  createdByUserId: number | null;
+  createdByName: string | null;
   createdAt: string;
 }
 
@@ -29,8 +31,13 @@ interface DbCashRow {
   expense_date: string | Date;
   description: string;
   amount: string | number;
+  created_by_user_id: number | null;
+  created_by_name: string | null;
   created_at: string | Date;
 }
+
+const CASH_EXPENSE_COLUMNS =
+  'id, expense_date, description, amount, created_by_user_id, created_by_name, created_at';
 
 function parseAmount(raw: string | number): number {
   const n = Number(raw);
@@ -62,11 +69,14 @@ function rowToCash(r: DbCashRow): CashExpense {
       : r.created_at instanceof Date
         ? r.created_at.toISOString()
         : String(r.created_at);
+  const createdByName = r.created_by_name?.trim() || null;
   return {
     id: r.id,
     expenseDate,
     description: r.description,
     amount: parseAmount(r.amount),
+    createdByUserId: r.created_by_user_id ?? null,
+    createdByName,
     createdAt,
   };
 }
@@ -142,7 +152,7 @@ export async function deleteFixedMonthlyExpense(id: number): Promise<boolean> {
 
 export async function listCashExpensesInRange(fromYmd: string, toYmd: string): Promise<CashExpense[]> {
   const rows = await query<DbCashRow[]>(
-    `SELECT id, expense_date, description, amount, created_at
+    `SELECT ${CASH_EXPENSE_COLUMNS}
      FROM cash_expenses
      WHERE expense_date >= ? AND expense_date <= ?
      ORDER BY expense_date DESC, id DESC`,
@@ -155,6 +165,8 @@ export async function createCashExpense(data: {
   expenseDate: string;
   description: string;
   amount: number;
+  createdByUserId?: number | null;
+  createdByName?: string | null;
 }): Promise<CashExpense> {
   const date = String(data.expenseDate).slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Fecha inválida.');
@@ -162,13 +174,14 @@ export async function createCashExpense(data: {
   if (!desc) throw new Error('La descripción es obligatoria.');
   const amount = parseAmount(data.amount);
   if (amount <= 0) throw new Error('El monto debe ser mayor a 0.');
+  const createdByName = data.createdByName?.trim() || null;
   const [res] = await pool.execute(
-    'INSERT INTO cash_expenses (expense_date, description, amount) VALUES (?, ?, ?)',
-    [date, desc, amount]
+    'INSERT INTO cash_expenses (expense_date, description, amount, created_by_user_id, created_by_name) VALUES (?, ?, ?, ?, ?)',
+    [date, desc, amount, data.createdByUserId ?? null, createdByName]
   );
   const id = (res as { insertId: number }).insertId;
   const rows = await query<DbCashRow[]>(
-    'SELECT id, expense_date, description, amount, created_at FROM cash_expenses WHERE id = ?',
+    `SELECT ${CASH_EXPENSE_COLUMNS} FROM cash_expenses WHERE id = ?`,
     [id]
   );
   return rowToCash(rows[0]);
@@ -206,7 +219,7 @@ export async function updateCashExpense(
 
 export async function getCashExpenseById(id: number): Promise<CashExpense | null> {
   const rows = await query<DbCashRow[]>(
-    'SELECT id, expense_date, description, amount, created_at FROM cash_expenses WHERE id = ?',
+    `SELECT ${CASH_EXPENSE_COLUMNS} FROM cash_expenses WHERE id = ?`,
     [id]
   );
   return rows[0] ? rowToCash(rows[0]) : null;

@@ -1,12 +1,28 @@
 import { Router } from 'express';
 import * as repo from '../repositories/expenses.js';
-import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
+import { getBarberById } from '../repositories/barbers.js';
+import { requireAuth, requireStaffOrAdmin, requireSuperAdmin, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
 
-router.use(requireAuth, requireSuperAdmin);
+router.use(requireAuth);
 
-router.get('/fixed', async (_req, res) => {
+/** Nombre que se muestra en caja: el del barbero vinculado, o el del usuario. */
+async function cashExpenseAuthor(user: AuthRequest['user']): Promise<{
+  userId: number | null;
+  name: string | null;
+}> {
+  if (!user) return { userId: null, name: null };
+  let name = user.name?.trim() || null;
+  if (user.barberId) {
+    const barber = await getBarberById(user.barberId);
+    const barberName = barber?.name?.trim();
+    if (barberName) name = barberName;
+  }
+  return { userId: user.id, name };
+}
+
+router.get('/fixed', requireSuperAdmin, async (_req, res) => {
   try {
     res.json({ items: await repo.listFixedMonthlyExpenses() });
   } catch (e) {
@@ -15,7 +31,7 @@ router.get('/fixed', async (_req, res) => {
   }
 });
 
-router.post('/fixed', async (req, res) => {
+router.post('/fixed', requireSuperAdmin, async (req, res) => {
   const { description, amount, active } = req.body as {
     description?: string;
     amount?: unknown;
@@ -34,7 +50,7 @@ router.post('/fixed', async (req, res) => {
   }
 });
 
-router.patch('/fixed/:id', async (req, res) => {
+router.patch('/fixed/:id', requireSuperAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'ID inválido' });
   const body = req.body as {
@@ -56,7 +72,7 @@ router.patch('/fixed/:id', async (req, res) => {
   }
 });
 
-router.delete('/fixed/:id', async (req, res) => {
+router.delete('/fixed/:id', requireSuperAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'ID inválido' });
   try {
@@ -69,7 +85,7 @@ router.delete('/fixed/:id', async (req, res) => {
   }
 });
 
-router.get('/cash', async (req, res) => {
+router.get('/cash', requireStaffOrAdmin, async (req, res) => {
   const from = typeof req.query.from === 'string' ? req.query.from.slice(0, 10) : '';
   const to = typeof req.query.to === 'string' ? req.query.to.slice(0, 10) : '';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
@@ -83,17 +99,20 @@ router.get('/cash', async (req, res) => {
   }
 });
 
-router.post('/cash', async (req, res) => {
+router.post('/cash', requireStaffOrAdmin, async (req: AuthRequest, res) => {
   const { expenseDate, description, amount } = req.body as {
     expenseDate?: string;
     description?: string;
     amount?: unknown;
   };
   try {
+    const author = await cashExpenseAuthor(req.user);
     const item = await repo.createCashExpense({
       expenseDate: String(expenseDate ?? ''),
       description: String(description ?? ''),
       amount: Number(amount),
+      createdByUserId: author.userId,
+      createdByName: author.name,
     });
     res.status(201).json({ item });
   } catch (e) {
@@ -102,7 +121,7 @@ router.post('/cash', async (req, res) => {
   }
 });
 
-router.patch('/cash/:id', async (req, res) => {
+router.patch('/cash/:id', requireSuperAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'ID inválido' });
   const body = req.body as {
@@ -124,7 +143,7 @@ router.patch('/cash/:id', async (req, res) => {
   }
 });
 
-router.delete('/cash/:id', async (req, res) => {
+router.delete('/cash/:id', requireSuperAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'ID inválido' });
   try {
