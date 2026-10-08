@@ -3841,7 +3841,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
               </h3>
               <p className="text-sm text-zinc-500 mt-1">
                 {isSuperAdmin
-                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al facturar) y tope mensual AFIP. La factura AFIP es por el importe completo.`
+                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al cargarlos en el turno) y tope mensual AFIP. La factura AFIP es por el importe completo.`
                   : `Nombre público y comisión de referencia (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos).`}
               </p>
               {shopLoading ? (

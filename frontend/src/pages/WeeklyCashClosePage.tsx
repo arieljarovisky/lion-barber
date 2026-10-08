@@ -232,7 +232,7 @@ export default function WeeklyCashClosePage() {
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
                 Resumen de turnos confirmados por día, semana (lunes a domingo) o mes calendario: señas por Mercado Pago, saldo en local,
                 comisión del barbero ({BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de
-                productos facturados en el turno) y facturación AFIP. Los gastos se cargan en la solapa Gastos. No incluye turnos con seña
+                los productos cargados en el turno) y facturación AFIP. Los gastos se cargan en la solapa Gastos. No incluye turnos con seña
                 pendiente.
               </p>
             </div>
@@ -711,7 +711,7 @@ export default function WeeklyCashClosePage() {
 
               <p className="mt-6 text-xs text-zinc-500 max-w-3xl">
                 Las señas son el {DEPOSIT_PERCENT}% del servicio. La comisión de productos ({BARBER_PRODUCT_COMMISSION_PERCENT}
-                %) aplica solo si se facturaron productos en AFIP con ese turno. «En local» es el saldo estimado (servicio −
+                %) suma apenas se cargan en el turno. «En local» es el saldo estimado (servicio −
                 seña). Registrá los cobros en cada turno desde la agenda; podés combinar métodos (ej. efectivo + tarjeta) con el
                 monto de cada uno.
               </p>

@@ -18,6 +18,7 @@ import {
 import { es } from 'date-fns/locale';
 import type { Appointment, Barber, Service, ServicePaymentMethod, ServicePaymentSplit } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { sumAppointmentProducts } from './appointmentProducts';
 import { resolveAppointmentDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
 import {
   SERVICE_PAYMENT_METHODS,
@@ -206,7 +207,7 @@ function afipAmountForAppointment(app: Appointment, fallbackService: number): nu
   return fallbackService > 0 ? fallbackService : null;
 }
 
-function productsGrossFromAppointment(app: Appointment): number {
+function invoicedProductsGross(app: Appointment): number {
   const detail = app.afipInvoiceDetail;
   if (detail?.productsTotal != null && detail.productsTotal > 0) {
     return Math.round(detail.productsTotal * 100) / 100;
@@ -216,10 +217,14 @@ function productsGrossFromAppointment(app: Appointment): number {
   return Math.round(lines.reduce((s, l) => s + (l.subtotal > 0 ? l.subtotal : 0), 0) * 100) / 100;
 }
 
-function productCommissionFromAppointment(app: Appointment, productsGross: number): number {
+/** Venta de productos del turno. Cuenta al cargarlos; si la factura trae un importe mayor, se usa ese. */
+function productsGrossFromAppointment(app: Appointment): number {
+  const fromTurn = sumAppointmentProducts(app.products);
+  return Math.max(fromTurn, invoicedProductsGross(app));
+}
+
+function productCommissionFromAppointment(productsGross: number): number {
   if (productsGross <= 0) return 0;
-  const stored = app.afipInvoiceDetail?.productsCommissionAmount;
-  if (stored != null && stored >= 0) return Math.round(stored);
   return Math.round((productsGross * BARBER_PRODUCT_COMMISSION_PERCENT) / 100);
 }
 
@@ -236,7 +241,7 @@ function barberCommissionsForAppointment(
   const serviceCommissionAmount =
     serviceAmount > 0 ? Math.round((serviceAmount * commissionPercent) / 100) : 0;
   const productsSoldAmount = productsGrossFromAppointment(app);
-  const productCommissionAmount = productCommissionFromAppointment(app, productsSoldAmount);
+  const productCommissionAmount = productCommissionFromAppointment(productsSoldAmount);
   return {
     serviceCommissionAmount,
     productCommissionAmount,

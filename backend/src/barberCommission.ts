@@ -1,7 +1,7 @@
 /** Comisión del barbero sobre el precio del servicio (liquidación). La factura AFIP es siempre por el turno completo. */
 export const DEFAULT_BARBER_COMMISSION_PERCENT = 50;
 
-/** Comisión del barbero sobre productos incluidos en la factura AFIP del turno. */
+/** Comisión del barbero sobre productos cargados en el turno. */
 export const DEFAULT_BARBER_PRODUCT_COMMISSION_PERCENT = 10;
 
 export function effectiveBarberCommissionPercent(stored: number | null | undefined): number {
