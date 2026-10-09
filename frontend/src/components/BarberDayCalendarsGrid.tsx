@@ -146,6 +146,11 @@ function renderTimelineRow(
             className="font-medium text-zinc-800 truncate block hover:text-[#b39055] text-sm"
             stopPropagation
           />
+          {app.service ? (
+            <p className="text-[11px] text-zinc-600 truncate mt-0.5" title={app.service}>
+              {app.service}
+            </p>
+          ) : null}
           <span className="text-[10px] text-zinc-500">{dm} min</span>
           <AppointmentPaymentBadge app={app} className="mt-1" />
         </div>
