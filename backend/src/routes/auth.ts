@@ -118,19 +118,7 @@ router.post('/google', async (req, res) => {
 
     res.json({
       token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        points: user.points ?? 0,
-        barberId: user.barber_id ?? null,
-        avatarUrl: user.avatar_url ?? null,
-        depositExempt: await isClientDepositExempt(user.id),
-        subscription: await getClientSubscriptionStatus(user.id),
-        isSuperAdmin: isSuperAdminEmail(user.email),
-        staffPermissions: staffPermissionsFromDbUser(user),
-      },
+      user: await buildAuthUserResponse(user),
     });
   } catch (err) {
     console.error('Auth error:', err);
@@ -138,11 +126,8 @@ router.post('/google', async (req, res) => {
   }
 });
 
-router.get('/me', requireAuth, async (req, res) => {
-  const authReq = req as import('../middleware/auth.js').AuthRequest;
-  const user = await userRepo.findUserById(authReq.user!.id);
-  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-  res.json({
+async function buildAuthUserResponse(user: NonNullable<Awaited<ReturnType<typeof userRepo.findUserById>>>) {
+  return {
     id: user.id,
     email: user.email,
     name: user.name,
@@ -154,7 +139,30 @@ router.get('/me', requireAuth, async (req, res) => {
     subscription: await getClientSubscriptionStatus(user.id),
     isSuperAdmin: isSuperAdminEmail(user.email),
     staffPermissions: staffPermissionsFromDbUser(user),
+  };
+}
+
+/** Renueva el JWT mientras la sesión siga válida (sesión persistente). */
+router.post('/refresh', requireAuth, async (req, res) => {
+  const authReq = req as import('../middleware/auth.js').AuthRequest;
+  const user = await userRepo.findUserById(authReq.user!.id);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+  const token = signJwt({
+    userId: user.id,
+    email: user.email,
+    role: user.role,
   });
+  res.json({
+    token,
+    user: await buildAuthUserResponse(user),
+  });
+});
+
+router.get('/me', requireAuth, async (req, res) => {
+  const authReq = req as import('../middleware/auth.js').AuthRequest;
+  const user = await userRepo.findUserById(authReq.user!.id);
+  if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+  res.json(await buildAuthUserResponse(user));
 });
 
 export default router;
