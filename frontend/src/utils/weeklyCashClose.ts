@@ -173,6 +173,8 @@ export type WeeklyCashSummary = {
   /** Señas MP (siempre mercadopago en depósitos). */
   depositsMpByMethod: PaymentMethodTotals;
   tipsTotal: number;
+  /** Ventas de productos en mostrador. Entran en caja y no generan comisión. */
+  counterSalesTotal: number;
 };
 
 function rowAccountDebtArs(row: WeeklyCashRow): number {
@@ -411,6 +413,7 @@ export function buildWeeklyCashClose(
       localByMethod: emptyPaymentMethodTotals(),
       depositsMpByMethod: emptyPaymentMethodTotals(),
       tipsTotal: 0,
+      counterSalesTotal: 0,
     }
   );
   summary.tipsTotal = rows.reduce((s, r) => s + r.tipAmount, 0);
@@ -423,6 +426,28 @@ export function buildWeeklyCashClose(
   summary.shopNetEstimate = summary.serviceGross - summary.commissions;
 
   return { rows, byBarber, summary };
+}
+
+/** Suma ventas de mostrador al cobrado en local y al neto. La comisión no cambia. */
+export function applyCounterSalesToCashClose(
+  summary: WeeklyCashSummary,
+  sales: { totalArs: number; paymentMethod: 'cash' | 'card' | 'mercadopago' }[]
+): WeeklyCashSummary {
+  const localByMethod = { ...summary.localByMethod };
+  let total = 0;
+  for (const sale of sales) {
+    const amount = Math.round(Number(sale.totalArs));
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    total += amount;
+    localByMethod[sale.paymentMethod] += amount;
+  }
+  return {
+    ...summary,
+    localByMethod,
+    counterSalesTotal: total,
+    localPending: summary.localPending + total,
+    shopNetEstimate: summary.serviceGross - summary.commissions + total,
+  };
 }
 
 export function shiftWeekAnchor(anchor: Date, deltaWeeks: number): Date {

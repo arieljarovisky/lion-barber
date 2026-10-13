@@ -881,6 +881,21 @@ export async function initDb(): Promise<void> {
     await pool.execute('ALTER TABLE cash_expenses ADD COLUMN created_by_name VARCHAR(255) NULL');
   }
 
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS counter_sales (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      sale_date DATE NOT NULL,
+      buyer_name VARCHAR(120) NULL,
+      payment_method VARCHAR(20) NOT NULL,
+      products JSON NOT NULL,
+      total_ars DECIMAL(14,2) NOT NULL,
+      created_by_user_id INT NULL,
+      created_by_name VARCHAR(255) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_counter_sale_date (sale_date)
+    )
+  `);
+
   const serviceCountRows = await query<{ count: number }[]>('SELECT COUNT(*) as count FROM services');
   if (serviceCountRows[0].count === 0) {
     const services = [

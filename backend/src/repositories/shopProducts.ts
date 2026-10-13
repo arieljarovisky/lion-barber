@@ -189,6 +189,8 @@ export async function assertProductStockAvailable(
 export async function decrementProductStock(productId: string, quantity: number): Promise<void> {
   const qty = Math.floor(quantity);
   if (!Number.isFinite(qty) || qty <= 0) return;
+  const current = await getShopProductById(productId);
+  if (!current || current.stock == null) return;
   const res = await query<{ affectedRows: number }>(
     `UPDATE shop_products SET stock = stock - ?
      WHERE id = ? AND stock IS NOT NULL AND stock >= ?`,

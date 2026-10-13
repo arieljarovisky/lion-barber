@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Lock, Printer, Unlock, Wallet } from 'lucide-react';
 import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api, ApiError } from '../api';
-import type { Appointment, Barber, CashExpense, DailyCashClose, Service, AdminClientWithHistory } from '../api';
+import type { Appointment, Barber, CashExpense, CounterSale, DailyCashClose, Service, AdminClientWithHistory } from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { formatArs } from '../utils/money';
+import { formatAppointmentProductsSummary } from '../utils/appointmentProducts';
 import {
+  applyCounterSalesToCashClose,
   buildWeeklyCashClose,
   periodBoundsFromAnchor,
   formatPeriodLabel,
@@ -17,6 +19,7 @@ import {
   type CashClosePeriodMode,
 } from '../utils/weeklyCashClose';
 import {
+  SERVICE_PAYMENT_METHOD_LABELS,
   SERVICE_PAYMENT_METHODS,
   formatServicePaymentSplits,
 } from '../utils/servicePaymentMethod';
@@ -47,6 +50,7 @@ export default function WeeklyCashClosePage() {
   const [adminClients, setAdminClients] = useState<AdminClientWithHistory[]>([]);
   const [paymentSnapshots, setPaymentSnapshots] = useState<AppointmentCashClosePaymentSnapshot[]>([]);
   const [cashExpenses, setCashExpenses] = useState<CashExpense[]>([]);
+  const [counterSales, setCounterSales] = useState<CounterSale[]>([]);
 
   const { start, end, fromYmd, toYmd } = useMemo(
     () => periodBoundsFromAnchor(periodAnchor, periodMode),
@@ -77,8 +81,9 @@ export default function WeeklyCashClosePage() {
       api.getAdminClientsWithHistory(),
       api.getCashClosePaymentSnapshots(fromYmd, toYmd),
       api.getCashExpenses(fromYmd, toYmd),
+      api.getCounterSales(fromYmd, toYmd),
     ])
-      .then(([apps, barberList, serviceList, clientsRes, snapshotsRes, cashRes]) => {
+      .then(([apps, barberList, serviceList, clientsRes, snapshotsRes, cashRes, salesRes]) => {
         if (cancelled) return;
         setAppointments(apps);
         setBarbers(barberList);
@@ -86,6 +91,7 @@ export default function WeeklyCashClosePage() {
         setAdminClients(clientsRes.clients);
         setPaymentSnapshots(snapshotsRes.snapshots);
         setCashExpenses(cashRes.items);
+        setCounterSales(salesRes.items);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -161,9 +167,14 @@ export default function WeeklyCashClosePage() {
     [appointments, paymentSnapshots]
   );
 
-  const { rows, byBarber, summary } = useMemo(
+  const builtClose = useMemo(
     () => buildWeeklyCashClose(appointmentsForClose, services, barbers, DEPOSIT_PERCENT, start, end),
     [appointmentsForClose, services, barbers, start, end]
+  );
+  const { rows, byBarber } = builtClose;
+  const summary = useMemo(
+    () => applyCounterSalesToCashClose(builtClose.summary, counterSales),
+    [builtClose.summary, counterSales]
   );
 
   const exportData = useMemo<WeeklyCashCloseExportData>(
@@ -177,8 +188,9 @@ export default function WeeklyCashClosePage() {
       byBarber,
       rows,
       cashExpenses,
+      counterSales,
     }),
-    [periodMode, periodLabel, fromYmd, toYmd, summary, byBarber, rows, cashExpenses]
+    [periodMode, periodLabel, fromYmd, toYmd, summary, byBarber, rows, cashExpenses, counterSales]
   );
 
   const handlePrint = () => {
@@ -236,7 +248,7 @@ export default function WeeklyCashClosePage() {
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
                 Resumen de turnos confirmados por día, semana (lunes a domingo) o mes calendario: señas por Mercado Pago, saldo en local,
                 comisión del barbero ({BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de
-                los productos cargados en el turno) y facturación AFIP. Los gastos de caja se cargan en Gastos y acá figura quién los registró. No incluye turnos con seña
+                los productos cargados en el turno) y facturación AFIP. Las ventas de Nueva venta entran por el total cobrado. Los gastos de caja se cargan en Gastos y acá figura quién los registró. No incluye turnos con seña
                 pendiente.
               </p>
             </div>
@@ -456,7 +468,7 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Cobrado en local"
                   value={`$${formatArs(summary.localPending)}`}
-                  hint="Efectivo, tarjeta y Mercado Pago. Sin lo fiado"
+                  hint="Efectivo, tarjeta, Mercado Pago y ventas de productos. Sin lo fiado"
                   accent="amber"
                 />
                 {summary.localByMethod.account > 0 && (
@@ -484,7 +496,7 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Neto en caja (est.)"
                   value={`$${formatArs(summary.shopNetEstimate)}`}
-                  hint="Ingreso en caja − comisiones a pagar"
+                  hint="Servicios cobrados y ventas de productos, menos las comisiones de los turnos"
                   accent="gold"
                 />
                 <SummaryCard
@@ -709,6 +721,59 @@ export default function WeeklyCashClosePage() {
                                 <span className="text-[10px] text-zinc-400">No</span>
                               )}
                             </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+
+              <section className="mb-8 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 bg-zinc-50/80 px-4 py-3">
+                  <div>
+                    <h2 className="font-black text-zinc-900">Ventas de productos</h2>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      El importe entra completo en la caja. Para anular una venta, hacelo desde la agenda de ese día.
+                    </p>
+                  </div>
+                  <p className="text-sm font-bold tabular-nums text-emerald-800">
+                    ${formatArs(summary.counterSalesTotal)}
+                  </p>
+                </div>
+                {counterSales.length === 0 ? (
+                  <p className="px-4 py-8 text-center text-sm text-zinc-500">
+                    Sin ventas de mostrador en{' '}
+                    {periodMode === 'day' ? 'este día' : periodMode === 'month' ? 'este mes' : 'esta semana'}.
+                  </p>
+                ) : (
+                  <div className="cash-close-table-wrap overflow-x-auto">
+                    <table className="w-full min-w-[640px] text-left text-sm">
+                      <thead className="bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                        <tr>
+                          <th className="px-4 py-3">Fecha</th>
+                          <th className="px-4 py-3">Comprador</th>
+                          <th className="px-4 py-3">Productos</th>
+                          <th className="px-4 py-3">Pago</th>
+                          <th className="px-4 py-3 text-right">Importe</th>
+                          <th className="px-4 py-3">Cargó</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {counterSales.map((sale) => (
+                          <tr key={sale.id}>
+                            <td className="whitespace-nowrap px-4 py-3 tabular-nums text-zinc-700">{sale.saleDate}</td>
+                            <td className="px-4 py-3 font-medium text-zinc-900">
+                              {sale.buyerName?.trim() || 'Mostrador'}
+                            </td>
+                            <td className="px-4 py-3 text-zinc-700">
+                              {formatAppointmentProductsSummary(sale.products) ?? '—'}
+                            </td>
+                            <td className="px-4 py-3">{SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod]}</td>
+                            <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                              ${formatArs(sale.totalArs)}
+                            </td>
+                            <td className="px-4 py-3 text-zinc-600">{sale.createdByName?.trim() || '—'}</td>
                           </tr>
                         ))}
                       </tbody>

@@ -366,6 +366,21 @@ export interface CashExpense {
   createdAt: string;
 }
 
+/** Venta de productos en el local, sin cliente registrado y sin comisión. */
+export type CounterSalePaymentMethod = 'cash' | 'card' | 'mercadopago';
+
+export interface CounterSale {
+  id: number;
+  saleDate: string;
+  buyerName: string | null;
+  paymentMethod: CounterSalePaymentMethod;
+  products: AppointmentProductLine[];
+  totalArs: number;
+  createdByUserId?: number | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
 export interface SubscriptionPlan {
   id: string;
   name: string;
@@ -1008,6 +1023,25 @@ export const api = {
 
   deleteCashExpense: (id: number) =>
     fetchApi<void>(`/api/expenses/cash/${id}`, { method: 'DELETE' }),
+
+  getCounterSales: (fromYmd: string, toYmd: string) =>
+    fetchApi<{ items: CounterSale[] }>(
+      `/api/counter-sales?from=${encodeURIComponent(fromYmd)}&to=${encodeURIComponent(toYmd)}`
+    ),
+
+  createCounterSale: (data: {
+    saleDate: string;
+    buyerName?: string;
+    paymentMethod: CounterSalePaymentMethod;
+    products: { productId: string; quantity: number }[];
+  }) =>
+    fetchApi<{ item: CounterSale }>('/api/counter-sales', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteCounterSale: (id: number) =>
+    fetchApi<void>(`/api/counter-sales/${id}`, { method: 'DELETE' }),
 
   getProductPurchases: (fromYmd: string, toYmd: string) =>
     fetchApi<{ items: ProductPurchase[] }>(

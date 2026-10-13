@@ -38,6 +38,7 @@ import {
   DatabaseBackup,
   Download,
   ExternalLink,
+  ShoppingBag,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -55,10 +56,12 @@ import ExpensesPanel from '../components/ExpensesPanel';
 import BarberCashExpensesPanel from '../components/BarberCashExpensesPanel';
 import AfipInvoiceModal from '../components/AfipInvoiceModal';
 import AppointmentPaymentSplitsModal from '../components/AppointmentPaymentSplitsModal';
+import CounterSaleModal from '../components/CounterSaleModal';
 import AppointmentPaymentBadge from '../components/AppointmentPaymentBadge';
 import ClientProfileLink from '../components/ClientProfileLink';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError, downloadDatabaseBackup } from '../api';
+import type { CounterSale } from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barberAfip';
@@ -92,6 +95,7 @@ import {
   cleanServicePaymentSplits,
   formatAppointmentPaymentDisplay,
   initialSplitsFromAppointment,
+  SERVICE_PAYMENT_METHOD_LABELS,
   SERVICE_PAYMENT_METHOD_SELECTED_CLASS,
   TIP_PAINTED_CLASS,
 } from '../utils/servicePaymentMethod';
@@ -217,6 +221,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   });
   const [paymentSplitsModalApp, setPaymentSplitsModalApp] = useState<Appointment | null>(null);
   const [closedDateSet, setClosedDateSet] = useState<Set<string>>(() => new Set());
+  const [counterSaleOpen, setCounterSaleOpen] = useState(false);
+  const [dayCounterSales, setDayCounterSales] = useState<CounterSale[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   /** Solo admin — modal nueva cita: '' | 'new' | id de cliente */
@@ -727,6 +733,22 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   }, [dateStr, isWeekView, weekFromYmd, weekToYmd]);
 
   useEffect(() => {
+    if (view !== 'agenda') return;
+    let cancelled = false;
+    api
+      .getCounterSales(dateStr, dateStr)
+      .then((r) => {
+        if (!cancelled) setDayCounterSales(r.items);
+      })
+      .catch(() => {
+        if (!cancelled) setDayCounterSales([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, dateStr]);
+
+  useEffect(() => {
     loadData();
   }, [loadData]);
 
@@ -1124,6 +1146,31 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const weekColumnCellsByDay = weekAppointmentsByDay.map(({ dateStr: dayDate, appointments: dayApps }) =>
     buildWeekColumnCells(dayApps, agendaTimeSlots, getBlockedSlotsForBarberDate(selectedBarberId, dayDate))
   );
+
+  const openCounterSaleModal = () => {
+    if (closedDateSet.has(dateStr)) {
+      showToast('Este día está cerrado. Reabrí la caja para registrar una venta.', 'err');
+      return;
+    }
+    setCounterSaleOpen(true);
+  };
+
+  const handleDeleteCounterSale = async (sale: CounterSale) => {
+    const { confirmed } = await confirm({
+      title: 'Anular venta',
+      message: 'Se devuelve el stock y la venta deja de sumar en el cierre de caja.',
+      confirmLabel: 'Anular venta',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+    try {
+      await api.deleteCounterSale(sale.id);
+      setDayCounterSales((prev) => prev.filter((item) => item.id !== sale.id));
+      showToast('Venta anulada');
+    } catch (e) {
+      showToast(e instanceof ApiError ? e.message : 'No se pudo anular la venta', 'err');
+    }
+  };
 
   const openCreateModal = () => {
     if (!isSuperAdmin && closedDateSet.has(dateStr)) {
@@ -2173,6 +2220,14 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 <Plus size={20} />
                 Nueva cita
               </button>
+              <button
+                type="button"
+                onClick={openCounterSaleModal}
+                className="flex items-center gap-2 px-5 py-2.5 bg-white border border-zinc-200 shadow-sm hover:bg-zinc-50 text-zinc-900 font-bold rounded-xl transition-colors"
+              >
+                <ShoppingBag size={20} />
+                Nueva venta
+              </button>
             </div>
           )}
           {view === 'servicios' && (
@@ -2326,6 +2381,49 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
               </div>
             </div>
           </div>
+        )}
+
+        {!agendasOnly && dayCounterSales.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-black text-zinc-900">Ventas de productos</h3>
+                <p className="mt-0.5 text-xs capitalize text-zinc-500">
+                  {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}. El importe entra completo en la caja.
+                </p>
+              </div>
+              <p className="text-sm font-black tabular-nums text-emerald-700">
+                $
+                {dayCounterSales.reduce((sum, sale) => sum + sale.totalArs, 0).toLocaleString('es-AR')}
+              </p>
+            </div>
+            <ul className="divide-y divide-zinc-100">
+              {dayCounterSales.map((sale) => (
+                <li key={sale.id} className="flex flex-wrap items-center gap-2 py-2.5 text-sm">
+                  <span className="min-w-0 flex-1">
+                    <span className="font-semibold text-zinc-900">
+                      {sale.buyerName?.trim() || 'Mostrador'}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-zinc-500">
+                      {formatAppointmentProductsSummary(sale.products)} ·{' '}
+                      {SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod]}
+                    </span>
+                  </span>
+                  <span className="font-bold tabular-nums text-zinc-900">
+                    ${sale.totalArs.toLocaleString('es-AR')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteCounterSale(sale)}
+                    className="rounded-lg p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                    aria-label={`Anular venta de ${sale.buyerName?.trim() || 'mostrador'}`}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {/* Vista semana: calendario del barbero seleccionado */}
@@ -4120,6 +4218,18 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           </div>
         )}
       </DashboardPanelShell>
+
+      {counterSaleOpen && (
+        <CounterSaleModal
+          saleDate={dateStr}
+          onClose={() => setCounterSaleOpen(false)}
+          onSaved={(sale) => {
+            setCounterSaleOpen(false);
+            setDayCounterSales((prev) => [sale, ...prev.filter((item) => item.id !== sale.id)]);
+            showToast('Venta registrada');
+          }}
+        />
+      )}
 
       {afipInvoiceApp && isSuperAdmin && (
         <AfipInvoiceModal

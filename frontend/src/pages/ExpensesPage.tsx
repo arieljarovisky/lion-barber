@@ -12,12 +12,14 @@ import type {
   AppointmentCashClosePaymentSnapshot,
   Barber,
   CashExpense,
+  CounterSale,
   FixedMonthlyExpense,
   Service,
 } from '../api';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { formatArs } from '../utils/money';
 import {
+  applyCounterSalesToCashClose,
   buildWeeklyCashClose,
   formatPeriodLabel,
   monthInputValueFromAnchor,
@@ -42,6 +44,7 @@ export default function ExpensesPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [paymentSnapshots, setPaymentSnapshots] = useState<AppointmentCashClosePaymentSnapshot[]>([]);
   const [productPurchasesTotal, setProductPurchasesTotal] = useState(0);
+  const [counterSales, setCounterSales] = useState<CounterSale[]>([]);
 
   const { start, end, fromYmd, toYmd } = useMemo(
     () => periodBoundsFromAnchor(periodAnchor, periodMode),
@@ -82,8 +85,9 @@ export default function ExpensesPage() {
       api.getBarbers(),
       api.getServices(),
       api.getCashClosePaymentSnapshots(fromYmd, toYmd),
+      api.getCounterSales(fromYmd, toYmd),
     ])
-      .then(([fixedRes, cashRes, apps, barberList, serviceList, snapshotsRes]) => {
+      .then(([fixedRes, cashRes, apps, barberList, serviceList, snapshotsRes, salesRes]) => {
         if (cancelled) return;
         setFixedExpenses(fixedRes.items);
         setCashExpenses(cashRes.items);
@@ -91,6 +95,7 @@ export default function ExpensesPage() {
         setBarbers(barberList);
         setServices(serviceList);
         setPaymentSnapshots(snapshotsRes.snapshots);
+        setCounterSales(salesRes.items);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -108,9 +113,13 @@ export default function ExpensesPage() {
     () => appointmentsWithCashCloseSnapshots(appointments, paymentSnapshots),
     [appointments, paymentSnapshots]
   );
-  const { summary } = useMemo(
+  const builtClose = useMemo(
     () => buildWeeklyCashClose(appointmentsForClose, services, barbers, DEPOSIT_PERCENT, start, end),
     [appointmentsForClose, services, barbers, start, end]
+  );
+  const summary = useMemo(
+    () => applyCounterSalesToCashClose(builtClose.summary, counterSales),
+    [builtClose.summary, counterSales]
   );
   const { lines: proratedFixed, total: proratedFixedTotal } = useMemo(
     () => prorateFixedMonthlyExpenses(fixedExpenses, fromYmd, toYmd),

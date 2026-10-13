@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import type { CashExpense } from '../api';
+import type { CashExpense, CounterSale } from '../api';
 import type {
   CashClosePeriodMode,
   WeeklyBarberSummary,
@@ -24,6 +24,7 @@ export type WeeklyCashCloseExportData = {
   byBarber: WeeklyBarberSummary[];
   rows: WeeklyCashRow[];
   cashExpenses?: CashExpense[];
+  counterSales?: CounterSale[];
 };
 
 function fileBase(data: WeeklyCashCloseExportData): string {
@@ -59,6 +60,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
     ['Total ingreso servicios en caja (ARS)', data.summary.serviceGross],
     ['Señas Mercado Pago (ARS)', data.summary.depositsMp],
     ['Cobrado en local (ARS)', data.summary.localPending],
+    ['Ventas de productos (ARS)', data.summary.counterSalesTotal],
     ['Abono y canje — referencia (ARS)', data.summary.nonCashServiceTotal],
     ['Comisiones barberos (ARS)', data.summary.commissions],
     ['Propinas (ARS)', data.summary.tipsTotal],
@@ -156,6 +158,21 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(expenseRows), 'Gastos de caja');
 
+  const saleRows: (string | number)[][] = [
+    ['Fecha', 'Comprador', 'Productos', 'Pago', 'Importe (ARS)', 'Cargó'],
+    ...(data.counterSales ?? []).map((sale) => [
+      sale.saleDate,
+      sale.buyerName?.trim() || 'Mostrador',
+      (sale.products ?? [])
+        .map((line) => `${line.quantity}× ${line.name}`)
+        .join(', ') || NA,
+      SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod],
+      sale.totalArs,
+      sale.createdByName?.trim() || NA,
+    ]),
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(saleRows), 'Ventas de productos');
+
   XLSX.writeFile(wb, `${fileBase(data)}.xlsx`);
 }
 
@@ -212,6 +229,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
       ['Total servicios', `$${data.summary.serviceGross.toLocaleString('es-AR')}`],
       ['Señas (Mercado Pago)', `$${data.summary.depositsMp.toLocaleString('es-AR')}`],
       ['Por cobrar en local', `$${data.summary.localPending.toLocaleString('es-AR')}`],
+      ['Ventas de productos', `$${data.summary.counterSalesTotal.toLocaleString('es-AR')}`],
       ['Comisiones barberos', `$${data.summary.commissions.toLocaleString('es-AR')}`],
       ['Propinas', `$${data.summary.tipsTotal.toLocaleString('es-AR')}`],
       ['Neto local (est.)', `$${data.summary.shopNetEstimate.toLocaleString('es-AR')}`],
@@ -289,6 +307,26 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
     },
     margin: { left: 10, right: 10 },
   });
+
+  const counterSales = data.counterSales ?? [];
+  if (counterSales.length > 0) {
+    y = nextY(doc);
+    y = addSectionTitle(doc, 'Ventas de productos', y);
+    autoTable(doc, {
+      startY: y,
+      head: [['Fecha', 'Comprador', 'Pago', 'Importe']],
+      body: counterSales.map((sale) => [
+        sale.saleDate,
+        sale.buyerName?.trim() || 'Mostrador',
+        SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod],
+        `$${sale.totalArs.toLocaleString('es-AR')}`,
+      ]),
+      styles: { fontSize: 8, cellPadding: 1.5 },
+      headStyles: { fillColor: PDF_GOLD, textColor: [30, 30, 30], fontStyle: 'bold' },
+      columnStyles: { 3: { halign: 'right' } },
+      margin: { left: 14, right: 14 },
+    });
+  }
 
   const cashExpenses = data.cashExpenses ?? [];
   if (cashExpenses.length > 0) {
