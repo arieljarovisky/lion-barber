@@ -23,12 +23,11 @@ import { resolveAppointmentDepositAmountArs, resolveAppointmentServiceAmountArs 
 import {
   SERVICE_PAYMENT_METHODS,
   accountDebtArsFromSplits,
-  applySplitsToMethodTotals,
-} from './servicePaymentMethod';
-import {
   appointmentCanjeLocalAmountArs,
   appointmentCollectibleLocalArs,
+  appointmentCommissionableServiceAmountArs,
   appointmentSubscriptionLocalAmountArs,
+  applySplitsToMethodTotals,
 } from './servicePaymentMethod';
 
 /** Semana de cierre: lunes a domingo (Argentina). */
@@ -296,7 +295,12 @@ export function buildWeeklyCashClose(
       app.depositPaid && serviceAmount > 0 && localPaymentComplete
         ? resolveAppointmentDepositAmountArs(app, services, depositPercent)
         : 0;
-    const commissions = barberCommissionsForAppointment(app, serviceAmount, commissionPercent);
+    const commissionableService = appointmentCommissionableServiceAmountArs(
+      app,
+      services,
+      depositPercent
+    );
+    const commissions = barberCommissionsForAppointment(app, commissionableService, commissionPercent);
     const afipTotal = afipAmountForAppointment(app, serviceAmount);
     const tipAmount =
       app.tipAmount != null && Number.isFinite(app.tipAmount) && app.tipAmount > 0

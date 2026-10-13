@@ -446,13 +446,13 @@ export function appointmentCollectibleLocalArs(
   );
 }
 
-/** @deprecated Usar serviceAmount completo: el barbero cobra comisión aunque el corte sea abono/canje. */
+/** Base de comisión del servicio: el abono no suma. El canje y la cuenta corriente sí. */
 export function appointmentCommissionableServiceAmountArs(
   app: Appointment,
   services: Service[],
   depositPercent: number
 ): number {
   const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
-  const subscriptionCoverage = appointmentNonCashLocalAmountArs(app, services, depositPercent);
+  const subscriptionCoverage = appointmentSubscriptionLocalAmountArs(app, services, depositPercent);
   return Math.max(0, serviceAmount - subscriptionCoverage);
 }

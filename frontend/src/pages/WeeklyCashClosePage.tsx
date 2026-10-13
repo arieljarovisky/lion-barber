@@ -470,7 +470,7 @@ export default function WeeklyCashClosePage() {
                   <SummaryCard
                     label="Abono y canje"
                     value={`$${formatArs(summary.nonCashServiceTotal)}`}
-                    hint="No entra plata en caja; sí genera comisión al barbero"
+                    hint="No entra plata en caja. El canje suma comisión; el abono no"
                   />
                 )}
               </div>
@@ -479,7 +479,7 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Comisiones barberos"
                   value={`$${formatArs(summary.commissions)}`}
-                  hint="Sobre el valor del servicio, también si fue abono, canje o cuenta corriente"
+                  hint="Sobre lo cobrado del servicio, el canje y la cuenta corriente. El abono queda fuera"
                 />
                 <SummaryCard
                   label="Neto en caja (est.)"
@@ -693,7 +693,11 @@ export default function WeeklyCashClosePage() {
                             <td className="px-3 py-2 text-right tabular-nums">
                               ${formatArs(r.commissionAmount)}
                               <span className="block text-[10px] font-normal text-zinc-400">
-                                {r.commissionPercent}% serv.
+                                {r.subscriptionAmount > 0 && r.serviceCommissionAmount <= 0
+                                  ? 'Abono'
+                                  : r.subscriptionAmount > 0
+                                    ? `${r.commissionPercent}% cobrado`
+                                    : `${r.commissionPercent}% serv.`}
                                 {r.productCommissionAmount > 0 &&
                                   ` + ${BARBER_PRODUCT_COMMISSION_PERCENT}% prod.`}
                               </span>
