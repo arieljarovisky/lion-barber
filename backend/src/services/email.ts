@@ -1,10 +1,14 @@
 import nodemailer, { type Transporter } from 'nodemailer';
+import { DateTime } from 'luxon';
 import type { Appointment } from '../types.js';
 import { PLACEHOLDER_EMAIL_HOST } from '../repositories/users.js';
 import {
   getClientSubscriptionStatus,
   type ClientSubscriptionStatus,
 } from './clientSubscription.js';
+
+const DEFAULT_SHOP_ZONE = 'America/Argentina/Buenos_Aires';
+const DEFAULT_SHOP_ADDRESS = 'Dr. Nicolás Repetto 1602, CABA';
 
 let cachedTransporter: Transporter | null = null;
 let cachedTransporterKey = '';
@@ -230,16 +234,88 @@ function getFrontendUrlForEmail(): string {
   return u.replace(/\/$/, '');
 }
 
+function getShopTimeZoneForEmail(): string {
+  const z = (process.env.SHOP_TIMEZONE ?? '').trim();
+  return z || DEFAULT_SHOP_ZONE;
+}
+
+function getShopAddressForEmail(): string {
+  const addr = (process.env.SHOP_ADDRESS ?? '').trim();
+  return addr || DEFAULT_SHOP_ADDRESS;
+}
+
 /** Enlace al perfil del cliente con modal de reprogramación abierto para ese turno. */
 export function getClientPerfilRescheduleUrl(appointmentId: string): string {
   const base = getFrontendUrlForEmail();
   return `${base}/perfil?reprogramar=${encodeURIComponent(appointmentId)}`;
 }
 
+/**
+ * URL de Google Calendar (action=TEMPLATE) para agregar el turno.
+ * Usa la zona horaria del local (SHOP_TIMEZONE) y la duración del turno.
+ */
+export function buildGoogleCalendarUrl(app: Appointment): string {
+  const zone = getShopTimeZoneForEmail();
+  const shopName = getShopNameForEmails();
+  const durationMin = Math.max(1, Number(app.durationMinutes) || 30);
+  const timeParts = String(app.time ?? '').split(':');
+  const hour = Number.parseInt(timeParts[0] ?? '0', 10);
+  const minute = Number.parseInt(timeParts[1] ?? '0', 10);
+  const dateParts = String(app.date ?? '').split('-').map((p) => Number.parseInt(p, 10));
+  const year = dateParts[0];
+  const month = dateParts[1];
+  const day = dateParts[2];
+
+  let start = DateTime.fromObject(
+    {
+      year: Number.isFinite(year) ? year : 1970,
+      month: Number.isFinite(month) ? month : 1,
+      day: Number.isFinite(day) ? day : 1,
+      hour: Number.isFinite(hour) ? hour : 0,
+      minute: Number.isFinite(minute) ? minute : 0,
+      second: 0,
+    },
+    { zone }
+  );
+  if (!start.isValid) {
+    start = DateTime.now().setZone(zone);
+  }
+  const end = start.plus({ minutes: durationMin });
+  const fmt = (dt: DateTime) => dt.toFormat("yyyyMMdd'T'HHmmss");
+
+  const text = `Turno en ${shopName}: ${app.service}`;
+  const details = [
+    `Servicio: ${app.service}`,
+    app.barber ? `Barbero: ${app.barber}` : null,
+    `Reprogramar: ${getClientPerfilRescheduleUrl(app.id)}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text,
+    dates: `${fmt(start)}/${fmt(end)}`,
+    details,
+    location: getShopAddressForEmail(),
+    ctz: zone,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function googleCalendarCta(app: Appointment): { label: string; url: string } {
+  return { label: 'Agregar a Google Calendar', url: buildGoogleCalendarUrl(app) };
+}
+
 function getEmailLogoUrl(): string {
   const override = (process.env.EMAIL_LOGO_URL ?? '').trim();
   if (override) return override;
   return `${getFrontendUrlForEmail()}/lion-logo-hero-for-ui.png`;
+}
+
+interface EmailCta {
+  label: string;
+  url: string;
 }
 
 interface BrandedEmailOpts {
@@ -251,9 +327,11 @@ interface BrandedEmailOpts {
   detailsHtml: string;
   noticeColor?: 'amber' | 'green' | 'red' | 'zinc';
   noticeHtml?: string;
-  cta?: { label: string; url: string };
-  /** Segundo botón (p. ej. reprogramar) debajo del CTA principal. */
-  secondaryCta?: { label: string; url: string };
+  cta?: EmailCta;
+  /** Segundo botón (outline) debajo del CTA principal. */
+  secondaryCta?: EmailCta;
+  /** Botones outline adicionales (p. ej. abono) debajo del secundario. */
+  extraCtas?: EmailCta[];
   outro?: string;
 }
 
@@ -274,6 +352,7 @@ function renderBrandedEmail(opts: BrandedEmailOpts): string {
   const noticeHtml = opts.noticeHtml
     ? `<div style="margin:18px 0 4px;padding:14px 16px;border:1px solid ${noticeStyle.border};background:${noticeStyle.bg};border-radius:12px;font-size:14px;color:${noticeStyle.color};">${opts.noticeHtml}</div>`
     : '';
+  const outlineCtaStyle = `display:inline-block;background:#ffffff;color:#18181b;font-weight:800;text-decoration:none;padding:12px 24px;border-radius:12px;letter-spacing:.08em;text-transform:uppercase;font-size:12px;border:2px solid ${accent};`;
   const ctaHtml = opts.cta
     ? `<p style="margin:24px 0 4px;text-align:center;">
          <a href="${escapeHtml(opts.cta.url)}"
@@ -282,14 +361,21 @@ function renderBrandedEmail(opts: BrandedEmailOpts): string {
          </a>
        </p>`
     : '';
-  const secondaryCtaHtml = opts.secondaryCta
-    ? `<p style="margin:12px 0 4px;text-align:center;">
-         <a href="${escapeHtml(opts.secondaryCta.url)}"
-            style="display:inline-block;background:#ffffff;color:#18181b;font-weight:800;text-decoration:none;padding:12px 24px;border-radius:12px;letter-spacing:.08em;text-transform:uppercase;font-size:12px;border:2px solid ${accent};">
-           ${escapeHtml(opts.secondaryCta.label)}
+  const outlineCtas: EmailCta[] = [
+    ...(opts.secondaryCta ? [opts.secondaryCta] : []),
+    ...(opts.extraCtas ?? []),
+  ];
+  const secondaryCtaHtml = outlineCtas
+    .map(
+      (btn) =>
+        `<p style="margin:12px 0 4px;text-align:center;">
+         <a href="${escapeHtml(btn.url)}"
+            style="${outlineCtaStyle}">
+           ${escapeHtml(btn.label)}
          </a>
        </p>`
-    : '';
+    )
+    .join('');
   const outroHtml = opts.outro
     ? `<p style="margin:22px 0 0;font-size:13px;color:#71717a;">${opts.outro}</p>`
     : '';
@@ -473,6 +559,7 @@ export async function sendAppointmentScheduledEmail(
     mergeAppointmentAndSubscriptionDetails(app, subscription);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
   const reproUrl = getClientPerfilRescheduleUrl(app.id);
+  const gcal = googleCalendarCta(app);
 
   const text = [
     `${greetingName}, agendamos tu turno en ${shopName}.`,
@@ -482,6 +569,7 @@ export async function sendAppointmentScheduledEmail(
     '',
     'Recordá que hay 10 minutos de tolerancia desde la hora del turno.',
     '',
+    `Agregar a Google Calendar: ${gcal.url}`,
     `Reprogramar turno: ${reproUrl}`,
     '',
     `Te esperamos en ${shopName}.`,
@@ -496,8 +584,9 @@ export async function sendAppointmentScheduledEmail(
     noticeHtml: subscriptionNoticeHtml
       ? `${subscriptionNoticeHtml}<br /><br />Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.`
       : 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
-    cta: { label: 'Reprogramar turno', url: reproUrl },
-    secondaryCta: subscription ? { label: 'Ver mi abono', url: getClientPerfilUrl() } : undefined,
+    cta: gcal,
+    secondaryCta: { label: 'Reprogramar turno', url: reproUrl },
+    extraCtas: subscription ? [{ label: 'Ver mi abono', url: getClientPerfilUrl() }] : undefined,
     outro: '¡Te esperamos!',
   });
 
@@ -526,6 +615,7 @@ export async function sendDepositConfirmedEmail(
     mergeAppointmentAndSubscriptionDetails(app, subscription);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
   const reproUrl = getClientPerfilRescheduleUrl(app.id);
+  const gcal = googleCalendarCta(app);
 
   const text = [
     `${greetingName}, recibimos el pago de la seña y tu turno está confirmado.`,
@@ -535,6 +625,7 @@ export async function sendDepositConfirmedEmail(
     '',
     'Recordá que hay 10 minutos de tolerancia desde la hora de tu turno.',
     '',
+    `Agregar a Google Calendar: ${gcal.url}`,
     `Reprogramar turno: ${reproUrl}`,
     '',
     `Te esperamos en ${shopName}.`,
@@ -549,8 +640,9 @@ export async function sendDepositConfirmedEmail(
     noticeHtml: subscriptionNoticeHtml
       ? `${subscriptionNoticeHtml}<br /><br />Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.`
       : 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
-    cta: { label: 'Reprogramar turno', url: reproUrl },
-    secondaryCta: subscription ? { label: 'Ver mi abono', url: getClientPerfilUrl() } : undefined,
+    cta: gcal,
+    secondaryCta: { label: 'Reprogramar turno', url: reproUrl },
+    extraCtas: subscription ? [{ label: 'Ver mi abono', url: getClientPerfilUrl() }] : undefined,
     outro: '¡Te esperamos!',
   });
 
@@ -580,6 +672,7 @@ export async function sendAppointmentUpdatedEmail(
     mergeAppointmentAndSubscriptionDetails(app, subscription);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
   const reproUrl = getClientPerfilRescheduleUrl(app.id);
+  const gcal = googleCalendarCta(app);
 
   const prevLines: string[] = [];
   if (previous) {
@@ -603,6 +696,7 @@ export async function sendAppointmentUpdatedEmail(
     '',
     'Recordá que hay 10 minutos de tolerancia desde la hora del turno.',
     '',
+    `Agregar a Google Calendar: ${gcal.url}`,
     `Reprogramar turno: ${reproUrl}`,
     '',
     `Te esperamos en ${shopName}.`,
@@ -622,8 +716,9 @@ export async function sendAppointmentUpdatedEmail(
     noticeHtml: subscriptionNoticeHtml
       ? `${subscriptionNoticeHtml}<br /><br />Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.`
       : 'Recordá que hay <strong>10 minutos de tolerancia</strong> desde la hora del turno.',
-    cta: { label: 'Ver o reprogramar turno', url: reproUrl },
-    secondaryCta: subscription ? { label: 'Ver mi abono', url: getClientPerfilUrl() } : undefined,
+    cta: gcal,
+    secondaryCta: { label: 'Ver o reprogramar turno', url: reproUrl },
+    extraCtas: subscription ? [{ label: 'Ver mi abono', url: getClientPerfilUrl() }] : undefined,
     outro: 'Si tenés dudas, respondé a este mail o contactanos por WhatsApp.',
   });
 
@@ -689,6 +784,7 @@ export async function sendAppointmentReminder1hEmail(email: string, app: Appoint
   const { text: detailsText, html: detailsHtml } = buildAppointmentTable(app);
   const greetingName = (app.name ?? '').trim().split(/\s+/)[0] || 'Hola';
   const perfilUrl = getClientPerfilUrl();
+  const gcal = googleCalendarCta(app);
 
   const text = [
     `${greetingName}, en aproximadamente 2 horas tenés turno en ${shopName}.`,
@@ -698,6 +794,7 @@ export async function sendAppointmentReminder1hEmail(email: string, app: Appoint
     '',
     'Recordá que hay 10 minutos de tolerancia desde la hora del turno.',
     '',
+    `Agregar a Google Calendar: ${gcal.url}`,
     `Ver tu turno: ${perfilUrl}`,
     '',
     'Te esperamos.',
@@ -710,7 +807,8 @@ export async function sendAppointmentReminder1hEmail(email: string, app: Appoint
     detailsHtml,
     noticeColor: 'zinc',
     noticeHtml: 'Recordá la tolerancia de <strong>10 minutos</strong> desde la hora pactada.',
-    cta: { label: 'Ver tu turno', url: perfilUrl },
+    cta: gcal,
+    secondaryCta: { label: 'Ver tu turno', url: perfilUrl },
     outro: `Equipo ${shopName}`,
   });
 

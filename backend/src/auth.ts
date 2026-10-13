@@ -60,8 +60,11 @@ export interface JwtPayload {
   role: string;
 }
 
+/** Sesión persistente: el usuario no debe volver a loguearse por vencimiento. */
+const JWT_EXPIRES_IN: string | number = process.env.JWT_EXPIRES_IN?.trim() || '10y';
+
 export function signJwt(payload: JwtPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] });
 }
 
 export function verifyJwt(token: string): JwtPayload {

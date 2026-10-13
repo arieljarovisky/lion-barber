@@ -1153,5 +1153,23 @@ export const api = {
         isSuperAdmin?: boolean;
         staffPermissions?: StaffPermissions | null;
       }>('/api/auth/me'),
+    /** Renueva el JWT para mantener la sesión sin volver a loguearse. */
+    refresh: () =>
+      fetchApi<{
+        token: string;
+        user: {
+          id: number;
+          email: string;
+          name: string;
+          role: string;
+          points: number;
+          barberId?: string | null;
+          avatarUrl?: string | null;
+          depositExempt?: boolean;
+          subscription?: ClientSubscriptionInfo | null;
+          isSuperAdmin?: boolean;
+          staffPermissions?: StaffPermissions | null;
+        };
+      }>('/api/auth/refresh', { method: 'POST' }),
   },
 };

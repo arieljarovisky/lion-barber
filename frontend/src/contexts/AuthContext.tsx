@@ -11,6 +11,11 @@ import {
 
 const TOKEN_KEY = 'lion_barber_token';
 
+/** setTimeout se satura cerca de 2^31 ms (~24.8 días); renovamos o reprogramamos antes. */
+const MAX_TIMEOUT_MS = 2_147_483_000;
+/** Renovar el JWT un día antes de que venza (o al llegar al tope de setTimeout). */
+const REFRESH_BEFORE_EXPIRY_MS = 24 * 60 * 60 * 1000;
+
 export interface UserProfile {
   id: number;
   name: string;
@@ -25,7 +30,7 @@ export interface UserProfile {
   depositExempt?: boolean;
   /** Abono activo (cortes incluidos). */
   subscription?: ClientSubscriptionInfo | null;
-  /** Facturación AFIP, cierre de caja, estadísticas contables y monotributo. */
+  /** Facturación AFIP, cierre de caja, estadísticas contables y topes de monotributo. */
   isSuperAdmin?: boolean;
   /** Permisos de agenda (solo staff). */
   staffPermissions?: { viewAllAgendas: boolean; editAllAgendas: boolean } | null;
@@ -96,12 +101,22 @@ function profileFromBackend(u: {
   };
 }
 
+function readStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
-  /** Timer que dispara el logout automático cuando vence el token. */
+  /** Timer que renueva (o, solo si falla, cierra) la sesión antes del vencimiento. */
   const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshInFlightRef = useRef<Promise<boolean> | null>(null);
+  const scheduleSessionKeepAliveRef = useRef<(token: string) => void>(() => {});
 
   const clearExpiryTimer = useCallback(() => {
     if (expiryTimerRef.current != null) {
@@ -126,11 +141,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSessionExpired(true);
   }, [clearAuthLocally]);
 
+  const persistToken = useCallback((token: string) => {
+    try {
+      localStorage.setItem(TOKEN_KEY, token);
+    } catch {
+      /* ignore */
+    }
+    setAuthToken(token);
+  }, []);
+
   /**
-   * Programa el logout automático en cuanto venza el token actual.
-   * Usa el `exp` del propio JWT para no depender del reloj del servidor.
+   * Renueva el JWT en el backend y actualiza storage/perfil.
+   * Devuelve true si la sesión sigue viva.
    */
-  const scheduleExpiryLogout = useCallback(
+  const refreshSession = useCallback(async (): Promise<boolean> => {
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
+    const run = (async () => {
+      const current = readStoredToken();
+      if (!current || isJwtExpired(current)) return false;
+      try {
+        const { token, user } = await api.auth.refresh();
+        persistToken(token);
+        setProfile(profileFromBackend(user));
+        setSessionExpired(false);
+        scheduleSessionKeepAliveRef.current(token);
+        return true;
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          return false;
+        }
+        /** Fallo de red u otro error: mantener la sesión local si el token aún vale. */
+        return !isJwtExpired(current);
+      }
+    })();
+    refreshInFlightRef.current = run;
+    try {
+      return await run;
+    } finally {
+      if (refreshInFlightRef.current === run) refreshInFlightRef.current = null;
+    }
+  }, [persistToken]);
+
+  /**
+   * Programa renovación silenciosa antes del vencimiento.
+   * Si setTimeout no alcanza (tokens largos), reprograma en trozos sin cerrar sesión.
+   */
+  const scheduleSessionKeepAlive = useCallback(
     (token: string) => {
       clearExpiryTimer();
       const expSec = getJwtExpSeconds(token);
@@ -140,26 +196,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         handleSessionExpired();
         return;
       }
-      /** setTimeout corta en ~24.8 días: lo recortamos por seguridad. */
-      const ms = Math.min(msUntilExpiry, 2_147_483_000);
+      const refreshIn = Math.max(msUntilExpiry - REFRESH_BEFORE_EXPIRY_MS, 0);
+      const ms = Math.min(refreshIn > 0 ? refreshIn : msUntilExpiry, MAX_TIMEOUT_MS);
       expiryTimerRef.current = setTimeout(() => {
-        handleSessionExpired();
+        void (async () => {
+          const latest = readStoredToken();
+          if (!latest) return;
+          if (isJwtExpired(latest)) {
+            handleSessionExpired();
+            return;
+          }
+          const ok = await refreshSession();
+          if (ok) return;
+          const still = readStoredToken();
+          if (still && !isJwtExpired(still)) {
+            scheduleSessionKeepAliveRef.current(still);
+            return;
+          }
+          handleSessionExpired();
+        })();
       }, ms);
     },
-    [clearExpiryTimer, handleSessionExpired]
+    [clearExpiryTimer, handleSessionExpired, refreshSession]
   );
+
+  scheduleSessionKeepAliveRef.current = scheduleSessionKeepAlive;
 
   const loginWithGoogle = async (idToken: string, linkPhone?: string) => {
     const { token, user } = await api.auth.postGoogle(idToken, linkPhone);
-    try {
-      localStorage.setItem(TOKEN_KEY, token);
-    } catch {
-      /* ignore */
-    }
-    setAuthToken(token);
+    persistToken(token);
     setProfile(profileFromBackend(user));
     setSessionExpired(false);
-    scheduleExpiryLogout(token);
+    scheduleSessionKeepAlive(token);
   };
 
   const logout = async () => {
@@ -195,13 +263,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [handleSessionExpired, clearAuthLocally]);
 
   useEffect(() => {
-    const token = (() => {
-      try {
-        return localStorage.getItem(TOKEN_KEY);
-      } catch {
-        return null;
-      }
-    })();
+    const token = readStoredToken();
     if (!token) {
       setLoading(false);
       return;
@@ -213,12 +275,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
     setAuthToken(token);
-    scheduleExpiryLogout(token);
+    scheduleSessionKeepAlive(token);
     let cancelled = false;
     (async () => {
       try {
-        const user = await api.auth.getMe();
-        if (!cancelled) setProfile(profileFromBackend(user));
+        /** Renueva al abrir la app para alargar tokens viejos (p. ej. de 7 días). */
+        const renewed = await refreshSession();
+        if (cancelled) return;
+        if (!renewed) {
+          const still = readStoredToken();
+          if (!still || isJwtExpired(still)) return;
+          const user = await api.auth.getMe();
+          if (!cancelled) setProfile(profileFromBackend(user));
+        }
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           /** El handler global ya limpió el estado; no hace falta hacer nada extra acá. */
@@ -240,7 +309,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       cancelled = true;
     };
-  }, [handleSessionExpired, scheduleExpiryLogout]);
+  }, [handleSessionExpired, scheduleSessionKeepAlive, refreshSession]);
 
   /** Limpia el timer si se desmonta el provider. */
   useEffect(() => {
@@ -248,26 +317,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [clearExpiryTimer]);
 
   /**
-   * Cuando el usuario vuelve a la pestaña tras un rato, revisamos el token:
-   * si venció durante el background, cerramos sesión sin esperar al próximo request.
+   * Al volver a la pestaña: si el token sigue válido, renovamos;
+   * solo cerramos sesión si realmente venció.
    */
   useEffect(() => {
     if (typeof document === 'undefined') return;
     const onVisibility = () => {
       if (document.visibilityState !== 'visible') return;
-      let token: string | null = null;
-      try {
-        token = localStorage.getItem(TOKEN_KEY);
-      } catch {
-        /* ignore */
-      }
-      if (token && isJwtExpired(token)) {
+      const token = readStoredToken();
+      if (!token) return;
+      if (isJwtExpired(token)) {
         handleSessionExpired();
+        return;
       }
+      void refreshSession();
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [handleSessionExpired]);
+  }, [handleSessionExpired, refreshSession]);
 
   const isAdmin = profile?.role === 'admin';
   const isSuperAdmin = Boolean(profile?.isSuperAdmin);
