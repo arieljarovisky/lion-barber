@@ -147,6 +147,27 @@ export async function adjustClientAccountDebt(
   ]);
 }
 
+/**
+ * Registra un cobro que reduce la deuda de cuenta corriente (el saldo sube).
+ * `amountArs` debe ser > 0.
+ */
+export async function registerClientAccountPayment(
+  userId: number,
+  amountArs: number,
+  exec: SqlExecutor = pool
+): Promise<DbUser> {
+  const amount = normalizeAccountBalanceArs(Number(amountArs));
+  if (!(amount > 0)) {
+    throw new Error('El monto del cobro debe ser mayor a 0');
+  }
+  await adjustClientAccountDebt(userId, -amount, exec);
+  const updated = await findUserById(userId);
+  if (!updated || updated.role !== 'client') {
+    throw new Error('Cliente no encontrado');
+  }
+  return updated;
+}
+
 /** Actualiza ficha de cliente (panel admin). */
 export async function updateAdminClientById(
   userId: number,
