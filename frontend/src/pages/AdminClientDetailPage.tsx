@@ -150,12 +150,7 @@ export default function AdminClientDetailPage() {
 
   const handlePanelNavigate = useCallback(
     (panel: DashboardPanelId) => {
-      const href = dashboardPanelHref(panel);
-      if (href) {
-        navigate(href);
-        return;
-      }
-      navigate('/dashboard', { state: { openView: panel } });
+      navigate(dashboardPanelHref(panel));
     },
     [navigate]
   );
@@ -419,13 +414,18 @@ export default function AdminClientDetailPage() {
         </nav>
 
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <Link
-            to="/dashboard/clientes"
+          <button
+            type="button"
+            onClick={() => {
+              const idx = (window.history.state as { idx?: number } | null)?.idx;
+              if (typeof idx === 'number' && idx > 0) navigate(-1);
+              else navigate('/dashboard/clientes');
+            }}
             className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-600 hover:text-zinc-900"
           >
             <ChevronLeft size={18} />
-            Volver al listado
-          </Link>
+            Volver
+          </button>
           {isAdmin && !loading && client && (
             <button
               type="button"

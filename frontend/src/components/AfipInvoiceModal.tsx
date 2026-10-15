@@ -5,6 +5,8 @@ import { api, ApiError } from '../api';
 import BarberMonotributoLimitsPanel from './BarberMonotributoLimitsPanel';
 import ClientProfileLink from './ClientProfileLink';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
+import { DEPOSIT_PERCENT } from '../constants/deposit';
+import { appointmentCommissionableServiceAmountArs } from '../utils/servicePaymentMethod';
 import {
   appointmentMatchesInvoiceScope,
   isBarberAfipReady,
@@ -133,9 +135,11 @@ export default function AfipInvoiceModal({
   }, [serviceAmount, productsSubtotal]);
 
   const serviceCommission = useMemo(() => {
-    const s = serviceAmount ?? 0;
+    const barberName =
+      barbers.find((b) => b.id === appointment.barberId)?.name ?? appointment.barber;
+    const s = appointmentCommissionableServiceAmountArs(appointment, services, DEPOSIT_PERCENT, barberName);
     return s > 0 ? Math.round((s * BARBER_COMMISSION_PERCENT) / 100) : 0;
-  }, [serviceAmount]);
+  }, [appointment, services, barbers]);
 
   const productCommission = useMemo(() => {
     if (productsSubtotal <= 0) return 0;
@@ -324,7 +328,8 @@ export default function AfipInvoiceModal({
             </p>
             <p className="mt-2 text-xs text-zinc-500">
               AFIP factura el importe completo. Liquidación del barbero: {BARBER_COMMISSION_PERCENT}% del servicio
-              {productsSubtotal > 0 ? ` y ${BARBER_PRODUCT_COMMISSION_PERCENT}% de los productos` : ''} (no reduce la factura).
+              {productsSubtotal > 0 ? ` y ${BARBER_PRODUCT_COMMISSION_PERCENT}% de los productos` : ''}. En abono, el corte
+              vale 5 de cada 6. El canje de Agustín y Canje 100% no suman comisión (no reduce la factura).
             </p>
             {(appointment.tipAmount ?? 0) > 0 && (
               <p className="mt-2 text-xs font-medium text-[#6b2030]">

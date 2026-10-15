@@ -1,5 +1,10 @@
 import type { Appointment, ClientSubscriptionInfo, Service, ServicePaymentMethod, ServicePaymentSplit } from '../api';
 import {
+  barberCanjeSkipsCommission,
+  SUBSCRIPTION_COMMISSION_PAID_CUTS,
+  SUBSCRIPTION_INCLUDED_CUTS,
+} from '../constants/barberBusiness';
+import {
   resolveAppointmentDepositAmountArs,
   resolveAppointmentServiceAmountArs,
 } from './money';
@@ -13,6 +18,7 @@ export const SERVICE_PAYMENT_METHODS: ServicePaymentMethod[] = [
   'card',
   'subscription',
   'canje',
+  'canje100',
 ];
 
 export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string> = {
@@ -22,10 +28,14 @@ export const SERVICE_PAYMENT_METHOD_LABELS: Record<ServicePaymentMethod, string>
   card: 'Tarjeta',
   subscription: 'Abono',
   canje: 'Canje',
+  canje100: 'Canje 100%',
 };
 
-/** Color de un pago ya registrado (todos los medios, el mismo azul). */
+/** Color de un pago ya registrado que todavía no salda el turno. */
 export const REGISTERED_PAYMENT_CLASS = 'border-blue-400 bg-blue-100 text-blue-950';
+
+/** Casillero cuando seña y cobros cubren el total, sin deuda en cuenta corriente. */
+export const FULLY_PAID_PAYMENT_CLASS = 'border-emerald-600 bg-emerald-200 text-emerald-950';
 
 /** Propina, aparte de los cobros del turno. */
 export const TIP_PAINTED_CLASS = 'border-[#7a2d3c] bg-[#f6e4e8] text-[#6b2030]';
@@ -38,10 +48,11 @@ export const SERVICE_PAYMENT_METHOD_SELECTED_CLASS: Record<ServicePaymentMethod,
   card: REGISTERED_PAYMENT_CLASS,
   subscription: REGISTERED_PAYMENT_CLASS,
   canje: REGISTERED_PAYMENT_CLASS,
+  canje100: REGISTERED_PAYMENT_CLASS,
 };
 
-/** Abono y canje de puntos: no ingresan efectivo en caja en el turno. */
-export const NON_CASH_LOCAL_PAYMENT_METHODS: ServicePaymentMethod[] = ['subscription', 'canje'];
+/** Abono y canjes: no ingresan efectivo en caja en el turno. */
+export const NON_CASH_LOCAL_PAYMENT_METHODS: ServicePaymentMethod[] = ['subscription', 'canje', 'canje100'];
 
 export function isNonCashLocalPaymentMethod(method: ServicePaymentMethod): boolean {
   return NON_CASH_LOCAL_PAYMENT_METHODS.includes(method);
@@ -300,7 +311,9 @@ export function appointmentPaymentDisplayParts(
             ? ' (1 corte)'
             : s.method === 'canje'
               ? ' (puntos)'
-              : '';
+              : s.method === 'canje100'
+                ? ' (100%)'
+                : '';
         parts.push({
           method: s.method,
           text: `${SERVICE_PAYMENT_METHOD_LABELS[s.method]} ${formatRegisteredPaymentAmount(s.amount)}${suffix}`,
@@ -319,6 +332,56 @@ export function appointmentPaymentDisplayParts(
   }
 
   return collapseMercadoPagoParts(parts, mercadoPagoTotal, mercadoPagoCount);
+}
+
+/** Cobros en local que sí ingresaron (cuenta corriente no cuenta: el cliente sigue debiendo). */
+function registeredSettledLocalArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number,
+  productsSubtotal: number
+): number {
+  const splits = app.servicePaymentSplits;
+  if (splits?.length) {
+    let total = 0;
+    for (const split of splits) {
+      if (split.method === 'account' || !(split.amount > 0)) continue;
+      total += split.amount;
+    }
+    return total;
+  }
+  if (
+    app.servicePaymentMethod &&
+    app.servicePaymentMethod !== 'mercadopago' &&
+    app.servicePaymentMethod !== 'account'
+  ) {
+    return appointmentSplitsTargetArs(app, services, depositPercent, productsSubtotal);
+  }
+  return 0;
+}
+
+/**
+ * El turno está saldado: la seña (si la hubo) más los cobros cubren servicio y productos.
+ * Cuenta corriente deja el casillero en azul, porque ese monto sigue debiendo.
+ */
+export function isAppointmentFullyPaid(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number,
+  productsSubtotal = 0
+): boolean {
+  const serviceAmount = Math.round(resolveAppointmentServiceAmountArs(app, services) ?? 0);
+  const products = Math.max(0, Math.round(productsSubtotal));
+  if (serviceAmount <= 0 && products <= 0) return false;
+  if (accountDebtArsFromSplits(app.servicePaymentSplits) > 0) return false;
+
+  const localPaid = registeredSettledLocalArs(app, services, depositPercent, products);
+  if (app.promotionFullyPaid) {
+    return products <= 0 || localPaid + 0.5 >= products;
+  }
+
+  const deposit = appointmentDepositAmountArs(app, services, depositPercent);
+  return deposit + localPaid + 0.5 >= serviceAmount + products;
 }
 
 /** Texto para agenda / modal: seña MP + cobros en local. */
@@ -403,23 +466,41 @@ export function appointmentSubscriptionLocalAmountArs(
   return 0;
 }
 
-/** Monto del saldo local cubierto con canje de puntos (no ingresa a caja en el turno). */
+function appointmentMethodLocalAmountArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number,
+  method: ServicePaymentMethod
+): number {
+  const localTarget = appointmentLocalPendingArs(app, services, depositPercent);
+  if (localTarget <= 0) return 0;
+
+  const fromSplits = nonCashSplitAmountArs(app.servicePaymentSplits, method);
+  if (fromSplits > 0) return Math.min(localTarget, fromSplits);
+
+  if (app.servicePaymentMethod === method) return localTarget;
+  return 0;
+}
+
+/** Monto del saldo local cubierto con canje (no ingresa a caja). Comisión al 50%, salvo Agustín. */
 export function appointmentCanjeLocalAmountArs(
   app: Appointment,
   services: Service[],
   depositPercent: number
 ): number {
-  const localTarget = appointmentLocalPendingArs(app, services, depositPercent);
-  if (localTarget <= 0) return 0;
-
-  const fromSplits = nonCashSplitAmountArs(app.servicePaymentSplits, 'canje');
-  if (fromSplits > 0) return Math.min(localTarget, fromSplits);
-
-  if (app.servicePaymentMethod === 'canje') return localTarget;
-  return 0;
+  return appointmentMethodLocalAmountArs(app, services, depositPercent, 'canje');
 }
 
-/** Abono + canje: parte del servicio sin ingreso en caja al momento del turno. */
+/** Canje al 100%: no ingresa a caja y no genera comisión para el barbero ni para el local. */
+export function appointmentCanje100LocalAmountArs(
+  app: Appointment,
+  services: Service[],
+  depositPercent: number
+): number {
+  return appointmentMethodLocalAmountArs(app, services, depositPercent, 'canje100');
+}
+
+/** Abono + canjes: parte del servicio sin ingreso en caja al momento del turno. */
 export function appointmentNonCashLocalAmountArs(
   app: Appointment,
   services: Service[],
@@ -430,7 +511,8 @@ export function appointmentNonCashLocalAmountArs(
 
   const subscription = appointmentSubscriptionLocalAmountArs(app, services, depositPercent);
   const canje = appointmentCanjeLocalAmountArs(app, services, depositPercent);
-  return Math.min(localTarget, subscription + canje);
+  const canje100 = appointmentCanje100LocalAmountArs(app, services, depositPercent);
+  return Math.min(localTarget, subscription + canje + canje100);
 }
 
 /** Saldo en local a cobrar en el turno (incluye lo fiado en cuenta corriente), sin abono. */
@@ -446,13 +528,34 @@ export function appointmentCollectibleLocalArs(
   );
 }
 
-/** Base de comisión del servicio: el abono no suma. El canje y la cuenta corriente sí. */
+/** Parte del abono que entra a comisión: 5 cortes pagos de los 6 incluidos. */
+export function subscriptionCommissionBaseArs(subscriptionCoverage: number): number {
+  if (subscriptionCoverage <= 0) return 0;
+  return Math.round(
+    (subscriptionCoverage * SUBSCRIPTION_COMMISSION_PAID_CUTS) / SUBSCRIPTION_INCLUDED_CUTS
+  );
+}
+
+/**
+ * Base de comisión del servicio.
+ * Abono: 5/6 del valor cubierto. Canje: el total, salvo Agustín (0). Canje 100%: 0 para todos.
+ * Cuenta corriente y cobros en efectivo, tarjeta o Mercado Pago suman el total.
+ */
 export function appointmentCommissionableServiceAmountArs(
   app: Appointment,
   services: Service[],
-  depositPercent: number
+  depositPercent: number,
+  barberName?: string | null
 ): number {
   const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
   const subscriptionCoverage = appointmentSubscriptionLocalAmountArs(app, services, depositPercent);
-  return Math.max(0, serviceAmount - subscriptionCoverage);
+  const canje100 = appointmentCanje100LocalAmountArs(app, services, depositPercent);
+  const canje = appointmentCanjeLocalAmountArs(app, services, depositPercent);
+  const canjeWithoutCommission = barberCanjeSkipsCommission(barberName ?? app.barber) ? canje : 0;
+  const excluded = Math.min(
+    serviceAmount,
+    subscriptionCoverage + canje100 + canjeWithoutCommission
+  );
+  const charged = Math.max(0, serviceAmount - excluded);
+  return charged + subscriptionCommissionBaseArs(subscriptionCoverage);
 }

@@ -474,8 +474,8 @@ export default function AppointmentPaymentSplitsModal({
             />
             <p className="text-xs text-zinc-500 mt-1">
               {depositAmount > 0
-                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago, abono u otro método. Cuenta corriente significa que no pagó: el monto queda como deuda.'
-                : 'Podés combinar métodos (incluido Abono si el cliente tiene cupo). Cuenta corriente significa que no pagó: el monto queda como deuda en su ficha.'}
+                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago, abono u otro método. Canje 100% no suma comisión. Cuenta corriente significa que no pagó: el monto queda como deuda.'
+                : 'Podés combinar métodos (incluido Abono si el cliente tiene cupo). Canje suma comisión al 50%, salvo Agustín. Canje 100% no suma comisión a nadie. Cuenta corriente significa que no pagó: el monto queda como deuda en su ficha.'}
             </p>
           </div>
 

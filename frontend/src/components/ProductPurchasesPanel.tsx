@@ -113,7 +113,7 @@ export default function ProductPurchasesPanel({ fromYmd, toYmd, onTotalChange }:
   };
 
   const goToCatalog = () => {
-    navigate('/dashboard', { state: { openView: 'productos' } });
+    navigate('/dashboard?vista=productos');
   };
 
   const handleCreateProduct = () => {

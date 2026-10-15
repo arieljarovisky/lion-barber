@@ -19,8 +19,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { LION_LOGO_URL } from '../constants/brandLogo';
 
-/** Rutas propias del panel. El resto se abre dentro de /dashboard. */
-export function dashboardPanelHref(panel: DashboardPanelId): string | null {
+/** Cada sección del menú tiene su propia dirección, para que atrás vuelva a la anterior. */
+export function dashboardPanelHref(panel: DashboardPanelId): string {
   switch (panel) {
     case 'clientes':
       return '/dashboard/clientes';
@@ -30,8 +30,10 @@ export function dashboardPanelHref(panel: DashboardPanelId): string | null {
       return '/dashboard/cierre-caja';
     case 'gastos':
       return '/dashboard/gastos';
+    case 'agenda':
+      return '/dashboard';
     default:
-      return null;
+      return `/dashboard?vista=${panel}`;
   }
 }
 

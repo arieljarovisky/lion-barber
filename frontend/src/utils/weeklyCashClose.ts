@@ -23,6 +23,7 @@ import { resolveAppointmentDepositAmountArs, resolveAppointmentServiceAmountArs 
 import {
   SERVICE_PAYMENT_METHODS,
   accountDebtArsFromSplits,
+  appointmentCanje100LocalAmountArs,
   appointmentCanjeLocalAmountArs,
   appointmentCollectibleLocalArs,
   appointmentCommissionableServiceAmountArs,
@@ -115,8 +116,10 @@ export type WeeklyCashRow = {
   serviceAmount: number;
   /** Parte del saldo local cubierta con abono (corte gratis, no entra a caja). */
   subscriptionAmount: number;
-  /** Parte del saldo local cubierta con canje de puntos. */
+  /** Parte del saldo local cubierta con canje (comisión al 50%, salvo Agustín). */
   canjeAmount: number;
+  /** Canje al 100%: referencia, sin comisión para el barbero ni para el local. */
+  canje100Amount: number;
   depositAmount: number;
   depositPaid: boolean;
   localPending: number;
@@ -170,6 +173,8 @@ export type WeeklyCashSummary = {
   pendingAfipCount: number;
   /** Saldo en local agrupado por método registrado (sin método → unregistered). */
   localByMethod: PaymentMethodTotals;
+  /** Abono y canjes: referencia, no ingresan a caja. */
+  nonCashByMethod: PaymentMethodTotals;
   /** Señas MP (siempre mercadopago en depósitos). */
   depositsMpByMethod: PaymentMethodTotals;
   tipsTotal: number;
@@ -282,6 +287,7 @@ export function buildWeeklyCashClose(
     const serviceAmount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
     const subscriptionAmount = appointmentSubscriptionLocalAmountArs(app, services, depositPercent);
     const canjeAmount = appointmentCanjeLocalAmountArs(app, services, depositPercent);
+    const canje100Amount = appointmentCanje100LocalAmountArs(app, services, depositPercent);
     const collectibleLocal = appointmentCollectibleLocalArs(app, services, depositPercent);
     const { key, name, commissionPercent } = resolveBarber(app, barbers);
 
@@ -300,7 +306,8 @@ export function buildWeeklyCashClose(
     const commissionableService = appointmentCommissionableServiceAmountArs(
       app,
       services,
-      depositPercent
+      depositPercent,
+      name
     );
     const commissions = barberCommissionsForAppointment(app, commissionableService, commissionPercent);
     const afipTotal = afipAmountForAppointment(app, serviceAmount);
@@ -321,6 +328,7 @@ export function buildWeeklyCashClose(
       serviceAmount,
       subscriptionAmount,
       canjeAmount,
+      canje100Amount,
       depositAmount,
       depositPaid: Boolean(app.depositPaid),
       localPending: collectibleLocal,
@@ -378,7 +386,10 @@ export function buildWeeklyCashClose(
       acc.depositsMp += r.depositAmount;
       acc.localPending += r.localPending;
       acc.commissions += r.commissionAmount;
-      acc.nonCashServiceTotal += r.subscriptionAmount + r.canjeAmount;
+      acc.nonCashServiceTotal += r.subscriptionAmount + r.canjeAmount + r.canje100Amount;
+      acc.nonCashByMethod.subscription += r.subscriptionAmount;
+      acc.nonCashByMethod.canje += r.canjeAmount;
+      acc.nonCashByMethod.canje100 += r.canje100Amount;
       if (r.depositAmount > 0) {
         acc.depositsMpByMethod.mercadopago += r.depositAmount;
       }
@@ -411,6 +422,7 @@ export function buildWeeklyCashClose(
       afipInvoicedCount: 0,
       pendingAfipCount: 0,
       localByMethod: emptyPaymentMethodTotals(),
+      nonCashByMethod: emptyPaymentMethodTotals(),
       depositsMpByMethod: emptyPaymentMethodTotals(),
       tipsTotal: 0,
       counterSalesTotal: 0,

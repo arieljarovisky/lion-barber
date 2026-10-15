@@ -12,6 +12,7 @@ import {
   SERVICE_PAYMENT_METHODS,
   SERVICE_PAYMENT_METHOD_LABELS,
   formatServicePaymentSplits,
+  isNonCashLocalPaymentMethod,
 } from './servicePaymentMethod';
 
 export type WeeklyCashCloseExportData = {
@@ -73,12 +74,13 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenRows), 'Resumen');
 
   const metodoRows: (string | number)[][] = [
-    ['Método', 'Importe en local (ARS)'],
+    ['Método', 'Importe (ARS)', 'Nota'],
     ...SERVICE_PAYMENT_METHODS.map((m) => [
       SERVICE_PAYMENT_METHOD_LABELS[m],
-      data.summary.localByMethod[m],
+      isNonCashLocalPaymentMethod(m) ? data.summary.nonCashByMethod[m] : data.summary.localByMethod[m],
+      isNonCashLocalPaymentMethod(m) ? 'Referencia, no entra en caja' : '',
     ]),
-    ['Sin registrar', data.summary.localByMethod.unregistered],
+    ['Sin registrar', data.summary.localByMethod.unregistered, ''],
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(metodoRows), 'Por método');
 
@@ -254,8 +256,13 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
     head: [['Método', 'Importe en local']],
     body: [
       ...SERVICE_PAYMENT_METHODS.map((m) => [
-        SERVICE_PAYMENT_METHOD_LABELS[m],
-        `$${data.summary.localByMethod[m].toLocaleString('es-AR')}`,
+        isNonCashLocalPaymentMethod(m)
+          ? `${SERVICE_PAYMENT_METHOD_LABELS[m]} (referencia)`
+          : SERVICE_PAYMENT_METHOD_LABELS[m],
+        `$${(isNonCashLocalPaymentMethod(m)
+          ? data.summary.nonCashByMethod[m]
+          : data.summary.localByMethod[m]
+        ).toLocaleString('es-AR')}`,
       ]),
       ['Sin registrar', `$${data.summary.localByMethod.unregistered.toLocaleString('es-AR')}`],
     ],

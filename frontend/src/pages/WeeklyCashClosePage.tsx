@@ -22,6 +22,7 @@ import {
   SERVICE_PAYMENT_METHOD_LABELS,
   SERVICE_PAYMENT_METHODS,
   formatServicePaymentSplits,
+  isNonCashLocalPaymentMethod,
 } from '../utils/servicePaymentMethod';
 import ServicePaymentMethodLabel from '../components/ServicePaymentMethodLabel';
 import ClientProfileLink from '../components/ClientProfileLink';
@@ -60,12 +61,7 @@ export default function WeeklyCashClosePage() {
 
   const handlePanelNavigate = useCallback(
     (panel: DashboardPanelId) => {
-      const href = dashboardPanelHref(panel);
-      if (href) {
-        navigate(href);
-        return;
-      }
-      navigate('/dashboard', { state: { openView: panel } });
+      navigate(dashboardPanelHref(panel));
     },
     [navigate]
   );
@@ -482,7 +478,7 @@ export default function WeeklyCashClosePage() {
                   <SummaryCard
                     label="Abono y canje"
                     value={`$${formatArs(summary.nonCashServiceTotal)}`}
-                    hint="No entra plata en caja. El canje suma comisión; el abono no"
+                    hint="No entra plata en caja. Canje de los demás barberos: comisión al 50%. El de Agustín y Canje 100% no suman. Abono: 5 de 6 cortes"
                   />
                 )}
               </div>
@@ -491,7 +487,7 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Comisiones barberos"
                   value={`$${formatArs(summary.commissions)}`}
-                  hint="Sobre lo cobrado del servicio, el canje y la cuenta corriente. El abono queda fuera"
+                  hint="50% de lo cobrado y de la cuenta corriente. Canje al 50% salvo Agustín. Canje 100% no suma. Abono: 5/6"
                 />
                 <SummaryCard
                   label="Neto en caja (est.)"
@@ -527,7 +523,7 @@ export default function WeeklyCashClosePage() {
                 <div className="border-b border-zinc-100 bg-zinc-50/80 px-4 py-3">
                   <h2 className="font-black text-zinc-900">Cobros en local por método</h2>
                   <p className="mt-0.5 text-xs text-zinc-500">
-                    Saldo del turno por método. Cuenta corriente es deuda del cliente y no entra en caja. El abono por cortes no suma acá.
+                    Saldo del turno por método. Cuenta corriente es deuda y no entra en caja. Abono, Canje y Canje 100% figuran como referencia: no entra plata.
                   </p>
                 </div>
                 <div className="cash-close-table-wrap overflow-x-auto p-4">
@@ -539,14 +535,23 @@ export default function WeeklyCashClosePage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
-                      {SERVICE_PAYMENT_METHODS.map((m) => (
-                        <tr key={m}>
-                          <td className="py-2 font-medium text-zinc-800">
-                            <ServicePaymentMethodLabel method={m} />
-                          </td>
-                          <td className="py-2 text-right tabular-nums">${formatArs(summary.localByMethod[m])}</td>
-                        </tr>
-                      ))}
+                      {SERVICE_PAYMENT_METHODS.map((m) => {
+                        const reference = isNonCashLocalPaymentMethod(m);
+                        const amount = reference ? summary.nonCashByMethod[m] : summary.localByMethod[m];
+                        return (
+                          <tr key={m}>
+                            <td className="py-2 font-medium text-zinc-800">
+                              <ServicePaymentMethodLabel method={m} />
+                              {reference && (
+                                <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-zinc-400">
+                                  Referencia
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 text-right tabular-nums">${formatArs(amount)}</td>
+                          </tr>
+                        );
+                      })}
                       <tr>
                         <td className="py-2 font-medium text-zinc-500">Sin registrar</td>
                         <td className="py-2 text-right tabular-nums text-amber-800">
@@ -680,13 +685,16 @@ export default function WeeklyCashClosePage() {
                               )}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums text-amber-800">
-                              {r.localPending <= 0 && r.subscriptionAmount + r.canjeAmount > 0 ? (
+                              {r.localPending <= 0 &&
+                              r.subscriptionAmount + r.canjeAmount + r.canje100Amount > 0 ? (
                                 <span className="text-violet-700" title="Abono o canje de puntos">
-                                  {r.canjeAmount > 0 && r.subscriptionAmount <= 0
-                                    ? 'Canje'
-                                    : r.subscriptionAmount > 0 && r.canjeAmount <= 0
-                                      ? 'Abono'
-                                      : 'Abono/Canje'}
+                                  {r.canje100Amount > 0 && r.canjeAmount <= 0 && r.subscriptionAmount <= 0
+                                    ? 'Canje 100%'
+                                    : r.canjeAmount > 0 && r.canje100Amount <= 0 && r.subscriptionAmount <= 0
+                                      ? 'Canje'
+                                      : r.subscriptionAmount > 0 && r.canjeAmount <= 0 && r.canje100Amount <= 0
+                                        ? 'Abono'
+                                        : 'Abono/Canje'}
                                 </span>
                               ) : (
                                 `$${formatArs(r.localPending)}`
@@ -705,11 +713,17 @@ export default function WeeklyCashClosePage() {
                             <td className="px-3 py-2 text-right tabular-nums">
                               ${formatArs(r.commissionAmount)}
                               <span className="block text-[10px] font-normal text-zinc-400">
-                                {r.subscriptionAmount > 0 && r.serviceCommissionAmount <= 0
-                                  ? 'Abono'
-                                  : r.subscriptionAmount > 0
-                                    ? `${r.commissionPercent}% cobrado`
-                                    : `${r.commissionPercent}% serv.`}
+                                {r.canje100Amount > 0 && r.localPending <= 0 && r.serviceCommissionAmount <= 0
+                                  ? 'Canje 100%'
+                                  : r.canjeAmount > 0 && r.localPending <= 0 && r.serviceCommissionAmount <= 0
+                                    ? 'Sin comisión'
+                                    : r.canjeAmount > 0 && r.subscriptionAmount <= 0 && r.localPending <= 0
+                                      ? `${r.commissionPercent}% canje`
+                                      : r.subscriptionAmount > 0 && r.localPending <= 0
+                                        ? `${r.commissionPercent}% abono`
+                                        : r.subscriptionAmount > 0
+                                          ? `${r.commissionPercent}% cobrado`
+                                          : `${r.commissionPercent}% serv.`}
                                 {r.productCommissionAmount > 0 &&
                                   ` + ${BARBER_PRODUCT_COMMISSION_PERCENT}% prod.`}
                               </span>
@@ -830,8 +844,9 @@ export default function WeeklyCashClosePage() {
               <p className="mt-6 text-xs text-zinc-500 max-w-3xl">
                 Las señas son el {DEPOSIT_PERCENT}% del servicio. La comisión de productos ({BARBER_PRODUCT_COMMISSION_PERCENT}
                 %) suma apenas se cargan en el turno. «En local» es el saldo estimado (servicio −
-                seña). Registrá los cobros en cada turno desde la agenda; podés combinar métodos (ej. efectivo + tarjeta) con el
-                monto de cada uno.
+                seña). En un turno de abono la comisión toma 5 de cada 6 cortes del valor del servicio. El canje suma comisión
+                al 50% para los barberos, salvo Agustín. Canje 100% no suma comisión ni al barbero ni al local. Registrá los cobros
+                en cada turno desde la agenda; podés combinar métodos (ej. efectivo + tarjeta) con el monto de cada uno.
               </p>
             </>
           )}

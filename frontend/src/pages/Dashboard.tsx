@@ -90,11 +90,14 @@ import type {
   type BarberInvoicingUsage,
 } from '../api';
 import {
+  appointmentCommissionableServiceAmountArs,
   appointmentPaymentDisplayParts,
   appointmentSplitsTargetArs,
   cleanServicePaymentSplits,
   formatAppointmentPaymentDisplay,
+  FULLY_PAID_PAYMENT_CLASS,
   initialSplitsFromAppointment,
+  isAppointmentFullyPaid,
   SERVICE_PAYMENT_METHOD_LABELS,
   SERVICE_PAYMENT_METHOD_SELECTED_CLASS,
   TIP_PAINTED_CLASS,
@@ -200,6 +203,38 @@ function normalizeWeekdayHours(input: Record<number, DayHours> | undefined, clos
   return out;
 }
 
+type ViewType =
+  | 'agenda'
+  | 'servicios'
+  | 'horarios'
+  | 'equipo'
+  | 'puntos'
+  | 'productos'
+  | 'abonos'
+  | 'promociones'
+  | 'facturacion'
+  | 'configuracion';
+
+const DASHBOARD_VIEWS: ViewType[] = [
+  'agenda',
+  'servicios',
+  'horarios',
+  'equipo',
+  'puntos',
+  'productos',
+  'abonos',
+  'promociones',
+  'facturacion',
+  'configuracion',
+];
+
+function readDashboardView(search?: string): ViewType {
+  const raw = search ?? (typeof window === 'undefined' ? '' : window.location.search);
+  const vista = new URLSearchParams(raw).get('vista');
+  if (vista && DASHBOARD_VIEWS.includes(vista as ViewType)) return vista as ViewType;
+  return 'agenda';
+}
+
 export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boolean } = {}) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedBarberId, setSelectedBarberId] = useState<string | 'all'>('all');
@@ -238,37 +273,23 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const [agendaRestrictionsByBarber, setAgendaRestrictionsByBarber] = useState<
     Record<string, { offWeekdays: Set<number>; blocks: BarberTimeBlockRow[] }>
   >({});
-  type ViewType =
-    | 'agenda'
-    | 'servicios'
-    | 'horarios'
-    | 'equipo'
-    | 'puntos'
-    | 'productos'
-    | 'abonos'
-    | 'promociones'
-    | 'facturacion'
-    | 'configuracion';
-  const validViews: ViewType[] = ['agenda', 'servicios', 'horarios', 'equipo', 'puntos', 'productos', 'abonos', 'promociones', 'facturacion', 'configuracion'];
-  const getInitialView = (): ViewType => {
-    if (typeof window === 'undefined') return 'agenda';
-    const params = new URLSearchParams(window.location.search);
-    const v = params.get('vista');
-    if (v && validViews.includes(v as ViewType)) return v as ViewType;
-    return 'agenda';
-  };
-  const [view, setViewState] = useState<ViewType>(getInitialView);
-  const setView = useCallback((v: ViewType) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [view, setViewState] = useState<ViewType>(readDashboardView);
+  const setView = useCallback((v: ViewType, historyMode: 'push' | 'replace' = 'push') => {
     setViewState(v);
-    const params = new URLSearchParams(window.location.search);
-    if (v === 'agenda') {
-      params.delete('vista');
-    } else {
-      params.set('vista', v);
-    }
-    const newUrl = params.toString() ? `${window.location.pathname}?${params}` : window.location.pathname;
-    window.history.replaceState({}, '', newUrl);
-  }, []);
+    if (agendasOnly || location.pathname !== '/dashboard') return;
+    const params = new URLSearchParams(location.search);
+    if (v === 'agenda') params.delete('vista');
+    else params.set('vista', v);
+    const nextSearch = params.toString();
+    const currentSearch = location.search.startsWith('?') ? location.search.slice(1) : location.search;
+    if (readDashboardView(location.search) === v && currentSearch === nextSearch) return;
+    navigate(
+      { pathname: '/dashboard', search: nextSearch ? `?${nextSearch}` : '' },
+      { replace: historyMode === 'replace', state: historyMode === 'replace' ? null : undefined }
+    );
+  }, [agendasOnly, location.pathname, location.search, navigate]);
   const [serviceModalOpen, setServiceModalOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [serviceForm, setServiceForm] = useState({
@@ -823,15 +844,15 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
 
   useEffect(() => {
     if (!isAdmin && (view === 'equipo' || view === 'promociones' || view === 'puntos')) {
-      setView('agenda');
+      setView('agenda', 'replace');
     }
-    if (!isSuperAdmin && (view === 'facturacion' || view === 'estadisticas' || view === 'cierreCaja')) {
-      setView('agenda');
+    if (!isSuperAdmin && view === 'facturacion') {
+      setView('agenda', 'replace');
     }
-    if (!canAccessDashboard && (view === 'servicios' || view === 'abonos' || view === 'configuracion' || view === 'gastos' || view === 'productos')) {
-      setView('agenda');
+    if (!canAccessDashboard && (view === 'servicios' || view === 'abonos' || view === 'configuracion' || view === 'productos')) {
+      setView('agenda', 'replace');
     }
-  }, [isAdmin, isSuperAdmin, canAccessDashboard, view]);
+  }, [isAdmin, isSuperAdmin, canAccessDashboard, view, setView]);
 
   /** Cierre y horario por día de la barbería para la grilla de agenda. Sin esto, solo se aplicaba al abrir Configuración. */
   useEffect(() => {
@@ -1312,6 +1333,12 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       sumAppointmentProducts(app.products)
     );
     const isUnset = parts.length === 0;
+    const fullyPaid =
+      !isUnset &&
+      isAppointmentFullyPaid(app, services, DEPOSIT_PERCENT, sumAppointmentProducts(app.products));
+    const boxClass = fullyPaid
+      ? 'border-emerald-500 bg-emerald-50 hover:border-emerald-600 hover:bg-emerald-100/80'
+      : 'border-zinc-200 bg-white hover:border-[#e5c185] hover:bg-amber-50/80';
     return (
       <button
         type="button"
@@ -1322,15 +1349,15 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         disabled={!canUpdateAppointmentPayments(app)}
         className={
           compact
-            ? `w-full rounded-xl border border-zinc-200 bg-white px-2.5 py-2 text-left hover:border-[#e5c185] hover:bg-amber-50/80 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99] transition-transform`
-            : `w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-2 text-left hover:border-[#e5c185] hover:bg-amber-50/80 disabled:cursor-not-allowed disabled:opacity-50`
+            ? `w-full rounded-xl border px-2.5 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99] transition-colors ${boxClass}`
+            : `w-full rounded-lg border px-2.5 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50 transition-colors ${boxClass}`
         }
-        title={label}
+        title={fullyPaid ? `${label} · Pago completo` : label}
       >
         <span className="flex items-start gap-1.5 min-w-0">
           <Banknote
             size={compact ? 12 : 14}
-            className="shrink-0 text-[#b39055] mt-0.5"
+            className={`shrink-0 mt-0.5 ${fullyPaid ? 'text-emerald-700' : 'text-[#b39055]'}`}
             aria-hidden
           />
           <span
@@ -1343,7 +1370,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 key={`${part.text}-${i}`}
                 className={
                   part.method
-                    ? `inline-block rounded-md border px-1.5 py-0.5 ${SERVICE_PAYMENT_METHOD_SELECTED_CLASS[part.method]}`
+                    ? `inline-block rounded-md border px-1.5 py-0.5 ${
+                        fullyPaid
+                          ? FULLY_PAID_PAYMENT_CLASS
+                          : SERVICE_PAYMENT_METHOD_SELECTED_CLASS[part.method]
+                      }`
                     : 'text-zinc-500 italic font-medium'
                 }
               >
@@ -1873,7 +1904,14 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
 
   const barberProfileIncomeShare = isStaffBarber ? BARBER_ESTIMATED_SHARE : 1;
   const totalIncome = dayAppointments.reduce((acc, curr) => {
-    const serviceAmount = resolveAppointmentServiceAmountArs(curr, services) ?? 0;
+    const serviceAmount = isStaffBarber
+      ? appointmentCommissionableServiceAmountArs(
+          curr,
+          services,
+          DEPOSIT_PERCENT,
+          barbers.find((b) => b.id === curr.barberId)?.name ?? curr.barber
+        )
+      : (resolveAppointmentServiceAmountArs(curr, services) ?? 0);
     return acc + serviceAmount * barberProfileIncomeShare;
   }, 0);
   const invoiceScopeBarberId = useMemo(
@@ -1891,7 +1929,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       .map((b) => {
         const apps = dayAppointments.filter((a) => matchesBarber(a, b));
         const gross = apps.reduce((acc, curr) => acc + (resolveAppointmentServiceAmountArs(curr, services) ?? 0), 0);
-        const estimatedIncome = Math.round(gross * BARBER_ESTIMATED_SHARE);
+        const commissionBase = apps.reduce(
+          (acc, curr) => acc + appointmentCommissionableServiceAmountArs(curr, services, DEPOSIT_PERCENT, b.name),
+          0
+        );
+        const estimatedIncome = Math.round(commissionBase * BARBER_ESTIMATED_SHARE);
         return {
           barber: b,
           appointments: apps.length,
@@ -1901,19 +1943,19 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       })
       .sort((a, b) => b.estimatedIncome - a.estimatedIncome || b.appointments - a.appointments);
   }, [isSuperAdmin, barbers, dayAppointments, services]);
-  const navigate = useNavigate();
-  const location = useLocation();
-
   useEffect(() => {
-    const open = (location.state as { openView?: typeof view } | null)?.openView;
-    if (!open) return;
-    setView(open);
-    navigate(location.pathname, { replace: true, state: {} });
-  }, [location.state, location.pathname, navigate]);
+    if (agendasOnly || location.pathname !== '/dashboard') return;
+    const open = (location.state as { openView?: ViewType } | null)?.openView;
+    if (open && DASHBOARD_VIEWS.includes(open)) {
+      setView(open, 'replace');
+      return;
+    }
+    setViewState(readDashboardView(location.search));
+  }, [agendasOnly, location.pathname, location.search, location.state, setView]);
 
   useEffect(() => {
     if (!agendasOnly) return;
-    setView('agenda');
+    setViewState('agenda');
     if (profile?.role === 'staff' && profile.barberId && !profile.staffPermissions?.viewAllAgendas) {
       setSelectedBarberId(profile.barberId);
     } else {
@@ -1931,12 +1973,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   }, [dateStr]);
 
   const handlePanelNavigate = useCallback((panel: DashboardPanelId) => {
-    const href = dashboardPanelHref(panel);
-    if (href) {
-      navigate(href);
-      return;
-    }
-    setView(panel as ViewType);
+    navigate(dashboardPanelHref(panel));
   }, [navigate]);
 
   const toggleShopDay = (day: number) => {
@@ -2312,7 +2349,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="text-base font-black text-zinc-900">Estadísticas por barbero</h3>
               <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-                Ingreso estimado: {BARBER_COMMISSION_PERCENT}% del servicio
+                Ingreso estimado: {BARBER_COMMISSION_PERCENT}% del servicio. Abono: 5 de 6. Canje de Agustín y Canje 100% no suman
               </span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

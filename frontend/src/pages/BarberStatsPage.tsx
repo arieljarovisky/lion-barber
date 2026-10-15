@@ -47,12 +47,7 @@ export default function BarberStatsPage() {
 
   const handlePanelNavigate = useCallback(
     (panel: DashboardPanelId) => {
-      const href = dashboardPanelHref(panel);
-      if (href) {
-        navigate(href);
-        return;
-      }
-      navigate('/dashboard', { state: { openView: panel } });
+      navigate(dashboardPanelHref(panel));
     },
     [navigate]
   );
