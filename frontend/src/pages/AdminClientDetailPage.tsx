@@ -265,16 +265,15 @@ export default function AdminClientDetailPage() {
       setSaveOk('');
       return;
     }
-    const current = client.accountBalanceArs ?? 0;
-    const next = Math.round((current + parsed) * 100) / 100;
     setPayingDebt(true);
     setError('');
     setSaveOk('');
     try {
-      const res = await api.updateAdminClient(client.id, { accountBalanceArs: next });
+      const res = await api.registerClientAccountPayment(client.id, parsed);
       setClient(res.client);
+      setFormAccountBalance(String(res.client.accountBalanceArs ?? 0));
       setDebtPaymentAmount('');
-      setSaveOk(`Se registró un pago de $${formatArs(parsed)}.`);
+      setSaveOk(`Se registró un pago de $${formatArs(res.amountArs)}.`);
     } catch (e) {
       const msg =
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'No se pudo registrar el cobro.';

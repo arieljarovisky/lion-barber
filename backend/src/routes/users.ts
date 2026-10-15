@@ -110,6 +110,40 @@ router.get('/clients/:id', requireAuth, requireStaffOrAdmin, async (req, res) =>
   }
 });
 
+/** Staff/admin: registra un cobro que reduce la deuda de cuenta corriente. */
+router.post('/clients/:id/account-payment', requireAuth, requireStaffOrAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id < 1) {
+    return res.status(400).json({ error: 'ID inválido' });
+  }
+  const body = req.body as { amountArs?: unknown };
+  const raw =
+    typeof body.amountArs === 'number'
+      ? body.amountArs
+      : parseFloat(String(body.amountArs ?? '').trim().replace(',', '.'));
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return res.status(400).json({ error: 'amountArs debe ser un número mayor a 0' });
+  }
+  try {
+    const existing = await userRepo.findUserById(id);
+    if (!existing || existing.role !== 'client') {
+      return res.status(404).json({ error: 'Cliente no encontrado' });
+    }
+    const updated = await userRepo.registerClientAccountPayment(id, raw);
+    const phones = await userRepo.getClientPhonesByUserId(id);
+    const map = await appointmentRepo.getAppointmentsByUserIds([id]);
+    res.json({
+      client: await toAdminClientPayload(updated, phones, map.get(id) ?? []),
+      amountArs: Math.round(raw * 100) / 100,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Error al registrar el cobro';
+    const status = /mayor a 0|número válido|rango permitido|Vinculá/i.test(msg) ? 400 : 500;
+    if (status >= 500) console.error(err);
+    res.status(status).json({ error: msg });
+  }
+});
+
 router.patch('/clients/:id', requireAuth, requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id < 1) {
