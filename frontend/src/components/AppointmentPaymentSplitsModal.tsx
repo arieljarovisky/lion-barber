@@ -13,6 +13,7 @@ import {
   formatAppointmentPaymentDisplay,
   initialSplitsFromAppointment,
   normalizeAppointmentPaymentSplits,
+  sumServicePaymentSplits,
 } from '../utils/servicePaymentMethod';
 import {
   MAX_APPOINTMENT_PRODUCT_LINES,
@@ -24,6 +25,7 @@ import {
   clientAccountBalanceOwedArs,
   formatArs,
   parseArsAmount,
+  parseSignedArsInput,
   resolveAppointmentServiceAmountArs,
 } from '../utils/money';
 
@@ -50,6 +52,26 @@ function parseTipInput(raw: string): number | 'invalid' {
   return Math.round(n * 100) / 100;
 }
 
+/** Suma o resta un monto al primer cobro (para incluir/quitar la deuda en el total a cobrar). */
+function applyAmountDeltaToSplits(
+  prev: ServicePaymentSplit[],
+  delta: number,
+  fallbackMethod: ServicePaymentSplit['method'] = 'cash'
+): ServicePaymentSplit[] {
+  const rounded = Math.round(delta);
+  if (rounded === 0) return prev;
+  if (prev.length === 0) {
+    return rounded > 0 ? [{ method: fallbackMethod, amount: rounded }] : prev;
+  }
+  return prev.map((s, i) => {
+    if (i !== 0) return s;
+    if (s.method === 'account' && s.amount < 0) {
+      return { ...s, amount: Math.round(s.amount - rounded) };
+    }
+    return { ...s, amount: Math.max(0, Math.round(s.amount + rounded)) };
+  });
+}
+
 export default function AppointmentPaymentSplitsModal({
   app,
   services,
@@ -70,6 +92,9 @@ export default function AppointmentPaymentSplitsModal({
   const [productsError, setProductsError] = useState('');
   const [clientSubscription, setClientSubscription] = useState<ClientSubscriptionInfo | null>(null);
   const [clientAccountBalanceArs, setClientAccountBalanceArs] = useState<number | null>(null);
+  /** Monto de deuda anterior a incluir en este cobro (0 = no saldar ahora). */
+  const [debtSettleArs, setDebtSettleArs] = useState(0);
+  const [debtSettleDraft, setDebtSettleDraft] = useState('');
   /** userId para el que ya terminó la consulta de abono (evita precargar efectivo antes de saber si hay cupo). */
   const [subscriptionUserId, setSubscriptionUserId] = useState<number | null>(null);
   const [subscriptionResolved, setSubscriptionResolved] = useState(false);
@@ -77,6 +102,8 @@ export default function AppointmentPaymentSplitsModal({
   const productsSubtotalRef = useRef(0);
   /** Evita pisar montos que el usuario ya empezó a cargar (p. ej. al llegar el abono o refrescar servicios). */
   const splitsTouchedRef = useRef(false);
+  const debtSettleArsRef = useRef(0);
+  debtSettleArsRef.current = debtSettleArs;
   const servicesRef = useRef(services);
   servicesRef.current = services;
 
@@ -119,9 +146,13 @@ export default function AppointmentPaymentSplitsModal({
   useEffect(() => {
     if (!app) {
       splitsTouchedRef.current = false;
+      setDebtSettleArs(0);
+      setDebtSettleDraft('');
       return;
     }
     splitsTouchedRef.current = false;
+    setDebtSettleArs(0);
+    setDebtSettleDraft('');
     setTipAmount(tipAmountFromApp(app));
     const initialProducts = (app.products ?? []).map((p) => ({ ...p }));
     const productsTotal = sumAppointmentProducts(initialProducts);
@@ -321,6 +352,34 @@ export default function AppointmentPaymentSplitsModal({
     setProductLines((prev) => prev.filter((l) => l.productId !== productId));
   };
 
+  const owedArs = clientAccountBalanceOwedArs(clientAccountBalanceArs);
+
+  const setDebtSettleAmount = (nextAmount: number) => {
+    const capped =
+      owedArs > 0 ? Math.max(0, Math.min(Math.round(nextAmount), Math.round(owedArs))) : 0;
+    const prev = debtSettleArsRef.current;
+    const delta = capped - prev;
+    if (delta !== 0) {
+      splitsTouchedRef.current = true;
+      const fallbackMethod =
+        app.servicePaymentMethod && app.servicePaymentMethod !== 'mercadopago'
+          ? app.servicePaymentMethod
+          : 'cash';
+      setSplits((s) => applyAmountDeltaToSplits(s, delta, fallbackMethod));
+    }
+    setDebtSettleArs(capped);
+    setDebtSettleDraft(capped > 0 ? String(capped) : '');
+  };
+
+  const includeFullDebtInPayment = () => {
+    if (owedArs <= 0) return;
+    setDebtSettleAmount(owedArs);
+  };
+
+  const clearDebtFromPayment = () => {
+    setDebtSettleAmount(0);
+  };
+
   const handleSave = async () => {
     const parsedTip = parseTipInput(tipAmount);
     if (parsedTip === 'invalid') {
@@ -332,21 +391,71 @@ export default function AppointmentPaymentSplitsModal({
       onError('Vinculá el turno a un cliente para cargarlo en cuenta corriente.');
       return;
     }
+    // Tomar el monto del draft por si Guardar se apreta sin salir del input.
+    let settleArs = debtSettleArs;
+    if (debtSettleArs > 0 || debtSettleDraft.trim() !== '') {
+      const parsedDebt = parseSignedArsInput(debtSettleDraft.trim());
+      if (debtSettleDraft.trim() !== '' && (parsedDebt === 'invalid' || parsedDebt < 0)) {
+        onError('El monto a saldar de la deuda no es válido.');
+        return;
+      }
+      settleArs =
+        parsedDebt === 'invalid' || parsedDebt <= 0
+          ? 0
+          : Math.min(Math.round(parsedDebt), Math.round(owedArs));
+    }
+    if (settleArs > 0 && app.userId == null) {
+      onError('Vinculá el turno a un cliente para saldar la deuda de cuenta corriente.');
+      return;
+    }
     setSaving(true);
     try {
+      const settleDelta = settleArs - debtSettleArsRef.current;
+      const fallbackMethod =
+        app.servicePaymentMethod && app.servicePaymentMethod !== 'mercadopago'
+          ? app.servicePaymentMethod
+          : 'cash';
+      const splitsForSave =
+        settleDelta !== 0
+          ? applyAmountDeltaToSplits(splits, settleDelta, fallbackMethod)
+          : splits;
+      const paidBeforeNormalize = sumServicePaymentSplits(splitsForSave);
       const normalized = normalizeAppointmentPaymentSplits(
-        splits,
+        splitsForSave,
         app,
         services,
         depositPercent,
         productsSubtotal
       );
       const cleaned = cleanServicePaymentSplits(normalized);
+      const turnCovered = sumServicePaymentSplits(cleaned);
+      const availableForDebt = Math.max(0, paidBeforeNormalize - turnCovered);
+      const debtPayment = Math.min(settleArs, availableForDebt);
+
       const updated = await api.updateAppointment(app.id, {
         servicePaymentSplits: cleaned,
         tipAmount: parsedTip,
         products: productLines.length > 0 ? productLines : null,
       });
+
+      if (debtPayment > 0 && app.userId != null) {
+        try {
+          const paid = await api.registerClientAccountPayment(app.userId, debtPayment);
+          setClientAccountBalanceArs(paid.client.accountBalanceArs ?? 0);
+          setDebtSettleArs(0);
+          setDebtSettleDraft('');
+        } catch (debtErr) {
+          onSaved(updated);
+          onError(
+            debtErr instanceof ApiError
+              ? `Cobros del turno guardados, pero no se pudo saldar la deuda: ${debtErr.message}`
+              : 'Cobros del turno guardados, pero no se pudo saldar la deuda.'
+          );
+          onClose();
+          return;
+        }
+      }
+
       onSaved(updated);
       onClose();
     } catch (err) {
@@ -452,30 +561,83 @@ export default function AppointmentPaymentSplitsModal({
                 Vinculá este turno a un cliente registrado para poder cobrar con abono o cuenta corriente.
               </p>
             )}
-            {clientAccountBalanceOwedArs(clientAccountBalanceArs) > 0 && (
+            {owedArs > 0 && (
               <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-amber-800">
                   Deuda en cuenta corriente
                 </p>
                 <p className="mt-0.5 text-sm font-semibold text-amber-950 tabular-nums">
-                  Debe ${formatArs(clientAccountBalanceOwedArs(clientAccountBalanceArs))}
+                  Debe ${formatArs(owedArs)}
                 </p>
                 <p className="mt-1 text-[11px] text-amber-900/90">
-                  No pagó un turno anterior. Puede saldarlo ahora o cuando pueda. Si volvés a usar cuenta
-                  corriente, la deuda aumenta.
+                  No pagó un turno anterior. Podés saldarlo ahora sumándolo a este cobro, o dejarlo para
+                  después. Si volvés a usar cuenta corriente, la deuda aumenta.
                 </p>
+                {debtSettleArs <= 0 ? (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={includeFullDebtInPayment}
+                    className="mt-2.5 inline-flex items-center rounded-lg bg-amber-800 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-amber-900 disabled:opacity-50"
+                  >
+                    Saldar ${formatArs(owedArs)} en este cobro
+                  </button>
+                ) : (
+                  <div className="mt-2.5 space-y-2">
+                    <div className="flex flex-wrap items-end gap-2">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                          Monto a saldar
+                        </label>
+                        <div className="mt-1 flex items-center gap-1">
+                          <span className="text-xs font-semibold text-amber-900/80">$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            disabled={saving}
+                            value={debtSettleDraft}
+                            onChange={(e) => setDebtSettleDraft(e.target.value.replace(/-/g, ''))}
+                            onBlur={() => {
+                              const parsed = parseSignedArsInput(debtSettleDraft.trim());
+                              if (parsed === 'invalid' || parsed <= 0) {
+                                clearDebtFromPayment();
+                                return;
+                              }
+                              setDebtSettleAmount(parsed);
+                            }}
+                            className="w-28 rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-sm tabular-nums text-zinc-900"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={clearDebtFromPayment}
+                        className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                      >
+                        No saldar ahora
+                      </button>
+                    </div>
+                    <p className="text-[11px] font-medium text-amber-900">
+                      Se suma ${formatArs(debtSettleArs)} al total a cobrar abajo. Al guardar, se
+                      descuenta de la deuda del cliente.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
             <ServicePaymentSplitsEditor
               splits={splits}
               onChange={handleSplitsChange}
-              expectedLocalAmount={expectedLocal}
+              expectedLocalAmount={expectedLocal + debtSettleArs}
               disabled={saving}
             />
             <p className="text-xs text-zinc-500 mt-1">
-              {depositAmount > 0
-                ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago, abono u otro método. Canje 100% no suma comisión. Cuenta corriente significa que no pagó: el monto queda como deuda.'
-                : 'Podés combinar métodos (incluido Abono si el cliente tiene cupo). Canje suma comisión al 50%, salvo Agustín. Canje 100% no suma comisión a nadie. Cuenta corriente significa que no pagó: el monto queda como deuda en su ficha.'}
+              {debtSettleArs > 0
+                ? `El total incluye el turno ($${formatArs(expectedLocal)}) más $${formatArs(debtSettleArs)} de deuda anterior.`
+                : depositAmount > 0
+                  ? 'La seña no se vuelve a cargar acá. El saldo puede ser efectivo, tarjeta, Mercado Pago, abono u otro método. Canje 100% no suma comisión. Cuenta corriente significa que no pagó: el monto queda como deuda.'
+                  : 'Podés combinar métodos (incluido Abono si el cliente tiene cupo). Canje suma comisión al 50%, salvo Agustín. Canje 100% no suma comisión a nadie. Cuenta corriente significa que no pagó: el monto queda como deuda en su ficha.'}
             </p>
           </div>
 
