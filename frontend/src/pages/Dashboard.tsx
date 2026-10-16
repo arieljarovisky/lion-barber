@@ -2891,7 +2891,13 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                           className="w-10 h-10 rounded-xl object-cover ring-2 ring-white/10"
                           referrerPolicy="no-referrer"
                         />
-                        <p className="font-bold text-base leading-tight">{mobileDayAgendaBarber.barber.name}</p>
+                        <p className="font-bold text-base leading-tight">
+                          {mobileDayAgendaBarber.barber.name}
+                          <span className="ml-2 inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-zinc-200 align-middle">
+                            {mobileDayAgendaBarber.appointments.length}{' '}
+                            {mobileDayAgendaBarber.appointments.length === 1 ? 'turno' : 'turnos'}
+                          </span>
+                        </p>
                       </div>
                       <div className="p-3 divide-y divide-zinc-100">
                         {renderBarberDayAgendaRows(mobileDayAgendaBarber.barber, mobileDayAgendaBarber.appointments)}
@@ -2914,7 +2920,12 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                           className="w-11 h-11 rounded-xl object-cover ring-2 ring-white/10"
                           referrerPolicy="no-referrer"
                         />
-                        <p className="font-bold text-base leading-tight">{barber.name}</p>
+                        <p className="font-bold text-base leading-tight">
+                          {barber.name}
+                          <span className="ml-2 inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-zinc-200 align-middle">
+                            {barberAppointments.length} {barberAppointments.length === 1 ? 'turno' : 'turnos'}
+                          </span>
+                        </p>
                       </div>
                       <div className="p-3 divide-y divide-zinc-100">
                         {renderBarberDayAgendaRows(barber, barberAppointments)}

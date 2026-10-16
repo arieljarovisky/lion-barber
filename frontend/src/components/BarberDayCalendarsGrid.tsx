@@ -231,7 +231,7 @@ export default function BarberDayCalendarsGrid({
           gridTemplateColumns: `repeat(${columns.length}, minmax(${minColWidth}px, 1fr))`,
         }}
       >
-        {columns.map(({ barber }) => (
+        {columns.map(({ barber, appointments }) => (
           <div
             key={barber.id}
             className="border border-zinc-200 rounded-t-2xl overflow-hidden shadow-sm bg-gradient-to-r from-zinc-900 to-zinc-800 text-white"
@@ -245,6 +245,9 @@ export default function BarberDayCalendarsGrid({
               />
               <p className={`font-bold leading-tight ${compact ? 'text-sm' : 'text-base'}`}>
                 {barber.name}
+                <span className="ml-2 inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-zinc-200 align-middle">
+                  {appointments.length} {appointments.length === 1 ? 'turno' : 'turnos'}
+                </span>
                 {manageBarberId && manageBarberId === barber.id ? (
                   <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-[#e5c185]">
                     Tu agenda
