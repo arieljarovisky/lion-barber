@@ -17,6 +17,7 @@ import {
   closeTimeToMinutes,
   slotFitsBusinessHours,
   intervalOverlapsExisting,
+  rangesOverlap,
 } from '../slotUtils.js';
 import { getScheduleRestrictionIntervals } from './barberSchedule.js';
 import { getShopSettings } from './shopSettings.js';
@@ -168,6 +169,95 @@ export async function expireStalePendingAppointments(): Promise<void> {
        AND payment_due_at IS NOT NULL
        AND payment_due_at < UTC_TIMESTAMP()`
   );
+}
+
+function appointmentRange(time: string, durationMinutes?: number): { startMin: number; endMin: number } {
+  const startMin = timeToMinutes(normalizeTimeSlot(time));
+  const duration = durationMinutes != null && Number.isFinite(durationMinutes) && durationMinutes > 0
+    ? Math.floor(durationMinutes)
+    : 30;
+  return { startMin, endMin: startMin + duration };
+}
+
+/**
+ * Cancela turnos pending_payment del mismo cliente que se solapan con la franja dada.
+ * Evita que queden "PAGO PENDIENTE" huérfanos en otro barbero cuando la seña ya se acreditó
+ * (o cuando el cliente reintenta el checkout y crea un segundo hold).
+ */
+export async function cancelOverlappingPendingDepositsForUser(
+  userId: number,
+  date: string,
+  time: string,
+  durationMinutes: number,
+  keepAppointmentId?: string
+): Promise<string[]> {
+  if (!Number.isFinite(userId) || userId <= 0 || !date || !time) return [];
+
+  const rows = await query<DbAppointment[]>(
+    `SELECT * FROM appointments
+     WHERE user_id = ?
+       AND date = ?
+       AND status = 'pending_payment'
+       AND deposit_paid = 0`,
+    [userId, date]
+  );
+
+  const keepId = keepAppointmentId != null ? String(keepAppointmentId) : undefined;
+  const keep = appointmentRange(time, durationMinutes);
+  const cancelledIds: string[] = [];
+
+  for (const row of rows) {
+    const app = rowToAppointment(row);
+    if (keepId != null && String(app.id) === keepId) continue;
+    const other = appointmentRange(app.time, app.durationMinutes);
+    if (!rangesOverlap(keep.startMin, keep.endMin, other.startMin, other.endMin)) continue;
+
+    const [res] = await pool.execute(
+      `UPDATE appointments SET status = 'cancelled'
+       WHERE id = ? AND status = 'pending_payment' AND deposit_paid = 0`,
+      [app.id]
+    );
+    if ((res as { affectedRows: number }).affectedRows > 0) {
+      cancelledIds.push(String(app.id));
+    }
+  }
+
+  return cancelledIds;
+}
+
+/**
+ * Busca otro turno activo (no cancelled) del mismo cliente que se solape en fecha/hora.
+ * Útil para no reactivar un pago tardío si el cliente ya tiene un turno confirmado en esa franja.
+ */
+export async function findOverlappingActiveAppointmentForUser(
+  userId: number,
+  date: string,
+  time: string,
+  durationMinutes: number,
+  excludeAppointmentId?: string
+): Promise<Appointment | null> {
+  if (!Number.isFinite(userId) || userId <= 0 || !date || !time) return null;
+
+  const rows = await query<DbAppointment[]>(
+    `SELECT * FROM appointments
+     WHERE user_id = ?
+       AND date = ?
+       AND status != 'cancelled'`,
+    [userId, date]
+  );
+
+  const excludeId = excludeAppointmentId != null ? String(excludeAppointmentId) : undefined;
+  const keep = appointmentRange(time, durationMinutes);
+
+  for (const row of rows) {
+    const app = rowToAppointment(row);
+    if (excludeId != null && String(app.id) === excludeId) continue;
+    const other = appointmentRange(app.time, app.durationMinutes);
+    if (rangesOverlap(keep.startMin, keep.endMin, other.startMin, other.endMin)) {
+      return app;
+    }
+  }
+  return null;
 }
 
 function appointmentIntervalsForDay(appointments: Appointment[]): { startMin: number; endMin: number }[] {

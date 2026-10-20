@@ -683,6 +683,19 @@ router.post('/sena', async (req, res) => {
 
   try {
     await repo.expireStalePendingAppointments();
+    // Si el cliente reintenta el checkout (otro barbero / "cualquier barbero"), liberamos
+    // holds pending previos en la misma franja para no dejar turnos gemelos en la agenda.
+    const released = await repo.cancelOverlappingPendingDepositsForUser(
+      uid,
+      date,
+      time,
+      durationMinutes
+    );
+    if (released.length > 0) {
+      console.log(
+        `[Checkout seña] liberados pending previos user=${uid} date=${date} time=${time}: ${released.join(',')}`
+      );
+    }
     if (barberId !== repo.ANY_BARBER_ID) {
       await repo.assertNoOverlap(barberId, date, time, durationMinutes);
     } else {
@@ -1219,6 +1232,8 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     if (depositAmountArs != null && (!existingByMp.depositAmountArs || existingByMp.depositAmountArs <= 0)) {
       await repo.setAppointmentDepositAmountArs(existingByMp.id, depositAmountArs);
     }
+    // Reintentos del webhook: también limpian pending gemelos (p. ej. reintento de checkout).
+    await cleanupOverlappingPendingDepositsAfterPaid(existingByMp);
     return;
   }
 
@@ -1245,6 +1260,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
         depositAmountArs
       );
       if (updated) {
+        await cleanupOverlappingPendingDepositsAfterPaid(updated);
         void notifyBarberByWhatsappOnDepositPaid(updated);
         void notifyShopPhoneAppointmentCreated(updated);
         void notifyClientDepositConfirmed(updated);
@@ -1253,19 +1269,24 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       console.log(
         `[Webhook MP] turno ${existingByRefId.id} cancelado (vencido) pero cliente pagó. Intentando reactivar...`
       );
-      const reactivateResult = await repo.reactivateCancelledAppointmentIfSlotFree(
-        existingByRefId.id,
-        paymentId,
-        depositAmountArs
-      );
-      if (reactivateResult.ok) {
-        console.log(`[Webhook MP] turno ${existingByRefId.id} reactivado exitosamente`);
-        void notifyBarberByWhatsappOnDepositPaid(reactivateResult.appointment);
-        void notifyShopPhoneAppointmentCreated(reactivateResult.appointment);
-        void notifyClientDepositConfirmed(reactivateResult.appointment);
-      } else if (reactivateResult.reason === 'slot_taken') {
+
+      const durationMinutes =
+        existingByRefId.durationMinutes ??
+        (await repo.resolveDurationMinutes(existingByRefId.serviceId, existingByRefId.service));
+      const overlappingSibling =
+        userId != null && Number.isFinite(userId)
+          ? await repo.findOverlappingActiveAppointmentForUser(
+              userId,
+              existingByRefId.date,
+              existingByRefId.time,
+              durationMinutes,
+              existingByRefId.id
+            )
+          : null;
+
+      if (overlappingSibling) {
         console.log(
-          `[Webhook MP] turno ${existingByRefId.id} no se pudo reactivar: horario ya ocupado. Reembolsando pago ${paymentId}...`
+          `[Webhook MP] turno ${existingByRefId.id} no se reactiva: el cliente ya tiene turno activo ${overlappingSibling.id} en la misma franja. Reembolsando pago ${paymentId}...`
         );
         const refundResult = await refundPaymentTotal(paymentId);
         if (refundResult.ok) {
@@ -1276,7 +1297,37 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
             `[Webhook MP] ALERTA: no se pudo reembolsar pago ${paymentId} de turno cancelado ${existingByRefId.id}: ${refundResult.error}`
           );
         }
+      } else {
+        const reactivateResult = await repo.reactivateCancelledAppointmentIfSlotFree(
+          existingByRefId.id,
+          paymentId,
+          depositAmountArs
+        );
+        if (reactivateResult.ok) {
+          console.log(`[Webhook MP] turno ${existingByRefId.id} reactivado exitosamente`);
+          await cleanupOverlappingPendingDepositsAfterPaid(reactivateResult.appointment);
+          void notifyBarberByWhatsappOnDepositPaid(reactivateResult.appointment);
+          void notifyShopPhoneAppointmentCreated(reactivateResult.appointment);
+          void notifyClientDepositConfirmed(reactivateResult.appointment);
+        } else if (reactivateResult.reason === 'slot_taken') {
+          console.log(
+            `[Webhook MP] turno ${existingByRefId.id} no se pudo reactivar: horario ya ocupado. Reembolsando pago ${paymentId}...`
+          );
+          const refundResult = await refundPaymentTotal(paymentId);
+          if (refundResult.ok) {
+            console.log(`[Webhook MP] reembolso exitoso para pago ${paymentId}`);
+            void notifyClientLatePaymentRefunded(existingByRefId);
+          } else {
+            console.error(
+              `[Webhook MP] ALERTA: no se pudo reembolsar pago ${paymentId} de turno cancelado ${existingByRefId.id}: ${refundResult.error}`
+            );
+          }
+        }
       }
+    } else if (existingByRefId.status === 'scheduled') {
+      // Pago ya aplicado a este turno (o turno confirmado por otro camino): igual limpiamos
+      // pending gemelos del mismo cliente/franja por si quedaron de un reintento de checkout.
+      await cleanupOverlappingPendingDepositsAfterPaid(existingByRefId);
     }
     if (linkedProductOrderId != null && userId != null && Number.isFinite(userId)) {
       await fulfillProductOrderFromPayment(linkedProductOrderId, userId, paymentId);
@@ -1310,6 +1361,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       promotionFullyPaid: depositCalc?.promotionFullyPaid ?? false,
       ...(userId != null && !Number.isNaN(userId) ? { userId } : {}),
     });
+    await cleanupOverlappingPendingDepositsAfterPaid(created);
     void notifyBarberByWhatsappOnDepositPaid(created);
     void notifyShopPhoneAppointmentCreated(created);
     void notifyClientDepositConfirmed(created);
@@ -1320,6 +1372,34 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     const code = (e as { code?: string }).code;
     if (code === 'ER_DUP_ENTRY') return;
     console.error('Webhook MP: no se pudo crear el turno (revisá cupo / reembolso)', e);
+  }
+}
+
+/** Tras acreditar una seña, cancela pending_payment gemelos del mismo cliente en la misma franja. */
+async function cleanupOverlappingPendingDepositsAfterPaid(app: {
+  id: string;
+  userId?: number;
+  date: string;
+  time: string;
+  durationMinutes?: number;
+  serviceId?: string;
+  service?: string;
+}): Promise<void> {
+  if (app.userId == null || !Number.isFinite(Number(app.userId))) return;
+  const durationMinutes =
+    app.durationMinutes ??
+    (await repo.resolveDurationMinutes(app.serviceId, app.service ?? ''));
+  const cancelled = await repo.cancelOverlappingPendingDepositsForUser(
+    Number(app.userId),
+    app.date,
+    app.time,
+    durationMinutes,
+    app.id
+  );
+  if (cancelled.length > 0) {
+    console.log(
+      `[Webhook MP] cancelados pending gemelos tras seña en ${app.id}: ${cancelled.join(',')}`
+    );
   }
 }
 
