@@ -117,7 +117,7 @@ router.post('/', async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Agregá un producto o un abono.' });
     }
     if (planId && !hasClient) {
-      return res.status(400).json({ error: 'Elegí el cliente para asignarle el abono.' });
+      return res.status(400).json({ error: 'La venta de un abono tiene que asignarse a un cliente.' });
     }
 
     let clientName: string | null = null;

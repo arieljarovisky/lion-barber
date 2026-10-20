@@ -182,6 +182,15 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
     setLines((prev) => prev.map((item) => (item.productId === productId ? line : item)));
   };
 
+  const typedClientName = (selectedClient?.name || clientQuery).trim();
+  const creatingNewClient =
+    Boolean(selectedPlan) &&
+    !selectedClient &&
+    !clientsLoading &&
+    typedClientName.length >= 2 &&
+    clientSuggestions.length === 0;
+  const clientRequiredMissing = Boolean(selectedPlan) && !selectedClient && !creatingNewClient;
+
   const chooseClient = (client: AdminClientWithHistory) => {
     setSelectedClient(client);
     setClientQuery(client.name);
@@ -201,28 +210,61 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
       setFormError('Agregá un producto o un abono.');
       return;
     }
-    if (selectedPlan && !selectedClient) {
-      setFormError('Elegí el cliente de la ficha para asignarle el abono.');
-      return;
-    }
     if (selectedPlan && planPrice <= 0) {
       setFormError(`«${selectedPlan.name}» no tiene un precio válido.`);
       return;
     }
+
+    let client = selectedClient;
+    if (selectedPlan && !client) {
+      const name = clientQuery.trim();
+      if (name.length < 2) {
+        setFormError('Escribí el cliente. El abono se asigna sí o sí.');
+        return;
+      }
+      if (clientsLoading) {
+        setFormError('Esperá a que carguen los clientes para asignar el abono.');
+        return;
+      }
+      const exact = clients.filter((item) => foldSearchText(item.name) === foldSearchText(name));
+      if (exact.length === 1) {
+        client = exact[0];
+      } else if (clientSuggestions.length > 0 || exact.length > 1) {
+        setFormError('Elegí el cliente de la lista. El abono se asigna a esa ficha.');
+        return;
+      }
+    }
+
     setSaving(true);
     setFormError('');
+    let createdClientName = '';
     try {
+      if (selectedPlan && !client) {
+        const name = clientQuery.trim();
+        const { client: created } = await api.createAdminClient({ name, points: 0 });
+        client = created;
+        createdClientName = created.name;
+        setSelectedClient(created);
+        setClientQuery(created.name);
+        setBuyerName(created.name);
+        setClients((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+      }
       const { item } = await api.createCounterSale({
         saleDate,
-        buyerName: (selectedClient?.name || buyerName).trim() || undefined,
-        clientUserId: selectedClient?.id,
+        buyerName: (client?.name || buyerName).trim() || undefined,
+        clientUserId: client?.id,
         paymentMethod,
         products: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
         subscriptionPlanId: selectedPlan?.id,
       });
       onSaved(item);
     } catch (e) {
-      setFormError(e instanceof ApiError ? e.message : 'No se pudo guardar la venta.');
+      const msg = e instanceof ApiError ? e.message : 'No se pudo guardar la venta.';
+      setFormError(
+        createdClientName
+          ? `${msg} El cliente «${createdClientName}» ya quedó cargado en la ficha.`
+          : msg
+      );
       setSaving(false);
     }
   };
@@ -261,12 +303,13 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
         </div>
 
         <p className="mb-4 text-sm text-zinc-600">
-          Productos y abonos en el local. El abono se asigna al cliente. El importe entra completo en la caja y no
-          comisiona a ningún barbero.
+          Productos y abonos en el local. Si la venta incluye un abono, se asigna sí o sí a un cliente. El importe
+          entra completo en la caja y no comisiona a ningún barbero.
         </p>
 
         <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-zinc-500" htmlFor="counter-sale-buyer">
-          Comprador
+          {selectedPlan ? 'Cliente' : 'Comprador'}
+          {selectedPlan && <span className="text-red-600"> · obligatorio</span>}
         </label>
         <div className="relative mb-4">
           <input
@@ -275,6 +318,7 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
             value={selectedClient ? selectedClient.name : clientQuery || buyerName}
             maxLength={120}
             disabled={saving}
+            aria-required={Boolean(selectedPlan)}
             onChange={(e) => {
               const value = e.target.value;
               setSelectedClient(null);
@@ -283,10 +327,12 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
               setClientSuggestionsOpen(true);
             }}
             onFocus={() => setClientSuggestionsOpen(true)}
-            placeholder={selectedPlan ? 'Buscar cliente de la ficha' : 'Opcional. Buscá un cliente si vendés un abono'}
-            className={`w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#b39055] ${
-              selectedClient ? 'pr-16' : ''
-            }`}
+            placeholder={
+              selectedPlan ? 'Buscar o escribir el cliente del abono' : 'Opcional'
+            }
+            className={`w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:border-[#b39055] ${
+              selectedPlan && !selectedClient ? 'border-amber-400' : 'border-zinc-200'
+            } ${selectedClient ? 'pr-16' : ''}`}
             autoComplete="off"
           />
           {selectedClient && (
@@ -299,9 +345,8 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
               Quitar
             </button>
           )}
-          {clientsLoading && <p className="mt-1 text-xs text-zinc-400">Cargando clientes…</p>}
           {clientSuggestionsOpen && !selectedClient && clientSuggestions.length > 0 && (
-            <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
+            <ul className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
               {clientSuggestions.map((client) => {
                 const phone = adminClientPrimaryPhone(client);
                 return (
@@ -321,6 +366,21 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
             </ul>
           )}
         </div>
+        {clientsLoading && <p className="-mt-3 mb-4 text-xs text-zinc-400">Cargando clientes…</p>}
+        {selectedPlan && selectedClient && (
+          <p className="-mt-3 mb-4 text-xs text-zinc-600">El abono queda activo para {selectedClient.name}.</p>
+        )}
+        {selectedPlan && !selectedClient && !clientsLoading && typedClientName.length < 2 && (
+          <p className="-mt-3 mb-4 text-xs text-amber-800">Elegí o escribí el cliente. El abono se le asigna sí o sí.</p>
+        )}
+        {selectedPlan && !selectedClient && !clientsLoading && clientSuggestions.length > 0 && (
+          <p className="-mt-3 mb-4 text-xs text-amber-800">Elegí un cliente de la lista para asignarle el abono.</p>
+        )}
+        {creatingNewClient && (
+          <p className="-mt-3 mb-4 text-xs text-amber-800">
+            «{typedClientName}» no está en la ficha. Al cobrar se crea el cliente y se le asigna el abono.
+          </p>
+        )}
 
         <p className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-500">Cobro</p>
         <div className="mb-4 grid grid-cols-3 gap-2">
@@ -383,8 +443,10 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
               {selectedClient.subscription.cutsRemaining === 1 ? '' : 's'}. Esta venta lo reemplaza por uno nuevo.
             </p>
           )}
-          {selectedPlan && !selectedClient && (
-            <p className="mt-2 text-xs text-zinc-500">Elegí un cliente de la ficha para activarle el abono.</p>
+          {selectedPlan && !selectedClient && (clientsLoading || typedClientName.length < 2) && (
+            <p className="mt-2 text-xs text-amber-800">
+              Sin cliente no se puede vender el abono. Elegilo de la ficha o escribí el nombre para crearlo.
+            </p>
           )}
         </div>
 
@@ -507,10 +569,14 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
           <button
             type="button"
             onClick={() => void handleSave()}
-            disabled={saving || (lines.length === 0 && !selectedPlan)}
+            disabled={saving || (lines.length === 0 && !selectedPlan) || clientRequiredMissing}
             className="min-h-11 flex-1 rounded-xl bg-[#e5c185] py-2.5 font-bold text-zinc-950 hover:bg-[#d4b074] disabled:opacity-50"
           >
-            {saving ? 'Guardando…' : `Cobrar $${formatArs(total)}`}
+            {saving
+              ? 'Guardando…'
+              : creatingNewClient
+                ? `Crear cliente y cobrar $${formatArs(total)}`
+                : `Cobrar $${formatArs(total)}`}
           </button>
         </div>
       </div>
