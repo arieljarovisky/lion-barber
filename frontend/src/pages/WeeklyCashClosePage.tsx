@@ -16,8 +16,10 @@ import type {
 import { useAuth } from '../contexts/AuthContext';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
+import { counterSaleProductLines } from '../utils/appointmentProducts';
 import { formatArs } from '../utils/money';
 import {
+  applyCounterSalesToBarberSummaries,
   applyCounterSalesToCashClose,
   buildWeeklyCashClose,
   formatAppointmentProductPaymentLabel,
@@ -176,10 +178,14 @@ export default function WeeklyCashClosePage() {
     () => buildWeeklyCashClose(appointmentsForClose, services, barbers, DEPOSIT_PERCENT, start, end),
     [appointmentsForClose, services, barbers, start, end]
   );
-  const { rows, byBarber } = builtClose;
+  const { rows } = builtClose;
   const summary = useMemo(
     () => applyCounterSalesToCashClose(builtClose.summary, counterSales),
     [builtClose.summary, counterSales]
+  );
+  const byBarber = useMemo(
+    () => applyCounterSalesToBarberSummaries(builtClose.byBarber, counterSales),
+    [builtClose.byBarber, counterSales]
   );
   const productSalesTotal = summary.counterSalesTotal + summary.appointmentProductsTotal;
   const productSales = useMemo(() => {
@@ -203,7 +209,7 @@ export default function WeeklyCashClosePage() {
         sortKey: `${sale.saleDate} 99:99`,
         date: sale.saleDate,
         buyer: sale.buyerName?.trim() || 'Mostrador',
-        lines: sale.products ?? [],
+        lines: counterSaleProductLines(sale),
         fallbackAmount: sale.totalArs,
         payment: SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod],
         loadedBy: sale.createdByName?.trim() || '—',
@@ -283,7 +289,7 @@ export default function WeeklyCashClosePage() {
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
                 Resumen de turnos confirmados por día, semana (lunes a domingo) o mes calendario: señas por Mercado Pago, saldo en local,
                 comisión del barbero ({BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de
-                los productos cargados en el turno) y facturación AFIP. Las ventas de Nueva venta entran por el total cobrado. Los gastos de caja se cargan en Gastos y acá figura quién los registró. No incluye turnos con seña
+                los productos cargados en el turno) y facturación AFIP. Las ventas de Nueva venta (productos y abonos) entran por el total cobrado y no comisionan a ningún barbero. Los gastos de caja se cargan en Gastos y acá figura quién los registró. No incluye turnos con seña
                 pendiente.
               </p>
             </div>
@@ -562,7 +568,7 @@ export default function WeeklyCashClosePage() {
                 <div className="border-b border-zinc-100 bg-zinc-50/80 px-4 py-3">
                   <h2 className="font-black text-zinc-900">Cobros en local por método</h2>
                   <p className="mt-0.5 text-xs text-zinc-500">
-                    Saldo del turno por método. Cuenta corriente es deuda y no entra en caja. Abono, Canje y Canje 100% figuran como referencia: no entra plata.
+                    El importe incluye el saldo del turno y las ventas de productos. La columna Productos es la parte de ese importe que corresponde a productos. Cuenta corriente es deuda y no entra en caja. Abono, Canje y Canje 100% figuran como referencia: no entra plata.
                   </p>
                 </div>
                 <div className="cash-close-table-wrap overflow-x-auto p-4">
@@ -570,6 +576,7 @@ export default function WeeklyCashClosePage() {
                     <thead className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
                       <tr>
                         <th className="pb-2 text-left">Método</th>
+                        <th className="pb-2 text-right">Productos</th>
                         <th className="pb-2 text-right">Importe en local</th>
                       </tr>
                     </thead>
@@ -577,6 +584,7 @@ export default function WeeklyCashClosePage() {
                       {SERVICE_PAYMENT_METHODS.map((m) => {
                         const reference = isNonCashLocalPaymentMethod(m);
                         const amount = reference ? summary.nonCashByMethod[m] : summary.localByMethod[m];
+                        const products = summary.productsByMethod[m] ?? 0;
                         return (
                           <tr key={m}>
                             <td className="py-2 font-medium text-zinc-800">
@@ -587,12 +595,20 @@ export default function WeeklyCashClosePage() {
                                 </span>
                               )}
                             </td>
+                            <td className="py-2 text-right tabular-nums text-zinc-600">
+                              {products > 0 ? `$${formatArs(products)}` : '—'}
+                            </td>
                             <td className="py-2 text-right tabular-nums">${formatArs(amount)}</td>
                           </tr>
                         );
                       })}
                       <tr>
                         <td className="py-2 font-medium text-zinc-500">Sin registrar</td>
+                        <td className="py-2 text-right tabular-nums text-zinc-600">
+                          {summary.productsByMethod.unregistered > 0
+                            ? `$${formatArs(summary.productsByMethod.unregistered)}`
+                            : '—'}
+                        </td>
                         <td className="py-2 text-right tabular-nums text-amber-800">
                           ${formatArs(summary.localByMethod.unregistered)}
                         </td>
@@ -605,6 +621,9 @@ export default function WeeklyCashClosePage() {
               <section className="mb-8 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
                 <div className="border-b border-zinc-100 bg-zinc-50/80 px-4 py-3">
                   <h2 className="font-black text-zinc-900">Por barbero</h2>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    Productos: lo vendido en cada turno. Si la venta de mostrador la cargó un barbero, suma en su fila.
+                  </p>
                 </div>
                 {byBarber.length === 0 ? (
                   <p className="px-4 py-8 text-center text-sm text-zinc-500">
@@ -613,12 +632,13 @@ export default function WeeklyCashClosePage() {
                   </p>
                 ) : (
                   <div className="cash-close-table-wrap overflow-x-auto">
-                    <table className="w-full min-w-[720px] text-left text-sm">
+                    <table className="w-full min-w-[840px] text-left text-sm">
                       <thead className="bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
                         <tr>
                           <th className="px-4 py-3">Barbero</th>
                           <th className="px-4 py-3 text-right">Turnos</th>
                           <th className="px-4 py-3 text-right">Servicios</th>
+                          <th className="px-4 py-3 text-right">Productos</th>
                           <th className="px-4 py-3 text-right">Señas MP</th>
                           <th className="px-4 py-3 text-right">En local</th>
                           <th className="px-4 py-3 text-right">Comisión</th>
@@ -632,6 +652,9 @@ export default function WeeklyCashClosePage() {
                             <td className="px-4 py-3 font-semibold text-zinc-900">{b.barberName}</td>
                             <td className="px-4 py-3 text-right tabular-nums">{b.appointments}</td>
                             <td className="px-4 py-3 text-right tabular-nums">${formatArs(b.serviceGross)}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-zinc-800">
+                              {b.productsSold > 0 ? `$${formatArs(b.productsSold)}` : '—'}
+                            </td>
                             <td className="px-4 py-3 text-right tabular-nums text-emerald-700">
                               ${formatArs(b.depositsMp)}
                             </td>
@@ -653,6 +676,9 @@ export default function WeeklyCashClosePage() {
                           <td className="px-4 py-3">Total</td>
                           <td className="px-4 py-3 text-right">{summary.appointments}</td>
                           <td className="px-4 py-3 text-right">${formatArs(summary.serviceGross)}</td>
+                          <td className="px-4 py-3 text-right">
+                            {productSalesTotal > 0 ? `$${formatArs(productSalesTotal)}` : '—'}
+                          </td>
                           <td className="px-4 py-3 text-right text-emerald-800">
                             ${formatArs(summary.depositsMp)}
                           </td>
@@ -683,7 +709,7 @@ export default function WeeklyCashClosePage() {
                   </p>
                 ) : (
                   <div className="cash-close-table-wrap overflow-x-auto md:max-h-[min(50vh,520px)] md:overflow-y-auto">
-                    <table className="w-full min-w-[960px] text-left text-sm">
+                    <table className="w-full min-w-[1080px] text-left text-sm">
                       <thead className="bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500 md:sticky md:top-0 md:z-10">
                         <tr>
                           <th className="px-3 py-2">Fecha</th>
@@ -694,6 +720,7 @@ export default function WeeklyCashClosePage() {
                           <th className="px-3 py-2 text-right">Servicio</th>
                           <th className="px-3 py-2 text-right">Seña</th>
                           <th className="px-3 py-2 text-right">En local</th>
+                          <th className="px-3 py-2 text-right">Productos</th>
                           <th className="px-3 py-2 text-right">Propina</th>
                           <th className="px-3 py-2">Pago</th>
                           <th className="px-3 py-2 text-right">Comisión</th>
@@ -738,6 +765,9 @@ export default function WeeklyCashClosePage() {
                               ) : (
                                 `$${formatArs(r.localPending)}`
                               )}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-zinc-800">
+                              {r.productsSoldAmount > 0 ? `$${formatArs(r.productsSoldAmount)}` : '—'}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums text-[#6b2030]">
                               {r.tipAmount > 0 ? `$${formatArs(r.tipAmount)}` : '—'}
@@ -785,9 +815,9 @@ export default function WeeklyCashClosePage() {
               <section className="mb-8 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 bg-zinc-50/80 px-4 py-3">
                   <div>
-                    <h2 className="font-black text-zinc-900">Ventas de productos</h2>
+                    <h2 className="font-black text-zinc-900">Ventas de productos y abonos</h2>
                     <p className="mt-0.5 text-xs text-zinc-500">
-                      El importe entra completo en la caja. Para anular una venta, hacelo desde la agenda de ese día.
+                      Nueva venta entra completa en la caja y no comisiona. El abono se asigna al cliente. Para anular, hacelo desde la agenda de ese día.
                     </p>
                   </div>
                   <p className="text-sm font-bold tabular-nums text-emerald-800">
@@ -796,7 +826,7 @@ export default function WeeklyCashClosePage() {
                 </div>
                 {productSales.length === 0 ? (
                   <p className="px-4 py-8 text-center text-sm text-zinc-500">
-                    Sin ventas de productos en{' '}
+                    Sin ventas de productos ni abonos en{' '}
                     {periodMode === 'day' ? 'este día' : periodMode === 'month' ? 'este mes' : 'esta semana'}.
                   </p>
                 ) : (

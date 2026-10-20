@@ -8,8 +8,13 @@ export interface CounterSale {
   id: number;
   saleDate: string;
   buyerName: string | null;
+  clientUserId: number | null;
   paymentMethod: CounterSalePaymentMethod;
   products: AppointmentProductLine[];
+  subscriptionPlanId: string | null;
+  subscriptionPlanName: string | null;
+  subscriptionGroupId: number | null;
+  subscriptionAmountArs: number;
   totalArs: number;
   createdByUserId: number | null;
   createdByName: string | null;
@@ -20,16 +25,21 @@ interface DbRow {
   id: number;
   sale_date: string | Date;
   buyer_name: string | null;
+  client_user_id?: number | null;
   payment_method: string;
   products: string | unknown | null;
   total_ars: string | number;
+  subscription_plan_id?: string | null;
+  subscription_plan_name?: string | null;
+  subscription_group_id?: number | null;
+  subscription_amount_ars?: string | number | null;
   created_by_user_id: number | null;
   created_by_name: string | null;
   created_at: string | Date;
 }
 
 const COLUMNS =
-  'id, sale_date, buyer_name, payment_method, products, total_ars, created_by_user_id, created_by_name, created_at';
+  'id, sale_date, buyer_name, client_user_id, payment_method, products, total_ars, subscription_plan_id, subscription_plan_name, subscription_group_id, subscription_amount_ars, created_by_user_id, created_by_name, created_at';
 
 function rowDateToYmd(v: unknown): string {
   if (typeof v === 'string') return v.slice(0, 10);
@@ -44,6 +54,9 @@ function rowDateToYmd(v: unknown): string {
 
 function rowToSale(row: DbRow): CounterSale {
   const products = parseAppointmentProductLines(row.products) ?? [];
+  const productTotal = sumAppointmentProducts(products);
+  const subscriptionAmountArs = Math.max(0, Math.round(Number(row.subscription_amount_ars) || 0));
+  const storedTotal = Math.max(0, Math.round(Number(row.total_ars) || 0));
   const createdAt =
     typeof row.created_at === 'string'
       ? row.created_at
@@ -57,9 +70,20 @@ function rowToSale(row: DbRow): CounterSale {
     id: row.id,
     saleDate: rowDateToYmd(row.sale_date),
     buyerName: row.buyer_name?.trim() || null,
+    clientUserId:
+      row.client_user_id != null && Number.isFinite(Number(row.client_user_id))
+        ? Number(row.client_user_id)
+        : null,
     paymentMethod,
     products,
-    totalArs: sumAppointmentProducts(products) || Math.round(Number(row.total_ars) || 0),
+    subscriptionPlanId: row.subscription_plan_id?.trim() || null,
+    subscriptionPlanName: row.subscription_plan_name?.trim() || null,
+    subscriptionGroupId:
+      row.subscription_group_id != null && Number.isFinite(Number(row.subscription_group_id))
+        ? Number(row.subscription_group_id)
+        : null,
+    subscriptionAmountArs,
+    totalArs: Math.max(storedTotal, productTotal + subscriptionAmountArs),
     createdByUserId: row.created_by_user_id ?? null,
     createdByName: row.created_by_name?.trim() || null,
     createdAt,
@@ -85,22 +109,36 @@ export async function getCounterSaleById(id: number): Promise<CounterSale | null
 export async function createCounterSale(data: {
   saleDate: string;
   buyerName: string | null;
+  clientUserId: number | null;
   paymentMethod: CounterSalePaymentMethod;
   products: AppointmentProductLine[];
+  subscriptionPlanId: string | null;
+  subscriptionPlanName: string | null;
+  subscriptionGroupId: number | null;
+  subscriptionAmountArs: number;
   createdByUserId: number | null;
   createdByName: string | null;
 }): Promise<CounterSale> {
-  const total = sumAppointmentProducts(data.products);
+  const productTotal = sumAppointmentProducts(data.products);
+  const subscriptionAmount = Math.max(0, Math.round(data.subscriptionAmountArs));
+  const total = productTotal + subscriptionAmount;
   const [res] = await pool.execute(
     `INSERT INTO counter_sales
-      (sale_date, buyer_name, payment_method, products, total_ars, created_by_user_id, created_by_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      (sale_date, buyer_name, client_user_id, payment_method, products, total_ars,
+       subscription_plan_id, subscription_plan_name, subscription_group_id, subscription_amount_ars,
+       created_by_user_id, created_by_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.saleDate,
       data.buyerName,
+      data.clientUserId,
       data.paymentMethod,
       JSON.stringify(data.products),
       total,
+      data.subscriptionPlanId,
+      data.subscriptionPlanName,
+      data.subscriptionGroupId,
+      subscriptionAmount,
       data.createdByUserId,
       data.createdByName,
     ]

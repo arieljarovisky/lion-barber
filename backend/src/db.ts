@@ -958,6 +958,23 @@ export async function initDb(): Promise<void> {
       KEY idx_counter_sale_date (sale_date)
     )
   `);
+  if (!(await tableHasColumn('counter_sales', 'client_user_id'))) {
+    await pool.execute('ALTER TABLE counter_sales ADD COLUMN client_user_id INT NULL');
+  }
+  if (!(await tableHasColumn('counter_sales', 'subscription_plan_id'))) {
+    await pool.execute('ALTER TABLE counter_sales ADD COLUMN subscription_plan_id VARCHAR(50) NULL');
+  }
+  if (!(await tableHasColumn('counter_sales', 'subscription_plan_name'))) {
+    await pool.execute('ALTER TABLE counter_sales ADD COLUMN subscription_plan_name VARCHAR(255) NULL');
+  }
+  if (!(await tableHasColumn('counter_sales', 'subscription_group_id'))) {
+    await pool.execute('ALTER TABLE counter_sales ADD COLUMN subscription_group_id INT NULL');
+  }
+  if (!(await tableHasColumn('counter_sales', 'subscription_amount_ars'))) {
+    await pool.execute(
+      'ALTER TABLE counter_sales ADD COLUMN subscription_amount_ars DECIMAL(14,2) NOT NULL DEFAULT 0'
+    );
+  }
 
   const serviceCountRows = await query<{ count: number }[]>('SELECT COUNT(*) as count FROM services');
   if (serviceCountRows[0].count === 0) {

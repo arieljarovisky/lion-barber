@@ -102,7 +102,7 @@ import {
   SERVICE_PAYMENT_METHOD_SELECTED_CLASS,
   TIP_PAINTED_CLASS,
 } from '../utils/servicePaymentMethod';
-import { formatAppointmentProductsSummary, sumAppointmentProducts } from '../utils/appointmentProducts';
+import { formatAppointmentProductsSummary, formatCounterSaleSummary, sumAppointmentProducts } from '../utils/appointmentProducts';
 import { appointmentModifyBlockedReason, canUpdateAppointmentPayments } from '../utils/appointmentModifyPermission';
 import {
   adminClientMatchesPhoneDigits,
@@ -1179,7 +1179,9 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const handleDeleteCounterSale = async (sale: CounterSale) => {
     const { confirmed } = await confirm({
       title: 'Anular venta',
-      message: 'Se devuelve el stock y la venta deja de sumar en el cierre de caja.',
+      message: sale.subscriptionPlanName
+        ? 'Se anula el cobro. Si el abono no tiene cortes usados, también se lo quita al cliente. El stock de los productos vuelve.'
+        : 'Se devuelve el stock y la venta deja de sumar en el cierre de caja.',
       confirmLabel: 'Anular venta',
       variant: 'danger',
     });
@@ -1187,6 +1189,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     try {
       await api.deleteCounterSale(sale.id);
       setDayCounterSales((prev) => prev.filter((item) => item.id !== sale.id));
+      if (sale.subscriptionPlanId) void loadAdminClients();
       showToast('Venta anulada');
     } catch (e) {
       showToast(e instanceof ApiError ? e.message : 'No se pudo anular la venta', 'err');
@@ -2424,9 +2427,9 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           <section className="mb-8 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <h3 className="font-black text-zinc-900">Ventas de productos</h3>
+                <h3 className="font-black text-zinc-900">Ventas de mostrador</h3>
                 <p className="mt-0.5 text-xs capitalize text-zinc-500">
-                  {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}. El importe entra completo en la caja.
+                  {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}. El importe entra completo en la caja y no comisiona.
                 </p>
               </div>
               <p className="text-sm font-black tabular-nums text-emerald-700">
@@ -2442,8 +2445,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                       {sale.buyerName?.trim() || 'Mostrador'}
                     </span>
                     <span className="mt-0.5 block text-xs text-zinc-500">
-                      {formatAppointmentProductsSummary(sale.products)} ·{' '}
-                      {SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod]}
+                      {formatCounterSaleSummary(sale, SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod])}
                     </span>
                   </span>
                   <span className="font-bold tabular-nums text-zinc-900">
@@ -4274,6 +4276,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           onSaved={(sale) => {
             setCounterSaleOpen(false);
             setDayCounterSales((prev) => [sale, ...prev.filter((item) => item.id !== sale.id)]);
+            if (sale.subscriptionPlanId) void loadAdminClients();
             showToast('Venta registrada');
           }}
         />

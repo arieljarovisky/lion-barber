@@ -3,7 +3,15 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Plus, ShoppingBag, Trash2, X } from 'lucide-react';
 import { api, ApiError } from '../api';
-import type { AppointmentProductLine, CounterSale, CounterSalePaymentMethod, ShopProduct } from '../api';
+import type {
+  AdminClientWithHistory,
+  AppointmentProductLine,
+  CounterSale,
+  CounterSalePaymentMethod,
+  ShopProduct,
+  SubscriptionPlan,
+} from '../api';
+import { adminClientPrimaryPhone, foldSearchText } from '../utils/adminClientLookup';
 import { buildProductLine, MAX_APPOINTMENT_PRODUCT_LINES, pricedShopProducts } from '../utils/appointmentProducts';
 import { formatArs, parseArsAmount } from '../utils/money';
 
@@ -24,6 +32,14 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [catalogError, setCatalogError] = useState('');
   const [buyerName, setBuyerName] = useState('');
+  const [clients, setClients] = useState<AdminClientWithHistory[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
+  const [clientQuery, setClientQuery] = useState('');
+  const [clientSuggestionsOpen, setClientSuggestionsOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<AdminClientWithHistory | null>(null);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [planId, setPlanId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<CounterSalePaymentMethod>('cash');
   const [lines, setLines] = useState<AppointmentProductLine[]>([]);
   const [pickProductId, setPickProductId] = useState('');
@@ -44,7 +60,24 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
     [catalog]
   );
 
-  const total = useMemo(() => lines.reduce((sum, line) => sum + line.subtotal, 0), [lines]);
+  const activePlans = useMemo(() => plans.filter((plan) => plan.active), [plans]);
+  const selectedPlan = activePlans.find((plan) => plan.id === planId) ?? null;
+  const planPrice = selectedPlan ? (parseArsAmount(String(selectedPlan.monthlyPrice)) ?? 0) : 0;
+  const productsTotal = useMemo(() => lines.reduce((sum, line) => sum + line.subtotal, 0), [lines]);
+  const total = productsTotal + (planPrice > 0 ? Math.round(planPrice) : 0);
+
+  const clientSuggestions = useMemo(() => {
+    const q = foldSearchText(clientQuery.trim());
+    if (q.length < 2 || selectedClient) return [];
+    const digits = clientQuery.replace(/\D/g, '');
+    return clients
+      .filter((client) => {
+        if (foldSearchText(client.name).includes(q)) return true;
+        if (digits.length >= 4 && adminClientPrimaryPhone(client).replace(/\D/g, '').includes(digits)) return true;
+        return false;
+      })
+      .slice(0, 8);
+  }, [clientQuery, clients, selectedClient]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +95,28 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
       })
       .finally(() => {
         if (!cancelled) setLoadingCatalog(false);
+      });
+    api
+      .getSubscriptionPlans()
+      .then(({ plans: loaded }) => {
+        if (!cancelled) setPlans(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setPlans([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPlansLoading(false);
+      });
+    api
+      .getAdminClientsWithHistory()
+      .then(({ clients: loaded }) => {
+        if (!cancelled) setClients(loaded);
+      })
+      .catch(() => {
+        if (!cancelled) setClients([]);
+      })
+      .finally(() => {
+        if (!cancelled) setClientsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -127,9 +182,31 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
     setLines((prev) => prev.map((item) => (item.productId === productId ? line : item)));
   };
 
+  const chooseClient = (client: AdminClientWithHistory) => {
+    setSelectedClient(client);
+    setClientQuery(client.name);
+    setBuyerName(client.name);
+    setClientSuggestionsOpen(false);
+    setFormError('');
+  };
+
+  const clearClient = () => {
+    setSelectedClient(null);
+    setClientQuery('');
+    setBuyerName('');
+  };
+
   const handleSave = async () => {
-    if (lines.length === 0) {
-      setFormError('Agregá al menos un producto.');
+    if (lines.length === 0 && !selectedPlan) {
+      setFormError('Agregá un producto o un abono.');
+      return;
+    }
+    if (selectedPlan && !selectedClient) {
+      setFormError('Elegí el cliente de la ficha para asignarle el abono.');
+      return;
+    }
+    if (selectedPlan && planPrice <= 0) {
+      setFormError(`«${selectedPlan.name}» no tiene un precio válido.`);
       return;
     }
     setSaving(true);
@@ -137,9 +214,11 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
     try {
       const { item } = await api.createCounterSale({
         saleDate,
-        buyerName: buyerName.trim() || undefined,
+        buyerName: (selectedClient?.name || buyerName).trim() || undefined,
+        clientUserId: selectedClient?.id,
         paymentMethod,
         products: lines.map((line) => ({ productId: line.productId, quantity: line.quantity })),
+        subscriptionPlanId: selectedPlan?.id,
       });
       onSaved(item);
     } catch (e) {
@@ -159,7 +238,7 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
         role="dialog"
         aria-modal="true"
         aria-labelledby="counter-sale-title"
-        className="my-auto w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl sm:p-6"
+        className="my-auto max-h-[min(92dvh,900px)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl sm:p-6"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
@@ -182,22 +261,66 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
         </div>
 
         <p className="mb-4 text-sm text-zinc-600">
-          Venta de productos en el local. El comprador puede no tener ficha. El importe entra completo en la caja.
+          Productos y abonos en el local. El abono se asigna al cliente. El importe entra completo en la caja y no
+          comisiona a ningún barbero.
         </p>
 
         <label className="mb-1 block text-xs font-bold uppercase tracking-wider text-zinc-500" htmlFor="counter-sale-buyer">
           Comprador
         </label>
-        <input
-          id="counter-sale-buyer"
-          type="text"
-          value={buyerName}
-          maxLength={120}
-          disabled={saving}
-          onChange={(e) => setBuyerName(e.target.value)}
-          placeholder="Opcional"
-          className="mb-4 w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#b39055]"
-        />
+        <div className="relative mb-4">
+          <input
+            id="counter-sale-buyer"
+            type="text"
+            value={selectedClient ? selectedClient.name : clientQuery || buyerName}
+            maxLength={120}
+            disabled={saving}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSelectedClient(null);
+              setClientQuery(value);
+              setBuyerName(value);
+              setClientSuggestionsOpen(true);
+            }}
+            onFocus={() => setClientSuggestionsOpen(true)}
+            placeholder={selectedPlan ? 'Buscar cliente de la ficha' : 'Opcional. Buscá un cliente si vendés un abono'}
+            className={`w-full rounded-xl border border-zinc-200 px-3 py-2.5 text-sm outline-none focus:border-[#b39055] ${
+              selectedClient ? 'pr-16' : ''
+            }`}
+            autoComplete="off"
+          />
+          {selectedClient && (
+            <button
+              type="button"
+              onClick={clearClient}
+              disabled={saving}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-bold text-zinc-500 hover:bg-zinc-100"
+            >
+              Quitar
+            </button>
+          )}
+          {clientsLoading && <p className="mt-1 text-xs text-zinc-400">Cargando clientes…</p>}
+          {clientSuggestionsOpen && !selectedClient && clientSuggestions.length > 0 && (
+            <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg">
+              {clientSuggestions.map((client) => {
+                const phone = adminClientPrimaryPhone(client);
+                return (
+                  <li key={client.id}>
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-50"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => chooseClient(client)}
+                    >
+                      <span className="font-semibold text-zinc-900">{client.name}</span>
+                      {phone && <span className="mt-0.5 block text-xs text-zinc-500">{phone}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
 
         <p className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-500">Cobro</p>
         <div className="mb-4 grid grid-cols-3 gap-2">
@@ -222,11 +345,54 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
           })}
         </div>
 
+        <div className="mb-4 rounded-xl border border-zinc-200 bg-zinc-50/70 p-3">
+          <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-zinc-600" htmlFor="counter-sale-plan">
+            Abono
+          </label>
+          {plansLoading ? (
+            <p className="text-sm text-zinc-500">Cargando abonos…</p>
+          ) : activePlans.length === 0 ? (
+            <p className="text-sm text-zinc-500">No hay abonos activos. Cargalos en Abonos.</p>
+          ) : (
+            <select
+              id="counter-sale-plan"
+              value={planId}
+              disabled={saving}
+              onChange={(e) => {
+                setPlanId(e.target.value);
+                setFormError('');
+              }}
+              className="w-full rounded-lg border border-zinc-200 bg-white px-2 py-2 text-sm"
+            >
+              <option value="">Sin abono</option>
+              {activePlans.map((plan) => {
+                const price = parseArsAmount(String(plan.monthlyPrice)) ?? 0;
+                return (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.name} · {plan.cutsPerMonth} corte{plan.cutsPerMonth === 1 ? '' : 's'} · $
+                    {formatArs(price)}
+                  </option>
+                );
+              })}
+            </select>
+          )}
+          {selectedPlan && selectedClient?.subscription && selectedClient.subscription.cutsRemaining > 0 && (
+            <p className="mt-2 text-xs text-amber-800">
+              {selectedClient.name} ya tiene «{selectedClient.subscription.planName}» con{' '}
+              {selectedClient.subscription.cutsRemaining} corte
+              {selectedClient.subscription.cutsRemaining === 1 ? '' : 's'}. Esta venta lo reemplaza por uno nuevo.
+            </p>
+          )}
+          {selectedPlan && !selectedClient && (
+            <p className="mt-2 text-xs text-zinc-500">Elegí un cliente de la ficha para activarle el abono.</p>
+          )}
+        </div>
+
         <div className="rounded-xl border border-zinc-200 bg-zinc-50/70 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-600">Productos</p>
-            {total > 0 && (
-              <span className="text-sm font-black tabular-nums text-zinc-900">${formatArs(total)}</span>
+            {productsTotal > 0 && (
+              <span className="text-sm font-black tabular-nums text-zinc-900">${formatArs(productsTotal)}</span>
             )}
           </div>
           {loadingCatalog ? (
@@ -341,7 +507,7 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
           <button
             type="button"
             onClick={() => void handleSave()}
-            disabled={saving || lines.length === 0}
+            disabled={saving || (lines.length === 0 && !selectedPlan)}
             className="min-h-11 flex-1 rounded-xl bg-[#e5c185] py-2.5 font-bold text-zinc-950 hover:bg-[#d4b074] disabled:opacity-50"
           >
             {saving ? 'Guardando…' : `Cobrar $${formatArs(total)}`}

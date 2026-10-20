@@ -162,6 +162,8 @@ export type WeeklyBarberSummary = {
   barberName: string;
   appointments: number;
   serviceGross: number;
+  /** Productos del turno y, si se asignan, ventas de mostrador. */
+  productsSold: number;
   depositsMp: number;
   localPending: number;
   commission: number;
@@ -184,6 +186,8 @@ export type WeeklyCashSummary = {
   pendingAfipCount: number;
   /** Saldo en local agrupado por método registrado (sin método → unregistered). */
   localByMethod: PaymentMethodTotals;
+  /** Parte de cada método que corresponde a ventas de productos (ya incluida en localByMethod cuando entra a caja). */
+  productsByMethod: PaymentMethodTotals;
   /** Abono y canjes: referencia, no ingresan a caja. */
   nonCashByMethod: PaymentMethodTotals;
   /** Señas MP (siempre mercadopago en depósitos). */
@@ -371,6 +375,7 @@ export function buildWeeklyCashClose(
         barberName: r.barberName,
         appointments: 0,
         serviceGross: 0,
+        productsSold: 0,
         depositsMp: 0,
         localPending: 0,
         commission: 0,
@@ -382,6 +387,7 @@ export function buildWeeklyCashClose(
     const cashLocal = Math.max(0, r.localPending - rowAccountDebtArs(r));
     b.appointments += 1;
     b.serviceGross += r.depositAmount + cashLocal;
+    b.productsSold += r.productsSoldAmount;
     b.depositsMp += r.depositAmount;
     b.localPending += cashLocal;
     b.commission += r.commissionAmount;
@@ -436,6 +442,7 @@ export function buildWeeklyCashClose(
       afipInvoicedCount: 0,
       pendingAfipCount: 0,
       localByMethod: emptyPaymentMethodTotals(),
+      productsByMethod: emptyPaymentMethodTotals(),
       nonCashByMethod: emptyPaymentMethodTotals(),
       depositsMpByMethod: emptyPaymentMethodTotals(),
       tipsTotal: 0,
@@ -481,27 +488,44 @@ function appointmentProductsEnterCash(row: WeeklyCashRow): boolean {
 }
 
 function attributeProductGap(row: WeeklyCashRow, gap: number, totals: PaymentMethodTotals): void {
+  attributeProductAmount(row, gap, totals);
+}
+
+/** Reparte el importe de productos entre los métodos con los que se cobró el turno. */
+function attributeProductAmount(row: WeeklyCashRow, amount: number, totals: PaymentMethodTotals): void {
+  if (amount <= 0) return;
   const paid = cashPaidSplits(row);
   if (paid.length === 1) {
-    totals[paid[0]!.method] += gap;
+    totals[paid[0]!.method] += amount;
+    return;
+  }
+  if (paid.length > 1) {
+    const sum = paid.reduce((total, split) => total + split.amount, 0);
+    if (sum <= 0) {
+      totals.unregistered += amount;
+      return;
+    }
+    let assigned = 0;
+    for (let i = 0; i < paid.length; i++) {
+      const split = paid[i]!;
+      const share = i === paid.length - 1 ? amount - assigned : Math.round((amount * split.amount) / sum);
+      totals[split.method] += share;
+      assigned += share;
+    }
     return;
   }
   const method = row.servicePaymentMethod;
-  if (
-    paid.length === 0 &&
-    method &&
-    method !== 'account' &&
-    !isNonCashLocalPaymentMethod(method)
-  ) {
-    totals[method] += gap;
+  if (method && method !== 'account' && !isNonCashLocalPaymentMethod(method)) {
+    totals[method] += amount;
     return;
   }
-  totals.unregistered += gap;
+  totals.unregistered += amount;
 }
 
 /** Suma los productos del turno a la caja. Si el cobro ya los tenía en el método, no los duplica. */
 function applyAppointmentProductsToSummary(summary: WeeklyCashSummary, rows: WeeklyCashRow[]): void {
   const localByMethod = { ...summary.localByMethod };
+  const productsByMethod = emptyPaymentMethodTotals();
   let listed = 0;
   let inCash = 0;
   for (const row of rows) {
@@ -509,10 +533,12 @@ function applyAppointmentProductsToSummary(summary: WeeklyCashSummary, rows: Wee
     listed += row.productsSoldAmount;
     if (!appointmentProductsEnterCash(row)) continue;
     inCash += row.productsSoldAmount;
+    attributeProductAmount(row, row.productsSoldAmount, productsByMethod);
     const gap = Math.max(0, row.productsSoldAmount - productAmountAlreadyBooked(row));
     if (gap > 0) attributeProductGap(row, gap, localByMethod);
   }
   summary.localByMethod = localByMethod;
+  summary.productsByMethod = productsByMethod;
   summary.appointmentProductsTotal = listed;
   summary.localPending += inCash;
   summary.shopNetEstimate += inCash;
@@ -534,20 +560,59 @@ export function applyCounterSalesToCashClose(
   sales: { totalArs: number; paymentMethod: 'cash' | 'card' | 'mercadopago' }[]
 ): WeeklyCashSummary {
   const localByMethod = { ...summary.localByMethod };
+  const productsByMethod = { ...(summary.productsByMethod ?? emptyPaymentMethodTotals()) };
   let total = 0;
   for (const sale of sales) {
     const amount = Math.round(Number(sale.totalArs));
     if (!Number.isFinite(amount) || amount <= 0) continue;
     total += amount;
     localByMethod[sale.paymentMethod] += amount;
+    productsByMethod[sale.paymentMethod] += amount;
   }
   return {
     ...summary,
     localByMethod,
+    productsByMethod,
     counterSalesTotal: total,
     localPending: summary.localPending + total,
     shopNetEstimate: summary.shopNetEstimate + total,
   };
+}
+
+/** Suma los productos de mostrador al barbero que los cargó. El abono no se atribuye a nadie. */
+export function applyCounterSalesToBarberSummaries(
+  byBarber: WeeklyBarberSummary[],
+  sales: { totalArs: number; subscriptionAmountArs?: number | null; createdByName?: string | null }[]
+): WeeklyBarberSummary[] {
+  const rows = byBarber.map((barber) => ({ ...barber, productsSold: barber.productsSold ?? 0 }));
+  let unmatched = 0;
+  for (const sale of sales) {
+    const total = Math.round(Number(sale.totalArs));
+    const subscription = Math.max(0, Math.round(Number(sale.subscriptionAmountArs) || 0));
+    const amount = Math.max(0, (Number.isFinite(total) ? total : 0) - subscription);
+    if (amount <= 0) continue;
+    const name = sale.createdByName?.trim().toLocaleLowerCase('es');
+    const match = name
+      ? rows.find((barber) => barber.barberName.trim().toLocaleLowerCase('es') === name)
+      : undefined;
+    if (match) match.productsSold += amount;
+    else unmatched += amount;
+  }
+  if (unmatched > 0) {
+    rows.push({
+      barberKey: 'counter',
+      barberName: 'Mostrador',
+      appointments: 0,
+      serviceGross: 0,
+      productsSold: unmatched,
+      depositsMp: 0,
+      localPending: 0,
+      commission: 0,
+      afipInvoiced: 0,
+      tips: 0,
+    });
+  }
+  return rows;
 }
 
 export function shiftWeekAnchor(anchor: Date, deltaWeeks: number): Date {

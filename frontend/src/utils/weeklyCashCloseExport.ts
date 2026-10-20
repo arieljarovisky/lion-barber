@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import type { CashExpense, CounterSale } from '../api';
+import { counterSaleProductLines } from './appointmentProducts';
 import {
   formatAppointmentProductPaymentLabel,
   type CashClosePeriodMode,
@@ -91,7 +92,7 @@ function productSaleExportRows(data: WeeklyCashCloseExportData): (string | numbe
       `${sale.saleDate} 99:99`,
       sale.saleDate,
       sale.buyerName?.trim() || 'Mostrador',
-      sale.products ?? [],
+      counterSaleProductLines(sale),
       sale.totalArs,
       SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod],
       sale.createdByName?.trim() || NA
@@ -124,7 +125,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
     ['Total ingreso servicios en caja (ARS)', data.summary.serviceGross],
     ['Señas Mercado Pago (ARS)', data.summary.depositsMp],
     ['Cobrado en local (ARS)', data.summary.localPending],
-    ['Ventas de productos (ARS)', productSalesListedTotal(data.summary)],
+    ['Ventas de productos y abonos (ARS)', productSalesListedTotal(data.summary)],
     ['Abono y canje — referencia (ARS)', data.summary.nonCashServiceTotal],
     ['Comisiones barberos (ARS)', data.summary.commissions],
     ['Propinas (ARS)', data.summary.tipsTotal],
@@ -137,22 +138,24 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenRows), 'Resumen');
 
   const metodoRows: (string | number)[][] = [
-    ['Método', 'Importe (ARS)', 'Nota'],
+    ['Método', 'Productos (ARS)', 'Importe (ARS)', 'Nota'],
     ...SERVICE_PAYMENT_METHODS.map((m) => [
       SERVICE_PAYMENT_METHOD_LABELS[m],
+      data.summary.productsByMethod?.[m] ?? 0,
       isNonCashLocalPaymentMethod(m) ? data.summary.nonCashByMethod[m] : data.summary.localByMethod[m],
-      isNonCashLocalPaymentMethod(m) ? 'Referencia, no entra en caja' : '',
+      isNonCashLocalPaymentMethod(m) ? 'Referencia, no entra en caja' : 'Productos ya incluidos en el importe',
     ]),
-    ['Sin registrar', data.summary.localByMethod.unregistered, ''],
+    ['Sin registrar', data.summary.productsByMethod?.unregistered ?? 0, data.summary.localByMethod.unregistered, ''],
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(metodoRows), 'Por método');
 
   const barberRows: (string | number)[][] = [
-    ['Barbero', 'Turnos', 'Servicios', 'Señas MP', 'En local', 'Comisión', 'Propinas', 'AFIP'],
+    ['Barbero', 'Turnos', 'Servicios', 'Productos', 'Señas MP', 'En local', 'Comisión', 'Propinas', 'AFIP'],
     ...data.byBarber.map((b) => [
       b.barberName,
       b.appointments,
       b.serviceGross,
+      b.productsSold ?? 0,
       b.depositsMp,
       b.localPending,
       b.commission,
@@ -163,6 +166,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
       'TOTAL',
       data.summary.appointments,
       data.summary.serviceGross,
+      productSalesListedTotal(data.summary),
       data.summary.depositsMp,
       data.summary.localPending,
       data.summary.commissions,
@@ -227,7 +231,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
     ['Fecha', 'Comprador', 'Producto', 'Cantidad', 'Unitario (ARS)', 'Importe (ARS)', 'Pago', 'Cargó'],
     ...productSaleExportRows(data),
   ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(saleRows), 'Ventas de productos');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(saleRows), 'Ventas');
 
   XLSX.writeFile(wb, `${fileBase(data)}.xlsx`);
 }
@@ -285,7 +289,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
       ['Total servicios', `$${data.summary.serviceGross.toLocaleString('es-AR')}`],
       ['Señas (Mercado Pago)', `$${data.summary.depositsMp.toLocaleString('es-AR')}`],
       ['Por cobrar en local', `$${data.summary.localPending.toLocaleString('es-AR')}`],
-      ['Ventas de productos', `$${productSalesListedTotal(data.summary).toLocaleString('es-AR')}`],
+      ['Ventas de productos y abonos', `$${productSalesListedTotal(data.summary).toLocaleString('es-AR')}`],
       ['Comisiones barberos', `$${data.summary.commissions.toLocaleString('es-AR')}`],
       ['Propinas', `$${data.summary.tipsTotal.toLocaleString('es-AR')}`],
       ['Neto local (est.)', `$${data.summary.shopNetEstimate.toLocaleString('es-AR')}`],
@@ -307,22 +311,31 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
 
   autoTable(doc, {
     startY: y,
-    head: [['Método', 'Importe en local']],
+    head: [['Método', 'Productos', 'Importe en local']],
     body: [
       ...SERVICE_PAYMENT_METHODS.map((m) => [
         isNonCashLocalPaymentMethod(m)
           ? `${SERVICE_PAYMENT_METHOD_LABELS[m]} (referencia)`
           : SERVICE_PAYMENT_METHOD_LABELS[m],
+        (data.summary.productsByMethod?.[m] ?? 0) > 0
+          ? `$${(data.summary.productsByMethod?.[m] ?? 0).toLocaleString('es-AR')}`
+          : NA,
         `$${(isNonCashLocalPaymentMethod(m)
           ? data.summary.nonCashByMethod[m]
           : data.summary.localByMethod[m]
         ).toLocaleString('es-AR')}`,
       ]),
-      ['Sin registrar', `$${data.summary.localByMethod.unregistered.toLocaleString('es-AR')}`],
+      [
+        'Sin registrar',
+        (data.summary.productsByMethod?.unregistered ?? 0) > 0
+          ? `$${(data.summary.productsByMethod?.unregistered ?? 0).toLocaleString('es-AR')}`
+          : NA,
+        `$${data.summary.localByMethod.unregistered.toLocaleString('es-AR')}`,
+      ],
     ],
     styles: { fontSize: 9, cellPadding: 2 },
     headStyles: { fillColor: PDF_GOLD, textColor: [30, 30, 30], fontStyle: 'bold' },
-    columnStyles: { 1: { halign: 'right' } },
+    columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
     margin: { left: 14, right: 14 },
   });
 
@@ -331,12 +344,13 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
 
   autoTable(doc, {
     startY: y,
-    head: [['Barbero', 'Turnos', 'Servicios', 'Señas MP', 'En local', 'Comisión', 'Propinas', 'AFIP']],
+    head: [['Barbero', 'Turnos', 'Servicios', 'Productos', 'Señas MP', 'En local', 'Comisión', 'Propinas', 'AFIP']],
     body: [
       ...data.byBarber.map((b) => [
         b.barberName,
         String(b.appointments),
         `$${b.serviceGross.toLocaleString('es-AR')}`,
+        (b.productsSold ?? 0) > 0 ? `$${(b.productsSold ?? 0).toLocaleString('es-AR')}` : NA,
         `$${b.depositsMp.toLocaleString('es-AR')}`,
         `$${b.localPending.toLocaleString('es-AR')}`,
         `$${b.commission.toLocaleString('es-AR')}`,
@@ -347,6 +361,9 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
         'TOTAL',
         String(data.summary.appointments),
         `$${data.summary.serviceGross.toLocaleString('es-AR')}`,
+        productSalesListedTotal(data.summary) > 0
+          ? `$${productSalesListedTotal(data.summary).toLocaleString('es-AR')}`
+          : NA,
         `$${data.summary.depositsMp.toLocaleString('es-AR')}`,
         `$${data.summary.localPending.toLocaleString('es-AR')}`,
         `$${data.summary.commissions.toLocaleString('es-AR')}`,
@@ -365,6 +382,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
       5: { halign: 'right' },
       6: { halign: 'right' },
       7: { halign: 'right' },
+      8: { halign: 'right' },
     },
     margin: { left: 10, right: 10 },
   });
@@ -372,7 +390,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
   const productSales = productSaleExportRows(data);
   if (productSales.length > 0) {
     y = nextY(doc);
-    y = addSectionTitle(doc, 'Ventas de productos', y);
+    y = addSectionTitle(doc, 'Ventas de productos y abonos', y);
     autoTable(doc, {
       startY: y,
       head: [['Fecha', 'Comprador', 'Producto', 'Cant.', 'Importe']],

@@ -18,6 +18,29 @@ export function hasAppointmentProducts(
   return !!lines && lines.some((l) => l.quantity > 0);
 }
 
+/** Líneas de una venta de mostrador, con el abono como un ítem más. */
+export function counterSaleProductLines(sale: {
+  id?: number;
+  products?: AppointmentProductLine[] | null;
+  subscriptionPlanId?: string | null;
+  subscriptionPlanName?: string | null;
+  subscriptionAmountArs?: number | null;
+}): AppointmentProductLine[] {
+  const lines = (sale.products ?? []).filter((line) => line.quantity > 0 && line.subtotal > 0);
+  const amount = Math.max(0, Math.round(Number(sale.subscriptionAmountArs) || 0));
+  const planName = sale.subscriptionPlanName?.trim();
+  if (planName && amount > 0) {
+    lines.push({
+      productId: `subscription:${sale.subscriptionPlanId || sale.id || 'plan'}`,
+      name: `Abono ${planName}`,
+      quantity: 1,
+      unitPrice: amount,
+      subtotal: amount,
+    });
+  }
+  return lines;
+}
+
 /** Texto corto: ej. "2 productos · $5.000". */
 export function formatAppointmentProductsSummary(
   lines: AppointmentProductLine[] | null | undefined
@@ -26,6 +49,24 @@ export function formatAppointmentProductsSummary(
   const total = sumAppointmentProducts(lines);
   const items = (lines ?? []).reduce((acc, l) => acc + l.quantity, 0);
   return `${items} producto${items === 1 ? '' : 's'} · $${total.toLocaleString('es-AR')}`;
+}
+
+/** Resumen de una venta de mostrador: abono, productos y medio de pago. */
+export function formatCounterSaleSummary(
+  sale: {
+    products?: AppointmentProductLine[] | null;
+    subscriptionPlanName?: string | null;
+    paymentMethod: string;
+  },
+  paymentLabel: string
+): string {
+  const parts: string[] = [];
+  const planName = sale.subscriptionPlanName?.trim();
+  if (planName) parts.push(`Abono ${planName}`);
+  const products = formatAppointmentProductsSummary(sale.products);
+  if (products) parts.push(products);
+  if (paymentLabel) parts.push(paymentLabel);
+  return parts.join(' · ');
 }
 
 /** Devuelve productos con precio cargado (los únicos cargables en un turno). */

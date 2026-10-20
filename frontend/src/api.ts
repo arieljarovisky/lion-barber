@@ -379,15 +379,20 @@ export interface CashExpense {
   createdAt: string;
 }
 
-/** Venta de productos en el local, sin cliente registrado y sin comisión. */
+/** Venta en el local (productos y/o abono). El importe entra en la caja y no comisiona. */
 export type CounterSalePaymentMethod = 'cash' | 'card' | 'mercadopago';
 
 export interface CounterSale {
   id: number;
   saleDate: string;
   buyerName: string | null;
+  clientUserId?: number | null;
   paymentMethod: CounterSalePaymentMethod;
   products: AppointmentProductLine[];
+  subscriptionPlanId?: string | null;
+  subscriptionPlanName?: string | null;
+  subscriptionGroupId?: number | null;
+  subscriptionAmountArs?: number;
   totalArs: number;
   createdByUserId?: number | null;
   createdByName?: string | null;
@@ -1052,8 +1057,10 @@ export const api = {
   createCounterSale: (data: {
     saleDate: string;
     buyerName?: string;
+    clientUserId?: number;
     paymentMethod: CounterSalePaymentMethod;
     products: { productId: string; quantity: number }[];
+    subscriptionPlanId?: string;
   }) =>
     fetchApi<{ item: CounterSale }>('/api/counter-sales', {
       method: 'POST',

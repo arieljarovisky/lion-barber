@@ -214,6 +214,54 @@ export async function assignSubscriptionPlanToClient(
   return true;
 }
 
+/** Compra en el local: siempre abre un abono nuevo, aunque el cliente ya tuviera uno vigente. */
+export async function purchaseSubscriptionPlanForClient(
+  userId: number,
+  planId: string
+): Promise<{ groupId: number; planName: string; priceArs: number }> {
+  await assertClientRole(userId);
+  const plan = await getSubscriptionPlanById(planId);
+  if (!plan || !plan.active) {
+    throw new Error('Plan de abono no encontrado o inactivo.');
+  }
+  const price = parseArsAmount(plan.monthlyPrice);
+  if (price == null || price <= 0) {
+    throw new Error(`«${plan.name}» no tiene un precio válido.`);
+  }
+
+  await removeClientFromSubscription(userId);
+  const groupId = await groups.createSubscriptionGroup({
+    planId: plan.id,
+    periodStart: currentArgentinaYmd(),
+    ownerUserId: userId,
+    cutsUsed: 0,
+  });
+  try {
+    await groups.linkUserToGroup(userId, groupId);
+  } catch (err) {
+    await groups.deleteSubscriptionGroup(groupId).catch(() => undefined);
+    throw err;
+  }
+  return { groupId, planName: plan.name, priceArs: Math.round(price) };
+}
+
+/** Deshace un abono vendido en mostrador si todavía no se usó ningún corte. */
+export async function revokePurchasedSubscription(userId: number, groupId: number): Promise<void> {
+  const group = await groups.getSubscriptionGroupById(groupId);
+  if (!group) return;
+  if (Math.max(0, Number(group.cuts_used ?? 0)) > 0) {
+    throw new Error('Este abono ya tiene cortes usados. No se puede anular la venta.');
+  }
+  const current = await groups.getSubscriptionGroupIdForUser(userId);
+  if (current != null && current !== groupId) return;
+
+  const members = await groups.listSubscriptionGroupMembers(groupId);
+  for (const member of members) {
+    await groups.unlinkUserFromGroup(member.id);
+  }
+  await groups.deleteSubscriptionGroup(groupId);
+}
+
 /** Ajuste manual de cortes usados y/o fecha de activación (migración / corrección admin). */
 export async function updateClientSubscriptionUsage(
   userId: number,

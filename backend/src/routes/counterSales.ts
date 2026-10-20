@@ -5,10 +5,16 @@ import { requireAuth, requireStaffOrAdmin, type AuthRequest } from '../middlewar
 import { isDailyCashCloseDate } from '../repositories/dailyCashClose.js';
 import { getBarberById } from '../repositories/barbers.js';
 import * as repo from '../repositories/counterSales.js';
+import { findUserById } from '../repositories/users.js';
 import {
   getShopProductById,
   syncAppointmentProductStock,
 } from '../repositories/shopProducts.js';
+import { notifyClientSubscriptionActivated } from '../services/email.js';
+import {
+  purchaseSubscriptionPlanForClient,
+  revokePurchasedSubscription,
+} from '../services/clientSubscription.js';
 import type { AppointmentProductLine } from '../types.js';
 
 const router = Router();
@@ -28,10 +34,12 @@ async function saleAuthor(user: AuthRequest['user']): Promise<{ userId: number |
   return { userId: user.id, name };
 }
 
-async function resolveSaleLines(raw: unknown): Promise<AppointmentProductLine[]> {
-  if (!Array.isArray(raw) || raw.length === 0) {
+async function resolveSaleLines(raw: unknown, allowEmpty: boolean): Promise<AppointmentProductLine[]> {
+  if (raw == null || (Array.isArray(raw) && raw.length === 0)) {
+    if (allowEmpty) return [];
     throw new Error('Agregá al menos un producto.');
   }
+  if (!Array.isArray(raw)) throw new Error('Productos no válidos.');
   if (raw.length > MAX_APPOINTMENT_PRODUCT_LINES) {
     throw new Error(`Demasiados productos (máx ${MAX_APPOINTMENT_PRODUCT_LINES}).`);
   }
@@ -83,8 +91,10 @@ router.post('/', async (req: AuthRequest, res) => {
   const body = req.body as {
     saleDate?: string;
     buyerName?: string | null;
+    clientUserId?: number | null;
     paymentMethod?: string;
     products?: unknown;
+    subscriptionPlanId?: string | null;
   };
   const saleDate = String(body.saleDate ?? '').slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(saleDate)) {
@@ -94,26 +104,59 @@ router.post('/', async (req: AuthRequest, res) => {
   if (!PAYMENT_METHODS.has(paymentMethod)) {
     return res.status(400).json({ error: 'Elegí efectivo, tarjeta o Mercado Pago.' });
   }
-  const buyerName = typeof body.buyerName === 'string' ? body.buyerName.trim().slice(0, 120) : '';
+  let buyerName = typeof body.buyerName === 'string' ? body.buyerName.trim().slice(0, 120) : '';
+  const planId = typeof body.subscriptionPlanId === 'string' ? body.subscriptionPlanId.trim() : '';
+  const clientUserId = Number(body.clientUserId);
+  const hasClient = Number.isFinite(clientUserId) && clientUserId > 0;
   try {
     if (await isDailyCashCloseDate(saleDate)) {
       return res.status(409).json({ error: 'Este día está cerrado. Reabrí la caja para registrar la venta.' });
     }
-    const lines = await resolveSaleLines(body.products);
-    await syncAppointmentProductStock(null, lines);
+    const lines = await resolveSaleLines(body.products, Boolean(planId));
+    if (!planId && lines.length === 0) {
+      return res.status(400).json({ error: 'Agregá un producto o un abono.' });
+    }
+    if (planId && !hasClient) {
+      return res.status(400).json({ error: 'Elegí el cliente para asignarle el abono.' });
+    }
+
+    let clientName: string | null = null;
+    if (hasClient) {
+      const client = await findUserById(clientUserId);
+      if (!client || client.role !== 'client') {
+        return res.status(400).json({ error: 'Cliente no encontrado.' });
+      }
+      clientName = client.name?.trim() || null;
+      if (!buyerName && clientName) buyerName = clientName.slice(0, 120);
+    }
+
+    if (lines.length > 0) await syncAppointmentProductStock(null, lines);
+    let purchased: Awaited<ReturnType<typeof purchaseSubscriptionPlanForClient>> | null = null;
     try {
+      if (planId) {
+        purchased = await purchaseSubscriptionPlanForClient(clientUserId, planId);
+      }
       const author = await saleAuthor(req.user);
       const item = await repo.createCounterSale({
         saleDate,
         buyerName: buyerName || null,
+        clientUserId: hasClient ? clientUserId : null,
         paymentMethod: paymentMethod as repo.CounterSalePaymentMethod,
         products: lines,
+        subscriptionPlanId: purchased ? planId : null,
+        subscriptionPlanName: purchased?.planName ?? null,
+        subscriptionGroupId: purchased?.groupId ?? null,
+        subscriptionAmountArs: purchased?.priceArs ?? 0,
         createdByUserId: author.userId,
         createdByName: author.name,
       });
+      if (purchased) void notifyClientSubscriptionActivated(clientUserId);
       res.status(201).json({ item });
     } catch (err) {
-      await syncAppointmentProductStock(lines, null).catch(() => undefined);
+      if (purchased) {
+        await revokePurchasedSubscription(clientUserId, purchased.groupId).catch(() => undefined);
+      }
+      if (lines.length > 0) await syncAppointmentProductStock(lines, null).catch(() => undefined);
       throw err;
     }
   } catch (e) {
@@ -130,6 +173,9 @@ router.delete('/:id', async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Venta no encontrada' });
     if (await isDailyCashCloseDate(existing.saleDate)) {
       return res.status(409).json({ error: 'Este día está cerrado. Reabrí la caja para anular la venta.' });
+    }
+    if (existing.subscriptionGroupId != null && existing.clientUserId != null) {
+      await revokePurchasedSubscription(existing.clientUserId, existing.subscriptionGroupId);
     }
     await syncAppointmentProductStock(existing.products, null);
     const ok = await repo.deleteCounterSale(id);
