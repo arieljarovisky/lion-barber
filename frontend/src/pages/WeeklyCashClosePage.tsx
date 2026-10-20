@@ -21,6 +21,7 @@ import { formatArs } from '../utils/money';
 import {
   applyCounterSalesToBarberSummaries,
   applyCounterSalesToCashClose,
+  cashBoxIncomeArs,
   buildWeeklyCashClose,
   formatAppointmentProductPaymentLabel,
   periodBoundsFromAnchor,
@@ -496,9 +497,9 @@ export default function WeeklyCashClosePage() {
               <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <SummaryCard label="Turnos confirmados" value={String(summary.appointments)} />
                 <SummaryCard
-                  label="Ingreso en caja (servicios)"
-                  value={`$${formatArs(summary.serviceGross)}`}
-                  hint="Seña MP + cobrado en local. La cuenta corriente no entra: es deuda"
+                  label="Ingreso en caja"
+                  value={`$${formatArs(cashBoxIncomeArs(summary))}`}
+                  hint="Seña MP + cobrado en local. Incluye productos y los abonos de Nueva venta. La cuenta corriente no entra: es deuda"
                 />
                 <SummaryCard
                   label="Señas (Mercado Pago)"

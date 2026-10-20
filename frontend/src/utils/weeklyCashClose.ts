@@ -554,6 +554,13 @@ export function formatAppointmentProductPaymentLabel(row: WeeklyCashRow): string
   return 'En el turno';
 }
 
+/** Seña de Mercado Pago + cobrado en local. Incluye productos del turno y los abonos de Nueva venta. */
+export function cashBoxIncomeArs(
+  summary: Pick<WeeklyCashSummary, 'depositsMp' | 'localPending'>
+): number {
+  return summary.depositsMp + summary.localPending;
+}
+
 /** Suma ventas de mostrador al cobrado en local y al neto. La comisión no cambia. */
 export function applyCounterSalesToCashClose(
   summary: WeeklyCashSummary,

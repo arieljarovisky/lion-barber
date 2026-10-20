@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import type { CashExpense, CounterSale } from '../api';
 import { counterSaleProductLines } from './appointmentProducts';
 import {
+  cashBoxIncomeArs,
   formatAppointmentProductPaymentLabel,
   type CashClosePeriodMode,
   type WeeklyBarberSummary,
@@ -122,7 +123,8 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
     [],
     ['Concepto', 'Valor'],
     ['Turnos confirmados', data.summary.appointments],
-    ['Total ingreso servicios en caja (ARS)', data.summary.serviceGross],
+    ['Ingreso en caja (ARS)', cashBoxIncomeArs(data.summary)],
+    ['Servicios en caja (ARS)', data.summary.serviceGross],
     ['Señas Mercado Pago (ARS)', data.summary.depositsMp],
     ['Cobrado en local (ARS)', data.summary.localPending],
     ['Ventas de productos y abonos (ARS)', productSalesListedTotal(data.summary)],
@@ -286,7 +288,8 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
     head: [['Concepto', 'Valor']],
     body: [
       ['Turnos confirmados', String(data.summary.appointments)],
-      ['Total servicios', `$${data.summary.serviceGross.toLocaleString('es-AR')}`],
+      ['Ingreso en caja', `$${cashBoxIncomeArs(data.summary).toLocaleString('es-AR')}`],
+      ['Servicios en caja', `$${data.summary.serviceGross.toLocaleString('es-AR')}`],
       ['Señas (Mercado Pago)', `$${data.summary.depositsMp.toLocaleString('es-AR')}`],
       ['Por cobrar en local', `$${data.summary.localPending.toLocaleString('es-AR')}`],
       ['Ventas de productos y abonos', `$${productSalesListedTotal(data.summary).toLocaleString('es-AR')}`],
