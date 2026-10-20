@@ -171,6 +171,11 @@ router.delete('/:id', async (req, res) => {
   try {
     const existing = await repo.getCounterSaleById(id);
     if (!existing) return res.status(404).json({ error: 'Venta no encontrada' });
+    if (existing.saleChannel === 'web') {
+      return res.status(409).json({
+        error: 'Los abonos pagados desde la web ya entraron por Mercado Pago y no se anulan desde la caja.',
+      });
+    }
     if (await isDailyCashCloseDate(existing.saleDate)) {
       return res.status(409).json({ error: 'Este día está cerrado. Reabrí la caja para anular la venta.' });
     }

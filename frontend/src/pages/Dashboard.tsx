@@ -2428,8 +2428,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
                 <h3 className="font-black text-zinc-900">Ventas de mostrador</h3>
-                <p className="mt-0.5 text-xs capitalize text-zinc-500">
-                  {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}. El importe entra completo en la caja y no comisiona.
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  <span className="capitalize">
+                    {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+                  </span>
+                  . Entran el mostrador y los abonos pagados desde la web. El importe suma completo en la caja y no comisiona.
                 </p>
               </div>
               <p className="text-sm font-black tabular-nums text-emerald-700">
@@ -2451,14 +2454,16 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                   <span className="font-bold tabular-nums text-zinc-900">
                     ${sale.totalArs.toLocaleString('es-AR')}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteCounterSale(sale)}
-                    className="rounded-lg p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600"
-                    aria-label={`Anular venta de ${sale.buyerName?.trim() || 'mostrador'}`}
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {sale.saleChannel === 'web' ? null : (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteCounterSale(sale)}
+                      className="rounded-lg p-2 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                      aria-label={`Anular venta de ${sale.buyerName?.trim() || 'mostrador'}`}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

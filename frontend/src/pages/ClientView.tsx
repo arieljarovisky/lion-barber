@@ -760,9 +760,9 @@ export default function ClientView() {
             {(
               [
                 { href: '#servicios', label: 'Servicios' },
-                ...(showProductsSection ? [{ href: '#productos', label: 'Productos' }] : []),
                 { href: '#barberos', label: 'Barberos' },
                 ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
+                ...(showProductsSection ? [{ href: '#productos', label: 'Productos' }] : []),
                 { href: '#contacto', label: 'Contacto' },
               ] as const
             ).map((item) => (
@@ -865,9 +865,9 @@ export default function ClientView() {
             {(
               [
                 { href: '#servicios', label: 'Servicios' },
-                ...(showProductsSection ? [{ href: '#productos', label: 'Productos' }] : []),
                 { href: '#barberos', label: 'Barberos' },
                 ...(showAbonosSection ? [{ href: '#abonos', label: 'Abonos' }] : []),
+                ...(showProductsSection ? [{ href: '#productos', label: 'Productos' }] : []),
                 { href: '#contacto', label: 'Contacto' },
               ] as const
             ).map((item) => (
@@ -993,22 +993,6 @@ export default function ClientView() {
         </div>
       </section>
 
-      {showProductsSection && (
-        <ShopCatalogSection
-          products={publicShopProducts}
-          isLoggedIn={Boolean(profile)}
-          cart={shopCart}
-          cartLines={shopCartLines}
-          cartTotal={shopCartTotal}
-          cartCount={shopCartCount}
-          onSetQty={setShopCartQty}
-          onProductsPurchased={clearShopCart}
-          onRequireLogin={() =>
-            navigate('/login', { state: { from: { pathname: '/', hash: '#productos' } } })
-          }
-        />
-      )}
-
       {/* Barbers Section */}
       <section id="barberos" className="py-12 sm:py-16 md:py-20 px-4 sm:px-6 bg-zinc-950 border-y border-zinc-900">
         <div className="max-w-6xl mx-auto">
@@ -1064,63 +1048,6 @@ export default function ClientView() {
           </div>
         </div>
       </section>
-
-      {showAbonosSection && (
-        <section id="abonos" className="border-y border-zinc-900 bg-zinc-950 py-12 sm:py-16 md:py-20 px-4 sm:px-6">
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-10 text-center sm:mb-16">
-              <h2 className="font-serif text-2xl font-black uppercase tracking-tight text-white sm:text-3xl md:text-4xl lg:text-5xl">
-                Elegí tu plan
-              </h2>
-              <div className="mx-auto mt-3 h-1 w-20 rounded-full bg-[#e5c185] sm:w-24" />
-              <p className="mx-auto mt-4 max-w-2xl font-sans text-sm font-light text-zinc-400 sm:text-base">
-                Pagá online con Mercado Pago y reservá sin seña mientras tengas cortes disponibles en tu abono.
-              </p>
-            </div>
-
-            {subscriptionMessage && (
-              <div
-                className={`mx-auto mb-8 max-w-2xl rounded-xl border px-4 py-3 text-sm ${
-                  subscriptionMessage.kind === 'ok'
-                    ? 'border-[#e5c185]/40 bg-[#e5c185]/10 text-[#e5c185]'
-                    : 'border-red-900/50 bg-red-950/40 text-red-300'
-                }`}
-              >
-                {subscriptionMessage.text}
-              </div>
-            )}
-
-            <SubscriptionPricingCards
-              plans={publicSubscriptionPlans}
-              loading={publicCatalogLoading}
-              checkoutPlanId={subscriptionCheckoutPlanId}
-              checkoutLoading={subscriptionCheckoutLoading}
-              onContinue={handleSubscriptionContinue}
-              isLoggedIn={Boolean(profile)}
-              onLoginRequired={handleSubscriptionLoginRequired}
-            />
-
-            {subscriptionCheckoutPreferenceId && (
-              <div className="mx-auto mt-8 max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
-                <p className="mb-3 text-center text-xs text-zinc-400">
-                  Completá el pago con Mercado Pago para activar tu abono.
-                </p>
-                <Wallet
-                  initialization={{ preferenceId: subscriptionCheckoutPreferenceId, redirectMode: 'self' }}
-                  locale="es-AR"
-                  customization={{ theme: 'dark' }}
-                  onError={(err) => {
-                    setSubscriptionMessage({
-                      kind: 'err',
-                      text: err.message || 'Error al cargar el botón de pago',
-                    });
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        </section>
-      )}
 
       {/* Booking Section */}
       <section id="reserva" className="scroll-mt-16 sm:scroll-mt-20 py-12 pb-28 sm:py-20 sm:pb-24 md:py-24 md:pb-28 px-3 sm:px-4 md:px-6 relative bg-zinc-900/30 w-full max-w-full min-w-0 overflow-x-hidden">
@@ -1666,6 +1593,79 @@ export default function ClientView() {
           </div>
         </div>
       </section>
+
+      {showAbonosSection && (
+        <section id="abonos" className="border-y border-zinc-900 bg-zinc-950 py-12 sm:py-16 md:py-20 px-4 sm:px-6">
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-10 text-center sm:mb-16">
+              <h2 className="font-serif text-2xl font-black uppercase tracking-tight text-white sm:text-3xl md:text-4xl lg:text-5xl">
+                Elegí tu plan
+              </h2>
+              <div className="mx-auto mt-3 h-1 w-20 rounded-full bg-[#e5c185] sm:w-24" />
+              <p className="mx-auto mt-4 max-w-2xl font-sans text-sm font-light text-zinc-400 sm:text-base">
+                Pagá online con Mercado Pago y reservá sin seña mientras tengas cortes disponibles en tu abono.
+              </p>
+            </div>
+
+            {subscriptionMessage && (
+              <div
+                className={`mx-auto mb-8 max-w-2xl rounded-xl border px-4 py-3 text-sm ${
+                  subscriptionMessage.kind === 'ok'
+                    ? 'border-[#e5c185]/40 bg-[#e5c185]/10 text-[#e5c185]'
+                    : 'border-red-900/50 bg-red-950/40 text-red-300'
+                }`}
+              >
+                {subscriptionMessage.text}
+              </div>
+            )}
+
+            <SubscriptionPricingCards
+              plans={publicSubscriptionPlans}
+              loading={publicCatalogLoading}
+              checkoutPlanId={subscriptionCheckoutPlanId}
+              checkoutLoading={subscriptionCheckoutLoading}
+              onContinue={handleSubscriptionContinue}
+              isLoggedIn={Boolean(profile)}
+              onLoginRequired={handleSubscriptionLoginRequired}
+            />
+
+            {subscriptionCheckoutPreferenceId && (
+              <div className="mx-auto mt-8 max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+                <p className="mb-3 text-center text-xs text-zinc-400">
+                  Completá el pago con Mercado Pago para activar tu abono.
+                </p>
+                <Wallet
+                  initialization={{ preferenceId: subscriptionCheckoutPreferenceId, redirectMode: 'self' }}
+                  locale="es-AR"
+                  customization={{ theme: 'dark' }}
+                  onError={(err) => {
+                    setSubscriptionMessage({
+                      kind: 'err',
+                      text: err.message || 'Error al cargar el botón de pago',
+                    });
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {showProductsSection && (
+        <ShopCatalogSection
+          products={publicShopProducts}
+          isLoggedIn={Boolean(profile)}
+          cart={shopCart}
+          cartLines={shopCartLines}
+          cartTotal={shopCartTotal}
+          cartCount={shopCartCount}
+          onSetQty={setShopCartQty}
+          onProductsPurchased={clearShopCart}
+          onRequireLogin={() =>
+            navigate('/login', { state: { from: { pathname: '/', hash: '#productos' } } })
+          }
+        />
+      )}
 
       {/* Ubicación */}
       <section id="contacto" className="border-y border-zinc-900 bg-zinc-950 px-4 py-12 sm:px-6 sm:py-16 md:py-20">

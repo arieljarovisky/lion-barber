@@ -54,6 +54,10 @@ import {
 import { getPendingPaymentMinutes, paymentDueAtFromNow } from '../depositPayment.js';
 import { parseMercadoPagoTransactionAmountArs } from '../mercadopagoAmount.js';
 import { refundPaymentTotal } from '../mercadopagoRefund.js';
+import {
+  mercadoPagoPaidAt,
+  recordWebSubscriptionInCash,
+} from '../services/webSubscriptionCash.js';
 
 const router = Router();
 
@@ -1146,7 +1150,10 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
   if (payment.status !== 'approved') return;
 
   const existingSubPayment = await getSubscriptionPaymentByMpId(paymentId);
-  if (existingSubPayment) return;
+  if (existingSubPayment) {
+    await noteWebSubscriptionInCash(paymentId, existingSubPayment.userId, existingSubPayment.planId, payment);
+    return;
+  }
 
   const existingProductPayment = await getProductPaymentByMpId(paymentId);
   if (existingProductPayment) return;
@@ -1192,14 +1199,16 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       userId,
       planId: subRef.p,
     });
-    if (!inserted) return;
-    try {
-      await assignSubscriptionPlanToClient(userId, subRef.p);
-      console.log(`[Webhook MP] abono asignado user=${userId} plan=${subRef.p}`);
-      void notifyClientSubscriptionActivated(userId);
-    } catch (e) {
-      console.error('Webhook MP: no se pudo asignar abono', e);
+    if (inserted) {
+      try {
+        await assignSubscriptionPlanToClient(userId, subRef.p);
+        console.log(`[Webhook MP] abono asignado user=${userId} plan=${subRef.p}`);
+        void notifyClientSubscriptionActivated(userId);
+      } catch (e) {
+        console.error('Webhook MP: no se pudo asignar abono', e);
+      }
     }
+    await noteWebSubscriptionInCash(paymentId, userId, subRef.p, payment);
     return;
   }
 
@@ -1311,6 +1320,28 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
     const code = (e as { code?: string }).code;
     if (code === 'ER_DUP_ENTRY') return;
     console.error('Webhook MP: no se pudo crear el turno (revisá cupo / reembolso)', e);
+  }
+}
+
+async function noteWebSubscriptionInCash(
+  paymentId: string,
+  userId: number,
+  planId: string,
+  payment: unknown
+): Promise<void> {
+  try {
+    const created = await recordWebSubscriptionInCash({
+      mercadopagoPaymentId: paymentId,
+      userId,
+      planId,
+      amountArs: parseMercadoPagoTransactionAmountArs(payment),
+      paidAt: mercadoPagoPaidAt(payment),
+    });
+    if (created) {
+      console.log(`[Webhook MP] abono web anotado en caja pago=${paymentId} user=${userId}`);
+    }
+  } catch (e) {
+    console.error('Webhook MP: no se pudo anotar el abono en la caja', e);
   }
 }
 

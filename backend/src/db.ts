@@ -975,6 +975,24 @@ export async function initDb(): Promise<void> {
       'ALTER TABLE counter_sales ADD COLUMN subscription_amount_ars DECIMAL(14,2) NOT NULL DEFAULT 0'
     );
   }
+  if (!(await tableHasColumn('counter_sales', 'sale_channel'))) {
+    await pool.execute(
+      "ALTER TABLE counter_sales ADD COLUMN sale_channel VARCHAR(20) NOT NULL DEFAULT 'counter'"
+    );
+  }
+  if (!(await tableHasColumn('counter_sales', 'mercadopago_payment_id'))) {
+    await pool.execute(
+      'ALTER TABLE counter_sales ADD COLUMN mercadopago_payment_id VARCHAR(64) NULL'
+    );
+  }
+  try {
+    await pool.execute(
+      'CREATE UNIQUE INDEX uq_counter_sales_mp ON counter_sales (mercadopago_payment_id)'
+    );
+  } catch (e: unknown) {
+    const code = (e as { code?: string }).code;
+    if (code !== 'ER_DUP_KEYNAME') throw e;
+  }
 
   const serviceCountRows = await query<{ count: number }[]>('SELECT COUNT(*) as count FROM services');
   if (serviceCountRows[0].count === 0) {

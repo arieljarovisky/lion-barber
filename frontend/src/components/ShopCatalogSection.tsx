@@ -178,7 +178,7 @@ export default function ShopCatalogSection({
               </p>
             ) : (
               <p className="mb-3 text-center text-[11px] text-zinc-500">
-                Pagá solo los productos acá, o bajá a{' '}
+                Pagá solo los productos acá, o andá a{' '}
                 <a href="#reserva" className="font-bold text-[#e5c185] underline">
                   Reservar turno
                 </a>{' '}

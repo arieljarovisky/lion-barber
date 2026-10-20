@@ -289,7 +289,7 @@ export default function WeeklyCashClosePage() {
               <p className="mt-1 text-sm text-zinc-500 max-w-xl">
                 Resumen de turnos confirmados por día, semana (lunes a domingo) o mes calendario: señas por Mercado Pago, saldo en local,
                 comisión del barbero ({BARBER_COMMISSION_PERCENT}% del servicio y {BARBER_PRODUCT_COMMISSION_PERCENT}% de
-                los productos cargados en el turno) y facturación AFIP. Las ventas de Nueva venta (productos y abonos) entran por el total cobrado y no comisionan a ningún barbero. Los gastos de caja se cargan en Gastos y acá figura quién los registró. No incluye turnos con seña
+                los productos cargados en el turno) y facturación AFIP. Las ventas de Nueva venta (productos y abonos) y los abonos pagados desde la web entran por el total cobrado y no comisionan a ningún barbero. Los gastos de caja se cargan en Gastos y acá figura quién los registró. No incluye turnos con seña
                 pendiente.
               </p>
             </div>
@@ -509,7 +509,7 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Cobrado en local"
                   value={`$${formatArs(summary.localPending)}`}
-                  hint="Efectivo, tarjeta, Mercado Pago y ventas de productos. Sin lo fiado"
+                  hint="Efectivo, tarjeta, Mercado Pago, productos y abonos. Incluye los abonos pagados en la web. Sin lo fiado"
                   accent="amber"
                 />
                 {summary.localByMethod.account > 0 && (
@@ -817,7 +817,7 @@ export default function WeeklyCashClosePage() {
                   <div>
                     <h2 className="font-black text-zinc-900">Ventas de productos y abonos</h2>
                     <p className="mt-0.5 text-xs text-zinc-500">
-                      Nueva venta entra completa en la caja y no comisiona. El abono se asigna al cliente. Para anular, hacelo desde la agenda de ese día.
+                      Nueva venta y los abonos pagados en la web entran completos en la caja, por Mercado Pago, y no comisionan. El abono se asigna al cliente. Para anular una venta de mostrador, hacelo desde la agenda de ese día.
                     </p>
                   </div>
                   <p className="text-sm font-bold tabular-nums text-emerald-800">

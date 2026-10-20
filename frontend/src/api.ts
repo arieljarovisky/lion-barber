@@ -379,8 +379,9 @@ export interface CashExpense {
   createdAt: string;
 }
 
-/** Venta en el local (productos y/o abono). El importe entra en la caja y no comisiona. */
+/** Venta en el local o abono pagado en la web. El importe entra en la caja y no comisiona. */
 export type CounterSalePaymentMethod = 'cash' | 'card' | 'mercadopago';
+export type CounterSaleChannel = 'counter' | 'web';
 
 export interface CounterSale {
   id: number;
@@ -397,6 +398,8 @@ export interface CounterSale {
   createdByUserId?: number | null;
   createdByName?: string | null;
   createdAt: string;
+  /** `web`: abono pagado online. `counter`: venta cargada en el local. */
+  saleChannel?: CounterSaleChannel;
 }
 
 export interface SubscriptionPlan {

@@ -4,6 +4,8 @@ import type { AppointmentProductLine } from '../types.js';
 
 export type CounterSalePaymentMethod = 'cash' | 'card' | 'mercadopago';
 
+export type CounterSaleChannel = 'counter' | 'web';
+
 export interface CounterSale {
   id: number;
   saleDate: string;
@@ -19,6 +21,9 @@ export interface CounterSale {
   createdByUserId: number | null;
   createdByName: string | null;
   createdAt: string;
+  /** `web`: abono pagado online. `counter`: venta cargada en el local. */
+  saleChannel: CounterSaleChannel;
+  mercadopagoPaymentId: string | null;
 }
 
 interface DbRow {
@@ -36,10 +41,12 @@ interface DbRow {
   created_by_user_id: number | null;
   created_by_name: string | null;
   created_at: string | Date;
+  sale_channel?: string | null;
+  mercadopago_payment_id?: string | null;
 }
 
 const COLUMNS =
-  'id, sale_date, buyer_name, client_user_id, payment_method, products, total_ars, subscription_plan_id, subscription_plan_name, subscription_group_id, subscription_amount_ars, created_by_user_id, created_by_name, created_at';
+  'id, sale_date, buyer_name, client_user_id, payment_method, products, total_ars, subscription_plan_id, subscription_plan_name, subscription_group_id, subscription_amount_ars, created_by_user_id, created_by_name, created_at, sale_channel, mercadopago_payment_id';
 
 function rowDateToYmd(v: unknown): string {
   if (typeof v === 'string') return v.slice(0, 10);
@@ -87,6 +94,8 @@ function rowToSale(row: DbRow): CounterSale {
     createdByUserId: row.created_by_user_id ?? null,
     createdByName: row.created_by_name?.trim() || null,
     createdAt,
+    saleChannel: row.sale_channel === 'web' ? 'web' : 'counter',
+    mercadopagoPaymentId: row.mercadopago_payment_id?.trim() || null,
   };
 }
 
@@ -106,6 +115,18 @@ export async function getCounterSaleById(id: number): Promise<CounterSale | null
   return rows[0] ? rowToSale(rows[0]) : null;
 }
 
+export async function getCounterSaleByMercadopagoPaymentId(
+  mercadopagoPaymentId: string
+): Promise<CounterSale | null> {
+  const id = mercadopagoPaymentId.trim();
+  if (!id) return null;
+  const rows = await query<DbRow[]>(
+    `SELECT ${COLUMNS} FROM counter_sales WHERE mercadopago_payment_id = ? LIMIT 1`,
+    [id]
+  );
+  return rows[0] ? rowToSale(rows[0]) : null;
+}
+
 export async function createCounterSale(data: {
   saleDate: string;
   buyerName: string | null;
@@ -118,6 +139,8 @@ export async function createCounterSale(data: {
   subscriptionAmountArs: number;
   createdByUserId: number | null;
   createdByName: string | null;
+  saleChannel?: CounterSaleChannel;
+  mercadopagoPaymentId?: string | null;
 }): Promise<CounterSale> {
   const productTotal = sumAppointmentProducts(data.products);
   const subscriptionAmount = Math.max(0, Math.round(data.subscriptionAmountArs));
@@ -126,8 +149,8 @@ export async function createCounterSale(data: {
     `INSERT INTO counter_sales
       (sale_date, buyer_name, client_user_id, payment_method, products, total_ars,
        subscription_plan_id, subscription_plan_name, subscription_group_id, subscription_amount_ars,
-       created_by_user_id, created_by_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       created_by_user_id, created_by_name, sale_channel, mercadopago_payment_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.saleDate,
       data.buyerName,
@@ -141,6 +164,8 @@ export async function createCounterSale(data: {
       subscriptionAmount,
       data.createdByUserId,
       data.createdByName,
+      data.saleChannel === 'web' ? 'web' : 'counter',
+      data.mercadopagoPaymentId?.trim() || null,
     ]
   );
   const id = (res as { insertId: number }).insertId;

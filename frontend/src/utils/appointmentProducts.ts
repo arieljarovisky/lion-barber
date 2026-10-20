@@ -57,6 +57,7 @@ export function formatCounterSaleSummary(
     products?: AppointmentProductLine[] | null;
     subscriptionPlanName?: string | null;
     paymentMethod: string;
+    saleChannel?: 'counter' | 'web' | null;
   },
   paymentLabel: string
 ): string {
@@ -65,6 +66,7 @@ export function formatCounterSaleSummary(
   if (planName) parts.push(`Abono ${planName}`);
   const products = formatAppointmentProductsSummary(sale.products);
   if (products) parts.push(products);
+  if (sale.saleChannel === 'web') parts.push('Pagado en la web');
   if (paymentLabel) parts.push(paymentLabel);
   return parts.join(' · ');
 }

@@ -26,6 +26,7 @@ import pointsRedemptionOptions from './routes/pointsRedemptionOptions.js';
 import { runAppointmentReminderEmails } from './jobs/runAppointmentReminderEmails.js';
 import { runExpirePendingPayments } from './jobs/runExpirePendingPayments.js';
 import { backfillMissingDepositAmountsFromMercadoPago } from './services/mercadopagoDepositBackfill.js';
+import { backfillWebSubscriptionCashSales } from './services/webSubscriptionCash.js';
 import { getProductUploadsDir, migrateLegacyProductImages } from './services/productImageUpload.js';
 
 const app = express();
@@ -79,6 +80,9 @@ async function start() {
     logMercadoPagoEnvHint();
     void backfillMissingDepositAmountsFromMercadoPago().catch((e) =>
       console.warn('[MP backfill] no se pudo completar:', e)
+    );
+    void backfillWebSubscriptionCashSales().catch((e) =>
+      console.warn('[caja] no se pudieron sumar abonos web:', e)
     );
   } catch (err) {
     console.error('Error al iniciar la base de datos:', err);
