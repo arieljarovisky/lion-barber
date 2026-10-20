@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { parseArsAmount } from './arsAmount.js';
 
 const pool = mysql.createPool({
   host: process.env.MYSQL_HOST ?? 'localhost',
@@ -16,6 +17,50 @@ const pool = mysql.createPool({
 export async function query<T = unknown>(sql: string, params?: unknown[]): Promise<T> {
   const [rows] = await pool.execute(sql, params as (string | number | null | boolean)[]);
   return rows as T;
+}
+
+/**
+ * Turnos de abono ya cobrados no guardaban el plan. Si el cliente sigue con ese abono,
+ * copiamos precio y cortes para liquidar la comisión como precio ÷ cortes.
+ */
+async function backfillAppointmentSubscriptionPlanSnapshots(): Promise<void> {
+  if (!(await tableHasColumn('appointments', 'subscription_plan_price_ars'))) return;
+  if (!(await tableHasColumn('appointments', 'subscription_cut_applied'))) return;
+  if (!(await tableHasColumn('users', 'subscription_group_id'))) return;
+
+  const rows = await query<
+    {
+      id: number;
+      monthly_price: string | null;
+      cuts_per_month: number | string | null;
+      plan_id: string | null;
+    }[]
+  >(
+    `SELECT a.id,
+            COALESCE(gp.monthly_price, up.monthly_price) AS monthly_price,
+            COALESCE(gp.cuts_per_month, up.cuts_per_month) AS cuts_per_month,
+            COALESCE(g.subscription_plan_id, u.subscription_plan_id) AS plan_id
+     FROM appointments a
+     JOIN users u ON u.id = a.user_id
+     LEFT JOIN client_subscription_groups g ON g.id = u.subscription_group_id
+     LEFT JOIN subscription_plans gp ON gp.id = g.subscription_plan_id
+     LEFT JOIN subscription_plans up ON up.id = u.subscription_plan_id
+     WHERE a.subscription_cut_applied = 1
+       AND a.subscription_plan_price_ars IS NULL`
+  );
+
+  for (const row of rows) {
+    const cuts = Number(row.cuts_per_month);
+    const price = parseArsAmount(row.monthly_price);
+    const planId = row.plan_id?.trim();
+    if (!planId || !Number.isFinite(cuts) || cuts <= 0 || price == null) continue;
+    await pool.execute(
+      `UPDATE appointments
+       SET subscription_plan_id = ?, subscription_plan_price_ars = ?, subscription_plan_cuts = ?
+       WHERE id = ? AND subscription_plan_price_ars IS NULL`,
+      [planId, Math.round(price), Math.floor(cuts), row.id]
+    );
+  }
 }
 
 async function tableHasColumn(table: string, column: string): Promise<boolean> {
@@ -782,6 +827,24 @@ export async function initDb(): Promise<void> {
   } catch (e: unknown) {
     if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
   }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN subscription_plan_id VARCHAR(50) NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute(
+      'ALTER TABLE appointments ADD COLUMN subscription_plan_price_ars DECIMAL(12,2) NULL'
+    );
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  try {
+    await pool.execute('ALTER TABLE appointments ADD COLUMN subscription_plan_cuts INT NULL');
+  } catch (e: unknown) {
+    if ((e as { code?: string }).code !== 'ER_DUP_FIELDNAME') throw e;
+  }
+  await backfillAppointmentSubscriptionPlanSnapshots();
 
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS shop_settings (

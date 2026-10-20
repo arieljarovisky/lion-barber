@@ -2349,7 +2349,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="text-base font-black text-zinc-900">Estadísticas por barbero</h3>
               <span className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-                Ingreso estimado: {BARBER_COMMISSION_PERCENT}% del servicio. Abono: 5 de 6. Canje de Agustín y Canje 100% no suman
+                Ingreso estimado: {BARBER_COMMISSION_PERCENT}% del servicio. En abono, {BARBER_COMMISSION_PERCENT}% del costo del corte. Canje de Agustín y Canje 100% no suman
               </span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

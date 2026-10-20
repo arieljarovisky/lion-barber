@@ -1,3 +1,4 @@
+import { parseArsAmount } from '../arsAmount.js';
 import { query } from '../db.js';
 import type { Appointment, ServicePaymentSplit } from '../types.js';
 import {
@@ -377,6 +378,39 @@ function splitsUseSubscription(splits: ServicePaymentSplit[] | null | undefined)
   return Boolean(splits?.some((s) => s.method === 'subscription' && s.amount > 0));
 }
 
+async function clearAppointmentSubscriptionCut(appointmentId: string): Promise<void> {
+  await query(
+    `UPDATE appointments
+     SET subscription_cut_applied = 0,
+         subscription_plan_id = NULL,
+         subscription_plan_price_ars = NULL,
+         subscription_plan_cuts = NULL
+     WHERE id = ?`,
+    [appointmentId]
+  );
+}
+
+async function markAppointmentSubscriptionCut(
+  appointmentId: string,
+  status: ClientSubscriptionStatus
+): Promise<void> {
+  const price = parseArsAmount(status.monthlyPrice);
+  await query(
+    `UPDATE appointments
+     SET subscription_cut_applied = 1,
+         subscription_plan_id = ?,
+         subscription_plan_price_ars = ?,
+         subscription_plan_cuts = ?
+     WHERE id = ?`,
+    [
+      status.planId,
+      price != null ? Math.round(price) : null,
+      status.cutsPerMonth > 0 ? status.cutsPerMonth : null,
+      appointmentId,
+    ]
+  );
+}
+
 export async function syncSubscriptionCutWithPayment(
   appointment: Appointment,
   newSplits: ServicePaymentSplit[] | null | undefined
@@ -389,21 +423,21 @@ export async function syncSubscriptionCutWithPayment(
     if (uid == null || !Number.isFinite(Number(uid))) {
       throw new Error('Vinculá el turno al cliente para cobrar con abono.');
     }
+    const status = await getClientSubscriptionStatus(Number(uid));
+    if (!status || status.cutsRemaining <= 0) {
+      throw new Error('El abono no tiene cortes disponibles.');
+    }
     const consumed = await tryConsumeSubscriptionCut(Number(uid));
     if (!consumed) {
       throw new Error('El abono no tiene cortes disponibles.');
     }
-    await query('UPDATE appointments SET subscription_cut_applied = 1 WHERE id = ?', [
-      appointment.id,
-    ]);
+    await markAppointmentSubscriptionCut(appointment.id, status);
   } else if (!usesNow && wasApplied) {
     const uid = appointment.userId;
     if (uid != null && Number.isFinite(Number(uid))) {
       await restoreSubscriptionCut(Number(uid));
     }
-    await query('UPDATE appointments SET subscription_cut_applied = 0 WHERE id = ?', [
-      appointment.id,
-    ]);
+    await clearAppointmentSubscriptionCut(appointment.id);
   }
 }
 
@@ -424,9 +458,7 @@ export async function onAppointmentCancelled(appointment: {
   const uid = appointment.userId;
   if (uid == null || !appointment.subscriptionCutApplied) return;
   await restoreSubscriptionCut(Number(uid));
-  await query('UPDATE appointments SET subscription_cut_applied = 0 WHERE id = ?', [
-    appointment.id,
-  ]);
+  await clearAppointmentSubscriptionCut(appointment.id);
 }
 
 async function assertClientRole(userId: number): Promise<void> {

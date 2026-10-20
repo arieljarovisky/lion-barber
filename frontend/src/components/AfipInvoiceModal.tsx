@@ -328,8 +328,9 @@ export default function AfipInvoiceModal({
             </p>
             <p className="mt-2 text-xs text-zinc-500">
               AFIP factura el importe completo. Liquidación del barbero: {BARBER_COMMISSION_PERCENT}% del servicio
-              {productsSubtotal > 0 ? ` y ${BARBER_PRODUCT_COMMISSION_PERCENT}% de los productos` : ''}. En abono, el corte
-              vale 5 de cada 6. El canje de Agustín y Canje 100% no suman comisión (no reduce la factura).
+              {productsSubtotal > 0 ? ` y ${BARBER_PRODUCT_COMMISSION_PERCENT}% de los productos` : ''}. En abono, es el{' '}
+              {BARBER_COMMISSION_PERCENT}% del costo de un corte (precio del plan dividido por la cantidad de cortes). El
+              canje de Agustín y Canje 100% no suman comisión (no reduce la factura).
             </p>
             {(appointment.tipAmount ?? 0) > 0 && (
               <p className="mt-2 text-xs font-medium text-[#6b2030]">

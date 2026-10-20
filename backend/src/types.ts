@@ -74,6 +74,12 @@ export interface Appointment {
   products?: AppointmentProductLine[] | null;
   /** Si el turno consumió un corte del abono del cliente. */
   subscriptionCutApplied?: boolean;
+  /** Plan de abono vigente al consumir el corte. */
+  subscriptionPlanId?: string;
+  /** Precio total del abono (ARS) al consumir el corte. */
+  subscriptionPlanPriceArs?: number;
+  /** Cortes incluidos en ese abono. */
+  subscriptionPlanCuts?: number;
   /** Promoción aplicada al reservar (descuento por día). */
   promotionId?: string;
   /** La seña online cubrió todo el importe promocional (sin saldo en local). */

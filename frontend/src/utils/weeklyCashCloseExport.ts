@@ -2,11 +2,12 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import type { CashExpense, CounterSale } from '../api';
-import type {
-  CashClosePeriodMode,
-  WeeklyBarberSummary,
-  WeeklyCashRow,
-  WeeklyCashSummary,
+import {
+  formatAppointmentProductPaymentLabel,
+  type CashClosePeriodMode,
+  type WeeklyBarberSummary,
+  type WeeklyCashRow,
+  type WeeklyCashSummary,
 } from './weeklyCashClose';
 import {
   SERVICE_PAYMENT_METHODS,
@@ -39,6 +40,68 @@ function paymentLabel(r: WeeklyCashRow): string {
 /** — */
 const NA = '—';
 
+function productSalesListedTotal(summary: WeeklyCashSummary): number {
+  return summary.counterSalesTotal + summary.appointmentProductsTotal;
+}
+
+function productSaleExportRows(data: WeeklyCashCloseExportData): (string | number)[][] {
+  const detail = (
+    sortKey: string,
+    date: string,
+    buyer: string,
+    lines: { name: string; quantity: number; unitPrice: number; subtotal: number }[],
+    fallbackAmount: number,
+    payment: string,
+    loadedBy: string
+  ) => {
+    const priced = lines.filter((line) => line.quantity > 0 && line.subtotal > 0);
+    const source =
+      priced.length > 0
+        ? priced
+        : [{ name: 'Producto sin detalle', quantity: 0, unitPrice: 0, subtotal: fallbackAmount }];
+    return source.map((line, index) => ({
+      sortKey: `${sortKey} ${String(index).padStart(2, '0')}`,
+      cells: [
+        date,
+        buyer,
+        line.name,
+        line.quantity > 0 ? line.quantity : NA,
+        line.unitPrice > 0 ? line.unitPrice : NA,
+        line.subtotal,
+        payment,
+        loadedBy,
+      ] as (string | number)[],
+    }));
+  };
+  const fromTurns = data.rows
+    .filter((row) => row.productsSoldAmount > 0)
+    .flatMap((row) =>
+      detail(
+        `${row.date} ${row.time}`,
+        row.date,
+        row.clientName,
+        row.productLines,
+        row.productsSoldAmount,
+        formatAppointmentProductPaymentLabel(row),
+        row.barberName
+      )
+    );
+  const fromCounter = (data.counterSales ?? []).flatMap((sale) =>
+    detail(
+      `${sale.saleDate} 99:99`,
+      sale.saleDate,
+      sale.buyerName?.trim() || 'Mostrador',
+      sale.products ?? [],
+      sale.totalArs,
+      SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod],
+      sale.createdByName?.trim() || NA
+    )
+  );
+  return [...fromTurns, ...fromCounter]
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    .map((row) => row.cells);
+}
+
 export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): void {
   const wb = XLSX.utils.book_new();
 
@@ -61,7 +124,7 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
     ['Total ingreso servicios en caja (ARS)', data.summary.serviceGross],
     ['Señas Mercado Pago (ARS)', data.summary.depositsMp],
     ['Cobrado en local (ARS)', data.summary.localPending],
-    ['Ventas de productos (ARS)', data.summary.counterSalesTotal],
+    ['Ventas de productos (ARS)', productSalesListedTotal(data.summary)],
     ['Abono y canje — referencia (ARS)', data.summary.nonCashServiceTotal],
     ['Comisiones barberos (ARS)', data.summary.commissions],
     ['Propinas (ARS)', data.summary.tipsTotal],
@@ -161,17 +224,8 @@ export function exportWeeklyCashCloseExcel(data: WeeklyCashCloseExportData): voi
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(expenseRows), 'Gastos de caja');
 
   const saleRows: (string | number)[][] = [
-    ['Fecha', 'Comprador', 'Productos', 'Pago', 'Importe (ARS)', 'Cargó'],
-    ...(data.counterSales ?? []).map((sale) => [
-      sale.saleDate,
-      sale.buyerName?.trim() || 'Mostrador',
-      (sale.products ?? [])
-        .map((line) => `${line.quantity}× ${line.name}`)
-        .join(', ') || NA,
-      SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod],
-      sale.totalArs,
-      sale.createdByName?.trim() || NA,
-    ]),
+    ['Fecha', 'Comprador', 'Producto', 'Cantidad', 'Unitario (ARS)', 'Importe (ARS)', 'Pago', 'Cargó'],
+    ...productSaleExportRows(data),
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(saleRows), 'Ventas de productos');
 
@@ -231,7 +285,7 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
       ['Total servicios', `$${data.summary.serviceGross.toLocaleString('es-AR')}`],
       ['Señas (Mercado Pago)', `$${data.summary.depositsMp.toLocaleString('es-AR')}`],
       ['Por cobrar en local', `$${data.summary.localPending.toLocaleString('es-AR')}`],
-      ['Ventas de productos', `$${data.summary.counterSalesTotal.toLocaleString('es-AR')}`],
+      ['Ventas de productos', `$${productSalesListedTotal(data.summary).toLocaleString('es-AR')}`],
       ['Comisiones barberos', `$${data.summary.commissions.toLocaleString('es-AR')}`],
       ['Propinas', `$${data.summary.tipsTotal.toLocaleString('es-AR')}`],
       ['Neto local (est.)', `$${data.summary.shopNetEstimate.toLocaleString('es-AR')}`],
@@ -315,22 +369,23 @@ export function exportWeeklyCashClosePdf(data: WeeklyCashCloseExportData): void 
     margin: { left: 10, right: 10 },
   });
 
-  const counterSales = data.counterSales ?? [];
-  if (counterSales.length > 0) {
+  const productSales = productSaleExportRows(data);
+  if (productSales.length > 0) {
     y = nextY(doc);
     y = addSectionTitle(doc, 'Ventas de productos', y);
     autoTable(doc, {
       startY: y,
-      head: [['Fecha', 'Comprador', 'Pago', 'Importe']],
-      body: counterSales.map((sale) => [
-        sale.saleDate,
-        sale.buyerName?.trim() || 'Mostrador',
-        SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod],
-        `$${sale.totalArs.toLocaleString('es-AR')}`,
+      head: [['Fecha', 'Comprador', 'Producto', 'Cant.', 'Importe']],
+      body: productSales.map((sale) => [
+        String(sale[0]),
+        String(sale[1]),
+        String(sale[2]),
+        String(sale[3]),
+        `$${Number(sale[5]).toLocaleString('es-AR')}`,
       ]),
       styles: { fontSize: 8, cellPadding: 1.5 },
       headStyles: { fillColor: PDF_GOLD, textColor: [30, 30, 30], fontStyle: 'bold' },
-      columnStyles: { 3: { halign: 'right' } },
+      columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' } },
       margin: { left: 14, right: 14 },
     });
   }

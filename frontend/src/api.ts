@@ -143,6 +143,12 @@ export interface Appointment {
   updatedByUserId?: number;
   /** Si se descontó un corte del abono al cobrar con método Abono. */
   subscriptionCutApplied?: boolean;
+  /** Plan de abono vigente al consumir el corte. */
+  subscriptionPlanId?: string;
+  /** Precio total del abono (ARS) al consumir el corte. */
+  subscriptionPlanPriceArs?: number;
+  /** Cortes incluidos en ese abono. La comisión usa precio ÷ cortes. */
+  subscriptionPlanCuts?: number;
   /** Promoción aplicada al reservar. */
   promotionId?: string;
   /** La seña cubrió todo el importe promocional (sin saldo en local). */

@@ -2,11 +2,22 @@
 export const BARBER_COMMISSION_PERCENT = 50;
 
 /**
- * El abono incluye 6 cortes y se paga como 5.
- * La comisión de cada corte usa 5/6 del valor del servicio (ej. $24.000 → $20.000, y al 50% son $10.000).
+ * Respaldo para turnos de abono viejos, sin precio del plan guardado.
+ * Esos cortes se liquidan como 5 de 6 del valor del servicio.
  */
 export const SUBSCRIPTION_COMMISSION_PAID_CUTS = 5;
 export const SUBSCRIPTION_INCLUDED_CUTS = 6;
+
+/** Costo de un corte del abono: precio del plan dividido por la cantidad de cortes. */
+export function subscriptionCutCostArs(
+  planPriceArs: number | null | undefined,
+  cuts: number | null | undefined
+): number | null {
+  if (planPriceArs == null || cuts == null) return null;
+  if (!Number.isFinite(planPriceArs) || !Number.isFinite(cuts)) return null;
+  if (planPriceArs <= 0 || cuts <= 0) return null;
+  return Math.round(planPriceArs / cuts);
+}
 
 /** Comisión del barbero sobre productos cargados en el turno. */
 export const BARBER_PRODUCT_COMMISSION_PERCENT = 10;

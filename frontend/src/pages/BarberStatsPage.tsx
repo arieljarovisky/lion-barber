@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api } from '../api';
 import type { Appointment, Barber, Service, AdminClientWithHistory } from '../api';
+import { DEPOSIT_PERCENT } from '../constants/deposit';
+import { appointmentCommissionableServiceAmountArs } from '../utils/servicePaymentMethod';
 import { resolveAppointmentServiceAmountArs } from '../utils/money';
 import ClientProfileLink from '../components/ClientProfileLink';
 
@@ -91,7 +93,13 @@ export default function BarberStatsPage() {
       const barberName = (barberId ? byId.get(barberId) : app.barber) ?? app.barber ?? 'Sin barbero';
       const barberKey = barberId || `name:${barberName}`;
       const amount = resolveAppointmentServiceAmountArs(app, services) ?? 0;
-      const earning = Math.round(amount * BARBER_SHARE);
+      const commissionable = appointmentCommissionableServiceAmountArs(
+        app,
+        services,
+        DEPOSIT_PERCENT,
+        barberName
+      );
+      const earning = Math.round(commissionable * BARBER_SHARE);
       out.push({
         barberKey,
         barberId: barberId || '',
@@ -156,7 +164,10 @@ export default function BarberStatsPage() {
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-black tracking-tight sm:text-3xl">Estadísticas de barberos</h1>
-            <p className="mt-1 text-sm text-zinc-500">Ganancia estimada calculada como 50% del valor del servicio.</p>
+            <p className="mt-1 text-sm text-zinc-500">
+              Ganancia estimada: 50% del servicio. En abono, 50% del costo de un corte (precio del plan dividido por la
+              cantidad de cortes).
+            </p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <label className="text-xs font-bold uppercase tracking-wide text-zinc-500">

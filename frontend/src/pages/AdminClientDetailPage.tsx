@@ -12,7 +12,6 @@ import { useAuth } from '../contexts/AuthContext';
 import type { AdminClientWithHistory, SubscriptionPlan } from '../api';
 import {
   adminAppointmentStatusBadge,
-  clientPreferredBarber,
   clientVisitFrequency,
   formatAppointmentDateYmd,
   formatPhonesForInput,
@@ -67,10 +66,6 @@ export default function AdminClientDetailPage() {
   const emailLocked = Boolean(client?.hasGoogleAccount);
   const visitFrequency = useMemo(
     () => (client ? clientVisitFrequency(client.appointments) : null),
-    [client]
-  );
-  const preferredBarber = useMemo(
-    () => (client ? clientPreferredBarber(client.appointments) : null),
     [client]
   );
 
@@ -498,8 +493,8 @@ export default function AdminClientDetailPage() {
                     )}
                   </div>
                 </div>
-                {visitFrequency && preferredBarber && (
-                  <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {visitFrequency && (
+                  <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div className="rounded-xl border border-zinc-100 bg-white px-4 py-3">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Frecuencia</p>
                       <p className="mt-1 text-lg font-black text-zinc-900">{visitFrequency.label}</p>
@@ -528,13 +523,6 @@ export default function AdminClientDetailPage() {
                             } ${formatAppointmentDateYmd(visitFrequency.nextVisitYmd)}`
                           : 'Sin fecha estimada de regreso'}
                       </p>
-                    </div>
-                    <div className="rounded-xl border border-zinc-100 bg-white px-4 py-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                        Barbero preferido
-                      </p>
-                      <p className="mt-1 text-lg font-black text-zinc-900">{preferredBarber.name ?? '—'}</p>
-                      <p className="mt-0.5 text-xs text-zinc-500">{preferredBarber.detail}</p>
                     </div>
                   </div>
                 )}

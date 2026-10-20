@@ -3,15 +3,24 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Lock, Printer, Unlock, Wallet } from 'lucide-react';
 import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api, ApiError } from '../api';
-import type { Appointment, Barber, CashExpense, CounterSale, DailyCashClose, Service, AdminClientWithHistory } from '../api';
+import type {
+  AdminClientWithHistory,
+  Appointment,
+  AppointmentProductLine,
+  Barber,
+  CashExpense,
+  CounterSale,
+  DailyCashClose,
+  Service,
+} from '../api';
 import { useAuth } from '../contexts/AuthContext';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { formatArs } from '../utils/money';
-import { formatAppointmentProductsSummary } from '../utils/appointmentProducts';
 import {
   applyCounterSalesToCashClose,
   buildWeeklyCashClose,
+  formatAppointmentProductPaymentLabel,
   periodBoundsFromAnchor,
   formatPeriodLabel,
   shiftPeriodAnchor,
@@ -172,6 +181,36 @@ export default function WeeklyCashClosePage() {
     () => applyCounterSalesToCashClose(builtClose.summary, counterSales),
     [builtClose.summary, counterSales]
   );
+  const productSalesTotal = summary.counterSalesTotal + summary.appointmentProductsTotal;
+  const productSales = useMemo(() => {
+    const fromTurns = rows
+      .filter((row) => row.productsSoldAmount > 0)
+      .flatMap((row) =>
+        productSaleDetails({
+          keyPrefix: `turn-${row.appointmentId}`,
+          sortKey: `${row.date} ${row.time}`,
+          date: row.date,
+          buyer: row.clientName,
+          lines: row.productLines,
+          fallbackAmount: row.productsSoldAmount,
+          payment: formatAppointmentProductPaymentLabel(row),
+          loadedBy: row.barberName,
+        })
+      );
+    const fromCounter = counterSales.flatMap((sale) =>
+      productSaleDetails({
+        keyPrefix: `counter-${sale.id}`,
+        sortKey: `${sale.saleDate} 99:99`,
+        date: sale.saleDate,
+        buyer: sale.buyerName?.trim() || 'Mostrador',
+        lines: sale.products ?? [],
+        fallbackAmount: sale.totalArs,
+        payment: SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod],
+        loadedBy: sale.createdByName?.trim() || '—',
+      })
+    );
+    return [...fromTurns, ...fromCounter].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  }, [rows, counterSales]);
 
   const exportData = useMemo<WeeklyCashCloseExportData>(
     () => ({
@@ -478,7 +517,7 @@ export default function WeeklyCashClosePage() {
                   <SummaryCard
                     label="Abono y canje"
                     value={`$${formatArs(summary.nonCashServiceTotal)}`}
-                    hint="No entra plata en caja. Canje de los demás barberos: comisión al 50%. El de Agustín y Canje 100% no suman. Abono: 5 de 6 cortes"
+                    hint="No entra plata en caja. Canje de los demás barberos: comisión al 50%. El de Agustín y Canje 100% no suman. Abono: 50% del costo del corte"
                   />
                 )}
               </div>
@@ -487,7 +526,7 @@ export default function WeeklyCashClosePage() {
                 <SummaryCard
                   label="Comisiones barberos"
                   value={`$${formatArs(summary.commissions)}`}
-                  hint="50% de lo cobrado y de la cuenta corriente. Canje al 50% salvo Agustín. Canje 100% no suma. Abono: 5/6"
+                  hint="50% de lo cobrado y de la cuenta corriente. Canje al 50% salvo Agustín. Canje 100% no suma. Abono: 50% del precio del plan dividido por sus cortes"
                 />
                 <SummaryCard
                   label="Neto en caja (est.)"
@@ -720,7 +759,7 @@ export default function WeeklyCashClosePage() {
                                     : r.canjeAmount > 0 && r.subscriptionAmount <= 0 && r.localPending <= 0
                                       ? `${r.commissionPercent}% canje`
                                       : r.subscriptionAmount > 0 && r.localPending <= 0
-                                        ? `${r.commissionPercent}% abono`
+                                        ? `${r.commissionPercent}% del corte`
                                         : r.subscriptionAmount > 0
                                           ? `${r.commissionPercent}% cobrado`
                                           : `${r.commissionPercent}% serv.`}
@@ -752,42 +791,46 @@ export default function WeeklyCashClosePage() {
                     </p>
                   </div>
                   <p className="text-sm font-bold tabular-nums text-emerald-800">
-                    ${formatArs(summary.counterSalesTotal)}
+                    ${formatArs(productSalesTotal)}
                   </p>
                 </div>
-                {counterSales.length === 0 ? (
+                {productSales.length === 0 ? (
                   <p className="px-4 py-8 text-center text-sm text-zinc-500">
-                    Sin ventas de mostrador en{' '}
+                    Sin ventas de productos en{' '}
                     {periodMode === 'day' ? 'este día' : periodMode === 'month' ? 'este mes' : 'esta semana'}.
                   </p>
                 ) : (
                   <div className="cash-close-table-wrap overflow-x-auto">
-                    <table className="w-full min-w-[640px] text-left text-sm">
+                    <table className="w-full min-w-[860px] text-left text-sm">
                       <thead className="bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
                         <tr>
                           <th className="px-4 py-3">Fecha</th>
                           <th className="px-4 py-3">Comprador</th>
-                          <th className="px-4 py-3">Productos</th>
+                          <th className="px-4 py-3">Producto</th>
+                          <th className="px-4 py-3 text-right">Cant.</th>
+                          <th className="px-4 py-3 text-right">Unitario</th>
                           <th className="px-4 py-3">Pago</th>
                           <th className="px-4 py-3 text-right">Importe</th>
                           <th className="px-4 py-3">Cargó</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
-                        {counterSales.map((sale) => (
-                          <tr key={sale.id}>
-                            <td className="whitespace-nowrap px-4 py-3 tabular-nums text-zinc-700">{sale.saleDate}</td>
-                            <td className="px-4 py-3 font-medium text-zinc-900">
-                              {sale.buyerName?.trim() || 'Mostrador'}
+                        {productSales.map((sale) => (
+                          <tr key={sale.key}>
+                            <td className="whitespace-nowrap px-4 py-3 tabular-nums text-zinc-700">{sale.date}</td>
+                            <td className="px-4 py-3 font-medium text-zinc-900">{sale.buyer}</td>
+                            <td className="px-4 py-3 font-medium text-zinc-800">{sale.name}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-zinc-700">
+                              {sale.quantity > 0 ? sale.quantity : '—'}
                             </td>
-                            <td className="px-4 py-3 text-zinc-700">
-                              {formatAppointmentProductsSummary(sale.products) ?? '—'}
+                            <td className="px-4 py-3 text-right tabular-nums text-zinc-600">
+                              {sale.unitPrice > 0 ? `$${formatArs(sale.unitPrice)}` : '—'}
                             </td>
-                            <td className="px-4 py-3">{SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod]}</td>
+                            <td className="px-4 py-3">{sale.payment}</td>
                             <td className="px-4 py-3 text-right font-semibold tabular-nums">
-                              ${formatArs(sale.totalArs)}
+                              ${formatArs(sale.subtotal)}
                             </td>
-                            <td className="px-4 py-3 text-zinc-600">{sale.createdByName?.trim() || '—'}</td>
+                            <td className="px-4 py-3 text-zinc-600">{sale.loadedBy}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -844,7 +887,7 @@ export default function WeeklyCashClosePage() {
               <p className="mt-6 text-xs text-zinc-500 max-w-3xl">
                 Las señas son el {DEPOSIT_PERCENT}% del servicio. La comisión de productos ({BARBER_PRODUCT_COMMISSION_PERCENT}
                 %) suma apenas se cargan en el turno. «En local» es el saldo estimado (servicio −
-                seña). En un turno de abono la comisión toma 5 de cada 6 cortes del valor del servicio. El canje suma comisión
+                seña). En un turno de abono la comisión es el 50% del costo de un corte: precio del plan dividido por la cantidad de cortes. El canje suma comisión
                 al 50% para los barberos, salvo Agustín. Canje 100% no suma comisión ni al barbero ni al local. Registrá los cobros
                 en cada turno desde la agenda; podés combinar métodos (ej. efectivo + tarjeta) con el monto de cada uno.
               </p>
@@ -853,6 +896,47 @@ export default function WeeklyCashClosePage() {
         </DashboardPanelShell>
     </div>
   );
+}
+
+function productSaleDetails(input: {
+  keyPrefix: string;
+  sortKey: string;
+  date: string;
+  buyer: string;
+  lines: AppointmentProductLine[];
+  fallbackAmount: number;
+  payment: string;
+  loadedBy: string;
+}) {
+  const lines = input.lines.filter((line) => line.quantity > 0 && line.subtotal > 0);
+  if (lines.length === 0) {
+    return [
+      {
+        key: input.keyPrefix,
+        sortKey: input.sortKey,
+        date: input.date,
+        buyer: input.buyer,
+        name: 'Producto sin detalle',
+        quantity: 0,
+        unitPrice: 0,
+        subtotal: input.fallbackAmount,
+        payment: input.payment,
+        loadedBy: input.loadedBy,
+      },
+    ];
+  }
+  return lines.map((line, index) => ({
+    key: `${input.keyPrefix}-${line.productId}-${index}`,
+    sortKey: `${input.sortKey} ${String(index).padStart(2, '0')}`,
+    date: input.date,
+    buyer: input.buyer,
+    name: line.name,
+    quantity: line.quantity,
+    unitPrice: line.unitPrice,
+    subtotal: line.subtotal,
+    payment: input.payment,
+    loadedBy: input.loadedBy,
+  }));
 }
 
 function SummaryCard({

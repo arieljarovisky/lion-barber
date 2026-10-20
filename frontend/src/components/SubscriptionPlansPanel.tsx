@@ -3,7 +3,8 @@ import { Loader2, Pencil, Repeat, Trash2 } from 'lucide-react';
 import { api, ApiError } from '../api';
 import { useConfirm } from '../contexts/ConfirmContext';
 import type { SubscriptionPlan } from '../api';
-import { formatCatalogPriceArs } from '../utils/money';
+import { BARBER_COMMISSION_PERCENT, subscriptionCutCostArs } from '../constants/barberBusiness';
+import { formatCatalogPriceArs, parseArsAmount } from '../utils/money';
 
 type SubscriptionPlansPanelProps = {
   plans: SubscriptionPlan[];
@@ -14,6 +15,13 @@ type SubscriptionPlansPanelProps = {
 
 function featuresToText(features?: string[]): string {
   return (features ?? []).join('\n');
+}
+
+function planCutCommissionLabel(plan: Pick<SubscriptionPlan, 'monthlyPrice' | 'cutsPerMonth'>): string | null {
+  const cut = subscriptionCutCostArs(parseArsAmount(plan.monthlyPrice), plan.cutsPerMonth);
+  if (cut == null) return null;
+  const commission = Math.round((cut * BARBER_COMMISSION_PERCENT) / 100);
+  return `Comisión por corte: $${commission.toLocaleString('es-AR')} (${BARBER_COMMISSION_PERCENT}% de $${cut.toLocaleString('es-AR')})`;
 }
 
 function parseOptionalValidityDays(raw: string): number | null {
@@ -198,6 +206,7 @@ export default function SubscriptionPlansPanel({
           <p className="text-sm text-zinc-500">
             Configurá los abonos que se muestran en la web y podés asignar manualmente desde la ficha de cada cliente.
             Por defecto el abono termina al usar todos los cortes; opcionalmente podés limitar la vigencia en días.
+            La comisión del barbero en cada corte es el {BARBER_COMMISSION_PERCENT}% del precio del plan dividido por la cantidad de cortes.
           </p>
         </div>
       </div>
@@ -416,6 +425,9 @@ export default function SubscriptionPlansPanel({
                     {formatCatalogPriceArs(p.monthlyPrice)} · {p.cutsPerMonth} corte{p.cutsPerMonth === 1 ? '' : 's'}
                     {p.validityDays != null ? ` · ${p.validityDays} días de vigencia` : ' · sin vencimiento por fecha'}
                   </p>
+                  {planCutCommissionLabel(p) && (
+                    <p className="mt-0.5 text-xs font-medium text-[#8a6d3b]">{planCutCommissionLabel(p)}</p>
+                  )}
                   {p.description && <p className="mt-1 text-xs text-zinc-400">{p.description}</p>}
                 </div>
               )}

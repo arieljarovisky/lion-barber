@@ -3,6 +3,7 @@ import {
   barberCanjeSkipsCommission,
   SUBSCRIPTION_COMMISSION_PAID_CUTS,
   SUBSCRIPTION_INCLUDED_CUTS,
+  subscriptionCutCostArs,
 } from '../constants/barberBusiness';
 import {
   resolveAppointmentDepositAmountArs,
@@ -528,9 +529,20 @@ export function appointmentCollectibleLocalArs(
   );
 }
 
-/** Parte del abono que entra a comisión: 5 cortes pagos de los 6 incluidos. */
-export function subscriptionCommissionBaseArs(subscriptionCoverage: number): number {
+/**
+ * Base de comisión de un corte de abono.
+ * Con el plan guardado en el turno: precio del abono ÷ cantidad de cortes
+ * (ej. $192.000 / 10 = $19.200; al 50% el barbero se lleva $9.600).
+ * Sin ese dato, se usa 5/6 del valor cubierto.
+ */
+export function subscriptionCommissionBaseArs(
+  subscriptionCoverage: number,
+  planPriceArs?: number | null,
+  planCuts?: number | null
+): number {
   if (subscriptionCoverage <= 0) return 0;
+  const cutCost = subscriptionCutCostArs(planPriceArs, planCuts);
+  if (cutCost != null) return cutCost;
   return Math.round(
     (subscriptionCoverage * SUBSCRIPTION_COMMISSION_PAID_CUTS) / SUBSCRIPTION_INCLUDED_CUTS
   );
@@ -538,8 +550,8 @@ export function subscriptionCommissionBaseArs(subscriptionCoverage: number): num
 
 /**
  * Base de comisión del servicio.
- * Abono: 5/6 del valor cubierto. Canje: el total, salvo Agustín (0). Canje 100%: 0 para todos.
- * Cuenta corriente y cobros en efectivo, tarjeta o Mercado Pago suman el total.
+ * Abono: costo de un corte del plan (precio ÷ cortes). Canje: el total, salvo Agustín (0).
+ * Canje 100%: 0 para todos. Cuenta corriente y cobros en efectivo, tarjeta o Mercado Pago suman el total.
  */
 export function appointmentCommissionableServiceAmountArs(
   app: Appointment,
@@ -557,5 +569,12 @@ export function appointmentCommissionableServiceAmountArs(
     subscriptionCoverage + canje100 + canjeWithoutCommission
   );
   const charged = Math.max(0, serviceAmount - excluded);
-  return charged + subscriptionCommissionBaseArs(subscriptionCoverage);
+  return (
+    charged +
+    subscriptionCommissionBaseArs(
+      subscriptionCoverage,
+      app.subscriptionPlanPriceArs,
+      app.subscriptionPlanCuts
+    )
+  );
 }

@@ -16,12 +16,20 @@ import {
   isWithinInterval,
 } from 'date-fns';
 import { es } from 'date-fns/locale';
-import type { Appointment, Barber, Service, ServicePaymentMethod, ServicePaymentSplit } from '../api';
+import type {
+  Appointment,
+  AppointmentProductLine,
+  Barber,
+  Service,
+  ServicePaymentMethod,
+  ServicePaymentSplit,
+} from '../api';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { sumAppointmentProducts } from './appointmentProducts';
 import { resolveAppointmentDepositAmountArs, resolveAppointmentServiceAmountArs } from './money';
 import {
   SERVICE_PAYMENT_METHODS,
+  SERVICE_PAYMENT_METHOD_LABELS,
   accountDebtArsFromSplits,
   appointmentCanje100LocalAmountArs,
   appointmentCanjeLocalAmountArs,
@@ -29,6 +37,7 @@ import {
   appointmentCommissionableServiceAmountArs,
   appointmentSubscriptionLocalAmountArs,
   applySplitsToMethodTotals,
+  isNonCashLocalPaymentMethod,
 } from './servicePaymentMethod';
 
 /** Semana de cierre: lunes a domingo (Argentina). */
@@ -114,7 +123,7 @@ export type WeeklyCashRow = {
   barberKey: string;
   barberName: string;
   serviceAmount: number;
-  /** Parte del saldo local cubierta con abono (corte gratis, no entra a caja). */
+  /** Parte del saldo local cubierta con abono (no entra a caja en el turno). */
   subscriptionAmount: number;
   /** Parte del saldo local cubierta con canje (comisión al 50%, salvo Agustín). */
   canjeAmount: number;
@@ -127,6 +136,8 @@ export type WeeklyCashRow = {
   serviceCommissionAmount: number;
   productCommissionAmount: number;
   productsSoldAmount: number;
+  /** Productos cargados al cobrar el turno en la agenda. */
+  productLines: AppointmentProductLine[];
   commissionAmount: number;
   afipTotal: number | null;
   afipInvoiced: boolean;
@@ -180,6 +191,8 @@ export type WeeklyCashSummary = {
   tipsTotal: number;
   /** Ventas de productos en mostrador. Entran en caja y no generan comisión. */
   counterSalesTotal: number;
+  /** Productos cobrados dentro de un turno. Entran en caja y sí generan comisión. */
+  appointmentProductsTotal: number;
 };
 
 function rowAccountDebtArs(row: WeeklyCashRow): number {
@@ -336,6 +349,7 @@ export function buildWeeklyCashClose(
       serviceCommissionAmount: commissions.serviceCommissionAmount,
       productCommissionAmount: commissions.productCommissionAmount,
       productsSoldAmount: commissions.productsSoldAmount,
+      productLines: (app.products ?? []).filter((line) => line.quantity > 0 && line.subtotal > 0),
       commissionAmount: commissions.commissionAmount,
       afipTotal,
       afipInvoiced: Boolean(app.afipCae),
@@ -426,6 +440,7 @@ export function buildWeeklyCashClose(
       depositsMpByMethod: emptyPaymentMethodTotals(),
       tipsTotal: 0,
       counterSalesTotal: 0,
+      appointmentProductsTotal: 0,
     }
   );
   summary.tipsTotal = rows.reduce((s, r) => s + r.tipAmount, 0);
@@ -436,8 +451,81 @@ export function buildWeeklyCashClose(
   summary.serviceGross = Math.max(0, summary.serviceGross - fiadoEnCaja);
   summary.localPending = Math.max(0, summary.localPending - fiadoEnCaja);
   summary.shopNetEstimate = summary.serviceGross - summary.commissions;
+  applyAppointmentProductsToSummary(summary, rows);
 
   return { rows, byBarber, summary };
+}
+
+function cashPaidSplits(row: WeeklyCashRow): ServicePaymentSplit[] {
+  return (row.servicePaymentSplits ?? []).filter(
+    (split) =>
+      split.amount > 0 &&
+      split.method !== 'account' &&
+      !isNonCashLocalPaymentMethod(split.method)
+  );
+}
+
+/** El cobro del turno ya metió plata de productos en el desglose por método. */
+function productAmountAlreadyBooked(row: WeeklyCashRow): number {
+  const paid = cashPaidSplits(row);
+  if (!paid.length) return 0;
+  const splitSum = paid.reduce((sum, split) => sum + split.amount, 0);
+  return Math.max(0, splitSum - row.localPending);
+}
+
+function appointmentProductsEnterCash(row: WeeklyCashRow): boolean {
+  if (cashPaidSplits(row).length > 0) return true;
+  const method = row.servicePaymentMethod;
+  if (!method || method === 'account' || isNonCashLocalPaymentMethod(method)) return false;
+  return !row.servicePaymentSplits?.length;
+}
+
+function attributeProductGap(row: WeeklyCashRow, gap: number, totals: PaymentMethodTotals): void {
+  const paid = cashPaidSplits(row);
+  if (paid.length === 1) {
+    totals[paid[0]!.method] += gap;
+    return;
+  }
+  const method = row.servicePaymentMethod;
+  if (
+    paid.length === 0 &&
+    method &&
+    method !== 'account' &&
+    !isNonCashLocalPaymentMethod(method)
+  ) {
+    totals[method] += gap;
+    return;
+  }
+  totals.unregistered += gap;
+}
+
+/** Suma los productos del turno a la caja. Si el cobro ya los tenía en el método, no los duplica. */
+function applyAppointmentProductsToSummary(summary: WeeklyCashSummary, rows: WeeklyCashRow[]): void {
+  const localByMethod = { ...summary.localByMethod };
+  let listed = 0;
+  let inCash = 0;
+  for (const row of rows) {
+    if (row.productsSoldAmount <= 0) continue;
+    listed += row.productsSoldAmount;
+    if (!appointmentProductsEnterCash(row)) continue;
+    inCash += row.productsSoldAmount;
+    const gap = Math.max(0, row.productsSoldAmount - productAmountAlreadyBooked(row));
+    if (gap > 0) attributeProductGap(row, gap, localByMethod);
+  }
+  summary.localByMethod = localByMethod;
+  summary.appointmentProductsTotal = listed;
+  summary.localPending += inCash;
+  summary.shopNetEstimate += inCash;
+}
+
+export function formatAppointmentProductPaymentLabel(row: WeeklyCashRow): string {
+  const splits = (row.servicePaymentSplits ?? []).filter((split) => split.amount !== 0);
+  if (splits.length > 0) {
+    const labels = [...new Set(splits.map((split) => SERVICE_PAYMENT_METHOD_LABELS[split.method]))];
+    return labels.join(' + ');
+  }
+  if (row.servicePaymentMethod) return SERVICE_PAYMENT_METHOD_LABELS[row.servicePaymentMethod];
+  return 'En el turno';
 }
 
 /** Suma ventas de mostrador al cobrado en local y al neto. La comisión no cambia. */
@@ -458,7 +546,7 @@ export function applyCounterSalesToCashClose(
     localByMethod,
     counterSalesTotal: total,
     localPending: summary.localPending + total,
-    shopNetEstimate: summary.serviceGross - summary.commissions + total,
+    shopNetEstimate: summary.shopNetEstimate + total,
   };
 }
 

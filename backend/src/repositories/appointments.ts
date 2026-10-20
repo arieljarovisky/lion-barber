@@ -81,6 +81,9 @@ interface DbAppointment {
   tip_amount?: number | string | null;
   products?: string | unknown | null;
   subscription_cut_applied?: number;
+  subscription_plan_id?: string | null;
+  subscription_plan_price_ars?: number | string | null;
+  subscription_plan_cuts?: number | null;
   promotion_id?: string | null;
   promotion_fully_paid?: number | boolean | null;
   created_by_user_id?: number | null;
@@ -135,6 +138,17 @@ function rowToAppointment(row: DbAppointment): Appointment {
         : Math.round(Number(row.account_debt_applied_ars) * 100) / 100,
     products: parseAppointmentProductLines(row.products),
     subscriptionCutApplied: Boolean(row.subscription_cut_applied),
+    subscriptionPlanId: row.subscription_plan_id?.trim() || undefined,
+    subscriptionPlanPriceArs:
+      row.subscription_plan_price_ars != null &&
+      row.subscription_plan_price_ars !== '' &&
+      Number.isFinite(Number(row.subscription_plan_price_ars))
+        ? Math.round(Number(row.subscription_plan_price_ars) * 100) / 100
+        : undefined,
+    subscriptionPlanCuts:
+      row.subscription_plan_cuts != null && Number(row.subscription_plan_cuts) > 0
+        ? Math.floor(Number(row.subscription_plan_cuts))
+        : undefined,
     promotionId: row.promotion_id ?? undefined,
     promotionFullyPaid: Boolean(row.promotion_fully_paid),
     tipAmount:
