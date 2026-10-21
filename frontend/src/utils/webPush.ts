@@ -20,9 +20,24 @@ export function isWebPushSupported(): boolean {
   );
 }
 
+function isStandaloneDisplay(): boolean {
+  if (typeof window === 'undefined') return false;
+  const mq = window.matchMedia?.('(display-mode: standalone)')?.matches;
+  const iosStandalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  return Boolean(mq || iosStandalone);
+}
+
+function isIosDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
 export async function ensurePushServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!isWebPushSupported()) return null;
-  return navigator.serviceWorker.register('/sw.js');
+  return navigator.serviceWorker.register('/sw.js', { scope: '/' });
 }
 
 export type PushSubscribeResult =
@@ -35,12 +50,31 @@ export async function subscribeBarberWebPush(): Promise<PushSubscribeResult> {
     return { ok: false, reason: 'unsupported' };
   }
 
+  // En iPhone Safari, Web Push solo funciona instalada en inicio (PWA).
+  if (isIosDevice() && !isStandaloneDisplay()) {
+    return {
+      ok: false,
+      reason: 'unsupported',
+      message:
+        'En iPhone: tocá Compartir → Agregar a pantalla de inicio, y abrí Lion Barber desde el ícono.',
+    };
+  }
+
   try {
     const { publicKey } = await api.getPushVapidPublicKey();
-    const registration = await ensurePushServiceWorker();
-    if (!registration) return { ok: false, reason: 'unsupported' };
-
-    await navigator.serviceWorker.ready;
+    let registration: ServiceWorkerRegistration;
+    try {
+      const reg = await ensurePushServiceWorker();
+      if (!reg) return { ok: false, reason: 'unsupported' };
+      registration = await navigator.serviceWorker.ready;
+    } catch (swErr) {
+      const swMsg = swErr instanceof Error ? swErr.message : String(swErr);
+      return {
+        ok: false,
+        reason: 'error',
+        message: `No se pudo cargar el service worker (${swMsg}). Probá recargar.`,
+      };
+    }
 
     let permission = Notification.permission;
     if (permission === 'default') {
@@ -50,13 +84,22 @@ export async function subscribeBarberWebPush(): Promise<PushSubscribeResult> {
       return { ok: false, reason: 'denied' };
     }
 
-    const existing = await registration.pushManager.getSubscription();
-    const subscription =
-      existing ??
-      (await registration.pushManager.subscribe({
+    const applicationServerKey = urlBase64ToUint8Array(publicKey) as BufferSource;
+    let subscription: PushSubscription;
+    try {
+      subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
-      }));
+        applicationServerKey,
+      });
+    } catch {
+      // Suscripción vieja con otra clave VAPID: renovar.
+      const old = await registration.pushManager.getSubscription();
+      await old?.unsubscribe().catch(() => undefined);
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+    }
 
     const json = subscription.toJSON();
     if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {

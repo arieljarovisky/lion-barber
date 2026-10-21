@@ -422,11 +422,15 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         showToast('Tenés que permitir notificaciones en el celular', 'err');
       } else if (fail.reason === 'unsupported') {
         showToast(
-          'Este navegador no soporta notificaciones. En iPhone: Agregar a inicio y abrir desde ahí.',
+          fail.message ||
+            'Este navegador no soporta notificaciones. En iPhone: Agregar a inicio y abrir desde ahí.',
           'err'
         );
       } else if (fail.reason === 'unavailable') {
-        showToast('Las notificaciones push no están configuradas en el servidor', 'err');
+        showToast(
+          'Faltan las claves WEB_PUSH_VAPID_* en el servidor. Generálas con npx web-push generate-vapid-keys.',
+          'err'
+        );
       } else {
         showToast(fail.message || 'No se pudieron activar las notificaciones', 'err');
       }

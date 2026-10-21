@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/((?!assets/|favicon\\.ico|favicon-.*\\.png|apple-touch-icon\\.png|android-chrome-.*\\.png|site\\.webmanifest|lion-.*\\.png|barbers/|products/).*)",
+      "source": "/((?!assets/|favicon\\.ico|favicon-.*\\.png|apple-touch-icon\\.png|android-chrome-.*\\.png|site\\.webmanifest|sw\\.js|lion-.*\\.png|barbers/|products/).*)",
       "destination": "/index.html"
     }
   ],
@@ -17,6 +17,14 @@
       "source": "/favicon-(.*)\\.png",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=86400, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
       ]
     },
     {
