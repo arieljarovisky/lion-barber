@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as repo from '../repositories/expenses.js';
 import { getBarberById } from '../repositories/barbers.js';
+import { isDailyCashCloseDate } from '../repositories/dailyCashClose.js';
 import { requireAuth, requireStaffOrAdmin, requireSuperAdmin, type AuthRequest } from '../middleware/auth.js';
 
 const router = Router();
@@ -106,9 +107,13 @@ router.post('/cash', requireStaffOrAdmin, async (req: AuthRequest, res) => {
     amount?: unknown;
   };
   try {
+    const date = String(expenseDate ?? '').slice(0, 10);
+    if (await isDailyCashCloseDate(date)) {
+      return res.status(409).json({ error: 'Este día está cerrado. Reabrí la caja para cargar un gasto.' });
+    }
     const author = await cashExpenseAuthor(req.user);
     const item = await repo.createCashExpense({
-      expenseDate: String(expenseDate ?? ''),
+      expenseDate: date,
       description: String(description ?? ''),
       amount: Number(amount),
       createdByUserId: author.userId,
@@ -121,7 +126,7 @@ router.post('/cash', requireStaffOrAdmin, async (req: AuthRequest, res) => {
   }
 });
 
-router.patch('/cash/:id', requireSuperAdmin, async (req, res) => {
+router.patch('/cash/:id', requireStaffOrAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'ID inválido' });
   const body = req.body as {
@@ -130,6 +135,16 @@ router.patch('/cash/:id', requireSuperAdmin, async (req, res) => {
     amount?: unknown;
   };
   try {
+    const existing = await repo.getCashExpenseById(id);
+    if (!existing) return res.status(404).json({ error: 'Gasto no encontrado' });
+    if (await isDailyCashCloseDate(existing.expenseDate)) {
+      return res.status(409).json({ error: 'Este día está cerrado. Reabrí la caja para editar el gasto.' });
+    }
+    const nextDate =
+      body.expenseDate !== undefined ? String(body.expenseDate).slice(0, 10) : existing.expenseDate;
+    if (nextDate !== existing.expenseDate && (await isDailyCashCloseDate(nextDate))) {
+      return res.status(409).json({ error: 'No podés mover el gasto a un día ya cerrado.' });
+    }
     const item = await repo.updateCashExpense(id, {
       ...(body.expenseDate !== undefined ? { expenseDate: String(body.expenseDate) } : {}),
       ...(body.description !== undefined ? { description: String(body.description) } : {}),
@@ -143,10 +158,15 @@ router.patch('/cash/:id', requireSuperAdmin, async (req, res) => {
   }
 });
 
-router.delete('/cash/:id', requireSuperAdmin, async (req, res) => {
+router.delete('/cash/:id', requireStaffOrAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) return res.status(400).json({ error: 'ID inválido' });
   try {
+    const existing = await repo.getCashExpenseById(id);
+    if (!existing) return res.status(404).json({ error: 'Gasto no encontrado' });
+    if (await isDailyCashCloseDate(existing.expenseDate)) {
+      return res.status(409).json({ error: 'Este día está cerrado. Reabrí la caja para eliminar el gasto.' });
+    }
     const ok = await repo.deleteCashExpense(id);
     if (!ok) return res.status(404).json({ error: 'Gasto no encontrado' });
     res.status(204).send();

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { format, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Plus, Wallet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, Wallet } from 'lucide-react';
 import { api, ApiError } from '../api';
 import type { CashExpense } from '../api';
 import { formatArs } from '../utils/money';
@@ -61,6 +61,22 @@ export default function BarberCashExpensesPanel() {
   };
 
   const cashTotal = cashItems.reduce((sum, x) => sum + x.amount, 0);
+
+  const handleDelete = (item: CashExpense) => {
+    if (!window.confirm(`¿Eliminar «${item.description}»?`)) return;
+    setErr('');
+    setSaving(true);
+    void (async () => {
+      try {
+        await api.deleteCashExpense(item.id);
+        await loadData();
+      } catch (e) {
+        setErr(e instanceof ApiError ? e.message : 'No se pudo eliminar');
+      } finally {
+        setSaving(false);
+      }
+    })();
+  };
 
   return (
     <div className="space-y-6">
@@ -165,6 +181,7 @@ export default function BarberCashExpensesPanel() {
                   <th className="px-4 py-2">Concepto</th>
                   <th className="px-4 py-2">Cargó</th>
                   <th className="px-4 py-2 text-right">Monto</th>
+                  <th className="px-4 py-2 w-16" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
@@ -175,6 +192,17 @@ export default function BarberCashExpensesPanel() {
                     <td className="px-4 py-2 text-zinc-700">{item.createdByName?.trim() || '—'}</td>
                     <td className="px-4 py-2 text-right font-semibold tabular-nums text-red-800">
                       ${formatArs(item.amount)}
+                    </td>
+                    <td className="px-4 py-2">
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => handleDelete(item)}
+                        className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        aria-label={`Eliminar ${item.description}`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}

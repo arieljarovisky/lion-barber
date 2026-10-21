@@ -1,6 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Lock, Printer, Unlock, Wallet } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileSpreadsheet,
+  FileText,
+  Lock,
+  Printer,
+  Trash2,
+  Unlock,
+  Wallet,
+} from 'lucide-react';
 import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import { api, ApiError } from '../api';
 import type {
@@ -64,6 +74,7 @@ export default function WeeklyCashClosePage() {
   const [paymentSnapshots, setPaymentSnapshots] = useState<AppointmentCashClosePaymentSnapshot[]>([]);
   const [cashExpenses, setCashExpenses] = useState<CashExpense[]>([]);
   const [counterSales, setCounterSales] = useState<CounterSale[]>([]);
+  const [mutatingId, setMutatingId] = useState<string | null>(null);
 
   const { start, end, fromYmd, toYmd } = useMemo(
     () => periodBoundsFromAnchor(periodAnchor, periodMode),
@@ -214,10 +225,49 @@ export default function WeeklyCashClosePage() {
         fallbackAmount: sale.totalArs,
         payment: SERVICE_PAYMENT_METHOD_LABELS[sale.paymentMethod],
         loadedBy: sale.createdByName?.trim() || '—',
+        counterSaleId: sale.id,
+        canDelete: sale.saleChannel !== 'web',
       })
     );
     return [...fromTurns, ...fromCounter].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
   }, [rows, counterSales]);
+
+  const reloadCashBoxItems = useCallback(async () => {
+    const [cashRes, salesRes] = await Promise.all([
+      api.getCashExpenses(fromYmd, toYmd),
+      api.getCounterSales(fromYmd, toYmd),
+    ]);
+    setCashExpenses(cashRes.items);
+    setCounterSales(salesRes.items);
+  }, [fromYmd, toYmd]);
+
+  const handleDeleteCounterSale = async (saleId: number, label: string) => {
+    if (!window.confirm(`¿Anular «${label}»? Si era un abono, se quita del cliente.`)) return;
+    setMutatingId(`sale-${saleId}`);
+    setCloseActionError('');
+    try {
+      await api.deleteCounterSale(saleId);
+      await reloadCashBoxItems();
+    } catch (e) {
+      setCloseActionError(e instanceof ApiError ? e.message : 'No se pudo anular la venta');
+    } finally {
+      setMutatingId(null);
+    }
+  };
+
+  const handleDeleteCashExpense = async (item: CashExpense) => {
+    if (!window.confirm(`¿Eliminar el gasto «${item.description}»?`)) return;
+    setMutatingId(`expense-${item.id}`);
+    setCloseActionError('');
+    try {
+      await api.deleteCashExpense(item.id);
+      await reloadCashBoxItems();
+    } catch (e) {
+      setCloseActionError(e instanceof ApiError ? e.message : 'No se pudo eliminar el gasto');
+    } finally {
+      setMutatingId(null);
+    }
+  };
 
   const exportData = useMemo<WeeklyCashCloseExportData>(
     () => ({
@@ -818,7 +868,9 @@ export default function WeeklyCashClosePage() {
                   <div>
                     <h2 className="font-black text-zinc-900">Ventas de productos y abonos</h2>
                     <p className="mt-0.5 text-xs text-zinc-500">
-                      Nueva venta y los abonos pagados en la web entran completos en la caja, por Mercado Pago, y no comisionan. El abono se asigna al cliente. Para anular una venta de mostrador, hacelo desde la agenda de ese día.
+                      Nueva venta y los abonos pagados en la web entran completos en la caja y no comisionan. Podés anular
+                      una venta de mostrador (incluido un abono cargado a mano) con el basurero; las de la web no se anulan
+                      acá.
                     </p>
                   </div>
                   <p className="text-sm font-bold tabular-nums text-emerald-800">
@@ -832,7 +884,7 @@ export default function WeeklyCashClosePage() {
                   </p>
                 ) : (
                   <div className="cash-close-table-wrap overflow-x-auto">
-                    <table className="w-full min-w-[860px] text-left text-sm">
+                    <table className="w-full min-w-[920px] text-left text-sm">
                       <thead className="bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
                         <tr>
                           <th className="px-4 py-3">Fecha</th>
@@ -843,6 +895,7 @@ export default function WeeklyCashClosePage() {
                           <th className="px-4 py-3">Pago</th>
                           <th className="px-4 py-3 text-right">Importe</th>
                           <th className="px-4 py-3">Cargó</th>
+                          <th className="px-4 py-3 w-14" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
@@ -862,6 +915,24 @@ export default function WeeklyCashClosePage() {
                               ${formatArs(sale.subtotal)}
                             </td>
                             <td className="px-4 py-3 text-zinc-600">{sale.loadedBy}</td>
+                            <td className="px-4 py-3">
+                              {sale.canDelete && sale.counterSaleId != null ? (
+                                <button
+                                  type="button"
+                                  disabled={mutatingId === `sale-${sale.counterSaleId}`}
+                                  onClick={() =>
+                                    void handleDeleteCounterSale(
+                                      sale.counterSaleId!,
+                                      `${sale.name} · ${sale.buyer}`
+                                    )
+                                  }
+                                  className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                  aria-label={`Anular ${sale.name}`}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              ) : null}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -875,7 +946,7 @@ export default function WeeklyCashClosePage() {
                   <div>
                     <h2 className="font-black text-zinc-900">Gastos de caja</h2>
                     <p className="mt-0.5 text-xs text-zinc-500">
-                      Quién cargó cada gasto en este período.
+                      Quién cargó cada gasto en este período. Podés eliminar un gasto si el día no está cerrado.
                     </p>
                   </div>
                   <p className="text-sm font-bold tabular-nums text-red-800">
@@ -889,13 +960,14 @@ export default function WeeklyCashClosePage() {
                   </p>
                 ) : (
                   <div className="cash-close-table-wrap overflow-x-auto">
-                    <table className="w-full min-w-[520px] text-left text-sm">
+                    <table className="w-full min-w-[560px] text-left text-sm">
                       <thead className="bg-zinc-100 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
                         <tr>
                           <th className="px-4 py-3">Fecha</th>
                           <th className="px-4 py-3">Concepto</th>
                           <th className="px-4 py-3">Cargó</th>
                           <th className="px-4 py-3 text-right">Monto</th>
+                          <th className="px-4 py-3 w-14" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
@@ -906,6 +978,17 @@ export default function WeeklyCashClosePage() {
                             <td className="px-4 py-2 text-zinc-700">{item.createdByName?.trim() || '—'}</td>
                             <td className="px-4 py-2 text-right font-semibold tabular-nums text-red-800">
                               ${formatArs(item.amount)}
+                            </td>
+                            <td className="px-4 py-2">
+                              <button
+                                type="button"
+                                disabled={mutatingId === `expense-${item.id}`}
+                                onClick={() => void handleDeleteCashExpense(item)}
+                                className="rounded-lg p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                                aria-label={`Eliminar ${item.description}`}
+                              >
+                                <Trash2 size={16} />
+                              </button>
                             </td>
                           </tr>
                         ))}
@@ -938,8 +1021,14 @@ function productSaleDetails(input: {
   fallbackAmount: number;
   payment: string;
   loadedBy: string;
+  counterSaleId?: number;
+  canDelete?: boolean;
 }) {
   const lines = input.lines.filter((line) => line.quantity > 0 && line.subtotal > 0);
+  const meta = {
+    counterSaleId: input.counterSaleId,
+    canDelete: Boolean(input.canDelete && input.counterSaleId != null),
+  };
   if (lines.length === 0) {
     return [
       {
@@ -953,9 +1042,11 @@ function productSaleDetails(input: {
         subtotal: input.fallbackAmount,
         payment: input.payment,
         loadedBy: input.loadedBy,
+        ...meta,
       },
     ];
   }
+  // Una sola fila con basurero: anula toda la venta de mostrador, no cada línea.
   return lines.map((line, index) => ({
     key: `${input.keyPrefix}-${line.productId}-${index}`,
     sortKey: `${input.sortKey} ${String(index).padStart(2, '0')}`,
@@ -967,6 +1058,8 @@ function productSaleDetails(input: {
     subtotal: line.subtotal,
     payment: input.payment,
     loadedBy: input.loadedBy,
+    ...meta,
+    canDelete: meta.canDelete && index === 0,
   }));
 }
 
