@@ -1,14 +1,28 @@
 import { Router } from 'express';
 import * as repo from '../repositories/barbers.js';
 import { isSuperAdminEmail } from '../auth.js';
-import { requireAuth, requireAdmin, type AuthRequest } from '../middleware/auth.js';
+import {
+  optionalAuth,
+  requireAuth,
+  requireAdmin,
+  type AuthRequest,
+} from '../middleware/auth.js';
+import type { Barber } from '../types.js';
 
 const router = Router();
 
-router.get('/', async (_req, res) => {
+/** El WhatsApp del barbero es interno: no se expone en la web pública. */
+function toPublicBarber(b: Barber): Barber {
+  const { whatsappPhone: _hidden, ...rest } = b;
+  return rest;
+}
+
+router.get('/', optionalAuth, async (req, res) => {
   try {
     const barbers = await repo.getAllBarbers();
-    res.json(barbers);
+    const authReq = req as AuthRequest;
+    const isAdmin = authReq.user?.role === 'admin';
+    res.json(isAdmin ? barbers : barbers.map(toPublicBarber));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Error al obtener barberos' });

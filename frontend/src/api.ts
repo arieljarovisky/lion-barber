@@ -292,6 +292,8 @@ export interface Barber {
   role: string;
   photo: string;
   desc: string;
+  /** WhatsApp del barbero (E.164). Solo viene en respuestas de admin. */
+  whatsappPhone?: string | null;
   commissionPercent?: number;
   monotributoCategory?: string | null;
   monotributoMonthlyLimit?: number | null;
@@ -754,6 +756,7 @@ export const api = {
     data: {
       name?: string;
       commissionPercent?: number;
+      whatsappPhone?: string | null;
       monotributoCategory?: string | null;
       monotributoMonthlyLimit?: number | null;
       afipCuit?: string | null;

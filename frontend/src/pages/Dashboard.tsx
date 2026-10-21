@@ -392,29 +392,35 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     [staffCanEditAll, staffBarberId]
   );
 
+  /** Avisos en el navegador cuando aparece un turno nuevo de la web (sin creador de staff). */
   const notifyBarberForPaidAppointments = useCallback(
     (list: Appointment[]) => {
       if (profile?.role !== 'staff') return;
-      const paidScheduled = list.filter(
-        (a) => a.status === 'scheduled' && a.depositPaid && a.status !== 'cancelled'
-      );
-      const nextKnown = new Set(paidScheduled.map((a) => a.id));
+      const staffBid = profile.barberId?.trim() || null;
+      const webScheduled = list.filter((a) => {
+        if (a.status !== 'scheduled') return false;
+        if (a.createdByUserId != null) return false;
+        if (staffBid && !staffCanViewAll && a.barberId !== staffBid) return false;
+        return true;
+      });
+      const nextKnown = new Set(webScheduled.map((a) => a.id));
       if (!didInitPaidAppointmentsRef.current) {
         knownPaidAppointmentIdsRef.current = nextKnown;
         didInitPaidAppointmentsRef.current = true;
         return;
       }
-      const newPaid = paidScheduled.filter((a) => !knownPaidAppointmentIdsRef.current.has(a.id));
+      const newWeb = webScheduled.filter((a) => !knownPaidAppointmentIdsRef.current.has(a.id));
       knownPaidAppointmentIdsRef.current = nextKnown;
-      if (newPaid.length === 0) return;
+      if (newWeb.length === 0) return;
 
-      for (const app of newPaid) {
-        showToast(`Nueva seña confirmada: ${app.time} - ${app.name}`, 'ok');
+      for (const app of newWeb) {
+        const depositHint = app.depositPaid ? 'seña confirmada' : 'sin seña';
+        showToast(`Nuevo turno web (${depositHint}): ${app.time} - ${app.name}`, 'ok');
         if (typeof window === 'undefined' || !('Notification' in window)) continue;
+        const title = 'Nuevo turno desde la web';
+        const body = `${app.name} · ${app.date} ${app.time}`;
         if (Notification.permission === 'granted') {
-          new Notification('Nuevo turno con seña confirmada', {
-            body: `${app.name} - ${app.date} ${app.time}`,
-          });
+          new Notification(title, { body });
           continue;
         }
         if (
@@ -424,15 +430,13 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           requestedBrowserNotificationPermissionRef.current = true;
           void Notification.requestPermission().then((permission) => {
             if (permission === 'granted') {
-              new Notification('Nuevo turno con seña confirmada', {
-                body: `${app.name} - ${app.date} ${app.time}`,
-              });
+              new Notification(title, { body });
             }
           });
         }
       }
     },
-    [profile?.role, showToast]
+    [profile?.role, profile?.barberId, staffCanViewAll, showToast]
   );
 
   const loadAdminClients = useCallback(async () => {
@@ -4002,8 +4006,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
               </h3>
               <p className="text-sm text-zinc-500 mt-1">
                 {isSuperAdmin
-                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al cargarlos en el turno) y tope mensual AFIP. La factura AFIP es por el importe completo.`
-                  : `Nombre público y comisión de referencia (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos).`}
+                  ? `Nombre, WhatsApp para avisos de turnos web, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al cargarlos en el turno) y tope mensual AFIP. La factura AFIP es por el importe completo.`
+                  : `Nombre, WhatsApp para avisos de turnos web y comisión de referencia (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos).`}
               </p>
               {shopLoading ? (
                 <p className="text-zinc-400 mt-4">Cargando...</p>
@@ -4058,6 +4062,46 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                             className="w-20 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
                           />
                           <span className="text-zinc-500 text-sm">%</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="min-w-[220px] flex-1">
+                          <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
+                            WhatsApp (avisos de turnos web)
+                          </label>
+                          <input
+                            type="tel"
+                            inputMode="tel"
+                            autoComplete="tel"
+                            placeholder="+54911..."
+                            defaultValue={b.whatsappPhone ?? ''}
+                            key={`${b.id}-wa-${b.whatsappPhone ?? ''}`}
+                            onBlur={(e) => {
+                              const next = e.target.value.trim() || null;
+                              const prev = (b.whatsappPhone ?? '').trim() || null;
+                              if (next === prev) return;
+                              void api
+                                .updateBarber(b.id, { whatsappPhone: next })
+                                .then(() => {
+                                  loadData();
+                                  showToast(
+                                    next
+                                      ? `WhatsApp de ${b.name} guardado`
+                                      : `WhatsApp de ${b.name} quitado`
+                                  );
+                                })
+                                .catch((err) =>
+                                  showToast(
+                                    err instanceof Error ? err.message : 'No se pudo guardar el WhatsApp',
+                                    'err'
+                                  )
+                                );
+                            }}
+                            className="w-full max-w-xs border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
+                          />
+                          <p className="mt-1 text-[11px] text-zinc-500">
+                            Formato internacional, ej. +54911…. Ahí le llegan los turnos nuevos de la web.
+                          </p>
                         </div>
                       </div>
                       {isSuperAdmin && (

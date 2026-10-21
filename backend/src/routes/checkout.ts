@@ -11,7 +11,7 @@ import {
   isDateOnOpenWeekday,
   isPastCalendarDateInArgentina,
 } from '../appointmentRules.js';
-import { notifyBarberByWhatsappOnDepositPaid } from '../services/whatsapp.js';
+import { notifyBarberByWhatsappOnNewWebAppointment } from '../services/whatsapp.js';
 import { notifyShopPhoneAppointmentCreated } from '../services/mobileNotifications.js';
 import {
   sendDepositConfirmedEmail,
@@ -779,6 +779,7 @@ router.post('/sena', async (req, res) => {
         productsTotalArs: resolvedProducts.totalArs,
       });
 
+      void notifyBarberByWhatsappOnNewWebAppointment(confirmed);
       void notifyShopPhoneAppointmentCreated(confirmed);
       void (async () => {
         try {
@@ -797,6 +798,7 @@ router.post('/sena', async (req, res) => {
       appointmentId: confirmed.id,
     });
 
+    void notifyBarberByWhatsappOnNewWebAppointment(confirmed);
     void notifyShopPhoneAppointmentCreated(confirmed);
 
     void (async () => {
@@ -942,6 +944,7 @@ router.post('/sena/:appointmentId', requireAuth, async (req, res) => {
       const updated = await repo.markAppointmentScheduledByExempt(app.id);
       const finalApp = updated ?? app;
       res.json({ exempt: true, appointmentId: finalApp.id });
+      void notifyBarberByWhatsappOnNewWebAppointment(finalApp);
       void notifyShopPhoneAppointmentCreated(finalApp);
       void (async () => {
         try {
@@ -1261,7 +1264,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       );
       if (updated) {
         await cleanupOverlappingPendingDepositsAfterPaid(updated);
-        void notifyBarberByWhatsappOnDepositPaid(updated);
+        void notifyBarberByWhatsappOnNewWebAppointment(updated);
         void notifyShopPhoneAppointmentCreated(updated);
         void notifyClientDepositConfirmed(updated);
       }
@@ -1306,7 +1309,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
         if (reactivateResult.ok) {
           console.log(`[Webhook MP] turno ${existingByRefId.id} reactivado exitosamente`);
           await cleanupOverlappingPendingDepositsAfterPaid(reactivateResult.appointment);
-          void notifyBarberByWhatsappOnDepositPaid(reactivateResult.appointment);
+          void notifyBarberByWhatsappOnNewWebAppointment(reactivateResult.appointment);
           void notifyShopPhoneAppointmentCreated(reactivateResult.appointment);
           void notifyClientDepositConfirmed(reactivateResult.appointment);
         } else if (reactivateResult.reason === 'slot_taken') {
@@ -1362,7 +1365,7 @@ export async function mercadopagoWebhook(req: Request, res: Response): Promise<v
       ...(userId != null && !Number.isNaN(userId) ? { userId } : {}),
     });
     await cleanupOverlappingPendingDepositsAfterPaid(created);
-    void notifyBarberByWhatsappOnDepositPaid(created);
+    void notifyBarberByWhatsappOnNewWebAppointment(created);
     void notifyShopPhoneAppointmentCreated(created);
     void notifyClientDepositConfirmed(created);
     if (linkedProductOrderId != null && userId != null && Number.isFinite(userId)) {
