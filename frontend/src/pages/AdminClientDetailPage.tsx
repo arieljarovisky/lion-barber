@@ -199,7 +199,11 @@ export default function AdminClientDetailPage() {
           return;
         }
         const selectedPlan = availablePlans.find((p) => p.id === nextPlanId);
-        const maxCuts = selectedPlan?.cutsPerMonth ?? client.subscription?.cutsPerMonth;
+        // Si el cliente ya tiene abono del mismo plan, el cupo puede ser mayor (compras apiladas).
+        const maxCuts =
+          nextPlanId === (client.subscription?.planId ?? '') && client.subscription
+            ? client.subscription.cutsPerMonth
+            : selectedPlan?.cutsPerMonth ?? client.subscription?.cutsPerMonth;
         if (maxCuts != null && cutsUsed > maxCuts) {
           setError(`Los cortes usados no pueden superar ${maxCuts}.`);
           setSaving(false);

@@ -81,13 +81,14 @@ async function maybeExpireSubscriptionGroup(
   groupId: number,
   plan: SubscriptionPlan,
   activatedAt: string,
-  cutsUsed: number
+  cutsUsed: number,
+  cutsAllowance: number
 ): Promise<boolean> {
   if (isSubscriptionExpiredByDate(activatedAt, plan.validityDays)) {
     await expireSubscriptionGroup(groupId);
     return true;
   }
-  if (cutsUsed >= plan.cutsPerMonth) {
+  if (cutsUsed >= cutsAllowance) {
     await expireSubscriptionGroup(groupId);
     return true;
   }
@@ -119,18 +120,20 @@ async function buildStatusFromGroup(
   const activatedAt =
     groups.periodStartYmd(group.period_start) ?? currentArgentinaYmd();
   const cutsUsed = Math.max(0, Number(group.cuts_used ?? 0));
+  const cutsAllowance = groups.resolveCutsAllowance(group, plan.cutsPerMonth);
 
-  if (await maybeExpireSubscriptionGroup(groupId, plan, activatedAt, cutsUsed)) {
+  if (await maybeExpireSubscriptionGroup(groupId, plan, activatedAt, cutsUsed, cutsAllowance)) {
     return null;
   }
 
-  const cutsRemaining = Math.max(0, plan.cutsPerMonth - cutsUsed);
+  const cutsRemaining = Math.max(0, cutsAllowance - cutsUsed);
   const members = await groups.listSubscriptionGroupMembers(groupId);
 
   return {
     planId: plan.id,
     planName: plan.name,
-    cutsPerMonth: plan.cutsPerMonth,
+    /** Cupo total vigente (incluye cortes apilados de compras anteriores). */
+    cutsPerMonth: cutsAllowance,
     cutsUsed,
     cutsRemaining,
     periodStart: activatedAt,
@@ -169,6 +172,56 @@ export async function isClientDepositExempt(userId: number): Promise<boolean> {
   return Boolean(u?.deposit_exempt === true || u?.deposit_exempt === 1);
 }
 
+/**
+ * Si el cliente ya tiene un abono vigente, suma los cortes del plan al cupo.
+ * Devuelve el groupId si apiló; null si hay que crear uno nuevo.
+ * @param samePlanOnly Si true, solo apila cuando el plan nuevo es el mismo (asignación admin/web).
+ */
+async function tryStackCutsOntoExistingSubscription(
+  userId: number,
+  plan: SubscriptionPlan,
+  opts?: { samePlanOnly?: boolean }
+): Promise<number | null> {
+  const existingGroupId = await resolveGroupIdForUser(userId);
+  if (existingGroupId == null) return null;
+
+  const group = await groups.getSubscriptionGroupById(existingGroupId);
+  if (!group) return null;
+
+  if (opts?.samePlanOnly && group.subscription_plan_id !== plan.id) {
+    return null;
+  }
+
+  const existingPlan = await getSubscriptionPlanById(group.subscription_plan_id);
+  if (!existingPlan || !existingPlan.active) {
+    await expireSubscriptionGroup(existingGroupId);
+    return null;
+  }
+
+  const activatedAt =
+    groups.periodStartYmd(group.period_start) ?? currentArgentinaYmd();
+  const cutsUsed = Math.max(0, Number(group.cuts_used ?? 0));
+  const currentAllowance = groups.resolveCutsAllowance(group, existingPlan.cutsPerMonth);
+
+  if (isSubscriptionExpiredByDate(activatedAt, existingPlan.validityDays)) {
+    await expireSubscriptionGroup(existingGroupId);
+    return null;
+  }
+  if (cutsUsed >= currentAllowance) {
+    await expireSubscriptionGroup(existingGroupId);
+    return null;
+  }
+
+  const cutsToAdd = Math.max(1, Math.floor(plan.cutsPerMonth));
+  await groups.addCutsToGroupAllowance(existingGroupId, {
+    cutsToAdd,
+    planId: plan.id,
+    periodStart: currentArgentinaYmd(),
+    currentAllowance,
+  });
+  return existingGroupId;
+}
+
 export async function assignSubscriptionPlanToClient(
   userId: number,
   planId: string | null
@@ -186,19 +239,12 @@ export async function assignSubscriptionPlanToClient(
     throw new Error('Plan de abono no encontrado o inactivo');
   }
 
-  const existingGroupId = await resolveGroupIdForUser(userId);
-  if (existingGroupId != null) {
-    const group = await groups.getSubscriptionGroupById(existingGroupId);
-    if (group?.subscription_plan_id === planId) {
-      const cutsUsed = Math.max(0, Number(group.cuts_used ?? 0));
-      const activatedAt =
-        groups.periodStartYmd(group.period_start) ?? currentArgentinaYmd();
-      const expiredByDate = isSubscriptionExpiredByDate(activatedAt, plan.validityDays);
-      const exhausted = cutsUsed >= plan.cutsPerMonth;
-      if (!expiredByDate && !exhausted) {
-        return false;
-      }
-    }
+  // Misma plan vigente (p. ej. recompra web): sumar cortes. Otro plan: reemplazar.
+  const stackedGroupId = await tryStackCutsOntoExistingSubscription(userId, plan, {
+    samePlanOnly: true,
+  });
+  if (stackedGroupId != null) {
+    return true;
   }
 
   await removeClientFromSubscription(userId, { skipExpireGroup: false });
@@ -209,16 +255,27 @@ export async function assignSubscriptionPlanToClient(
     periodStart: activatedAt,
     ownerUserId: userId,
     cutsUsed: 0,
+    cutsAllowance: plan.cutsPerMonth,
   });
   await groups.linkUserToGroup(userId, groupId);
   return true;
 }
 
-/** Compra en el local: siempre abre un abono nuevo, aunque el cliente ya tuviera uno vigente. */
+export type PurchasedSubscriptionResult = {
+  groupId: number;
+  planName: string;
+  priceArs: number;
+  /** Cortes que sumó esta compra al cupo. */
+  cutsAdded: number;
+  /** true si se apilaron sobre un abono que el cliente ya tenía. */
+  stacked: boolean;
+};
+
+/** Compra en el local: si el cliente ya tiene abono vigente, suma los cortes al cupo. */
 export async function purchaseSubscriptionPlanForClient(
   userId: number,
   planId: string
-): Promise<{ groupId: number; planName: string; priceArs: number }> {
+): Promise<PurchasedSubscriptionResult> {
   await assertClientRole(userId);
   const plan = await getSubscriptionPlanById(planId);
   if (!plan || !plan.active) {
@@ -229,12 +286,25 @@ export async function purchaseSubscriptionPlanForClient(
     throw new Error(`«${plan.name}» no tiene un precio válido.`);
   }
 
-  await removeClientFromSubscription(userId);
+  const cutsAdded = Math.max(1, Math.floor(plan.cutsPerMonth));
+  // Venta en el local: siempre suma al abono vigente, aunque el plan sea otro.
+  const stackedGroupId = await tryStackCutsOntoExistingSubscription(userId, plan);
+  if (stackedGroupId != null) {
+    return {
+      groupId: stackedGroupId,
+      planName: plan.name,
+      priceArs: Math.round(price),
+      cutsAdded,
+      stacked: true,
+    };
+  }
+
   const groupId = await groups.createSubscriptionGroup({
     planId: plan.id,
     periodStart: currentArgentinaYmd(),
     ownerUserId: userId,
     cutsUsed: 0,
+    cutsAllowance: cutsAdded,
   });
   try {
     await groups.linkUserToGroup(userId, groupId);
@@ -242,18 +312,74 @@ export async function purchaseSubscriptionPlanForClient(
     await groups.deleteSubscriptionGroup(groupId).catch(() => undefined);
     throw err;
   }
-  return { groupId, planName: plan.name, priceArs: Math.round(price) };
+  return {
+    groupId,
+    planName: plan.name,
+    priceArs: Math.round(price),
+    cutsAdded,
+    stacked: false,
+  };
 }
 
-/** Deshace un abono vendido en mostrador si todavía no se usó ningún corte. */
-export async function revokePurchasedSubscription(userId: number, groupId: number): Promise<void> {
+/**
+ * Deshace un abono vendido en mostrador.
+ * Si la venta había apilado cortes, los resta del cupo (solo si aún quedan sin usar).
+ * Si era un abono nuevo sin usos, lo elimina.
+ */
+export async function revokePurchasedSubscription(
+  userId: number,
+  groupId: number,
+  opts?: { planId?: string | null; cutsAdded?: number | null }
+): Promise<void> {
   const group = await groups.getSubscriptionGroupById(groupId);
   if (!group) return;
-  if (Math.max(0, Number(group.cuts_used ?? 0)) > 0) {
-    throw new Error('Este abono ya tiene cortes usados. No se puede anular la venta.');
-  }
+
   const current = await groups.getSubscriptionGroupIdForUser(userId);
   if (current != null && current !== groupId) return;
+
+  const groupPlan = await getSubscriptionPlanById(group.subscription_plan_id);
+  const cutsUsed = Math.max(0, Number(group.cuts_used ?? 0));
+  const currentAllowance = groups.resolveCutsAllowance(
+    group,
+    groupPlan?.cutsPerMonth ?? 1
+  );
+
+  let cutsToRemove =
+    opts?.cutsAdded != null && Number.isFinite(Number(opts.cutsAdded)) && Number(opts.cutsAdded) > 0
+      ? Math.floor(Number(opts.cutsAdded))
+      : null;
+
+  if (cutsToRemove == null && opts?.planId) {
+    const salePlan = await getSubscriptionPlanById(opts.planId);
+    if (salePlan) cutsToRemove = Math.max(1, Math.floor(salePlan.cutsPerMonth));
+  }
+
+  const remaining = Math.max(0, currentAllowance - cutsUsed);
+  const wasStacked =
+    cutsToRemove != null && currentAllowance > cutsToRemove && remaining >= 0;
+
+  if (wasStacked && cutsToRemove != null) {
+    if (remaining < cutsToRemove) {
+      throw new Error(
+        'Ya se usaron cortes de este abono. No se puede anular la venta.'
+      );
+    }
+    const nextAllowance = currentAllowance - cutsToRemove;
+    if (nextAllowance <= cutsUsed) {
+      const members = await groups.listSubscriptionGroupMembers(groupId);
+      for (const member of members) {
+        await groups.unlinkUserFromGroup(member.id);
+      }
+      await groups.deleteSubscriptionGroup(groupId);
+      return;
+    }
+    await groups.setGroupSubscriptionUsage(groupId, { cutsAllowance: nextAllowance });
+    return;
+  }
+
+  if (cutsUsed > 0) {
+    throw new Error('Este abono ya tiene cortes usados. No se puede anular la venta.');
+  }
 
   const members = await groups.listSubscriptionGroupMembers(groupId);
   for (const member of members) {
@@ -293,8 +419,9 @@ export async function updateClientSubscriptionUsage(
     if (!Number.isFinite(n) || n < 0) {
       throw new Error('Los cortes usados deben ser un número ≥ 0.');
     }
-    if (n > plan.cutsPerMonth) {
-      throw new Error(`Los cortes usados no pueden superar ${plan.cutsPerMonth}.`);
+    const allowance = groups.resolveCutsAllowance(group, plan.cutsPerMonth);
+    if (n > allowance) {
+      throw new Error(`Los cortes usados no pueden superar ${allowance}.`);
     }
     patch.cutsUsed = Math.floor(n);
   }
@@ -443,6 +570,10 @@ async function markAppointmentSubscriptionCut(
   status: ClientSubscriptionStatus
 ): Promise<void> {
   const price = parseArsAmount(status.monthlyPrice);
+  // Comisión por corte: precio del plan ÷ cortes del plan de catálogo (no el cupo apilado).
+  const plan = await getSubscriptionPlanById(status.planId);
+  const planCuts =
+    plan && plan.cutsPerMonth > 0 ? plan.cutsPerMonth : status.cutsPerMonth > 0 ? status.cutsPerMonth : null;
   await query(
     `UPDATE appointments
      SET subscription_cut_applied = 1,
@@ -453,7 +584,7 @@ async function markAppointmentSubscriptionCut(
     [
       status.planId,
       price != null ? Math.round(price) : null,
-      status.cutsPerMonth > 0 ? status.cutsPerMonth : null,
+      planCuts,
       appointmentId,
     ]
   );

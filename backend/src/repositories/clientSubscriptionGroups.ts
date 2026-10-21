@@ -5,6 +5,8 @@ export type DbSubscriptionGroup = {
   subscription_plan_id: string;
   period_start: string | Date;
   cuts_used: number;
+  /** Cupo total de cortes (puede ser mayor al plan si se apilaron compras). Null = usar cortes del plan. */
+  cuts_allowance: number | null;
   owner_user_id: number | null;
 };
 
@@ -26,11 +28,23 @@ function periodStartYmd(raw: string | Date | null | undefined): string | null {
   return String(raw).slice(0, 10);
 }
 
+/** Cupo efectivo: allowance guardado o, si es null, los cortes del plan. */
+export function resolveCutsAllowance(
+  group: Pick<DbSubscriptionGroup, 'cuts_allowance'>,
+  planCutsPerMonth: number
+): number {
+  const stored = group.cuts_allowance;
+  if (stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0) {
+    return Math.floor(Number(stored));
+  }
+  return Math.max(1, Math.floor(planCutsPerMonth));
+}
+
 export async function getSubscriptionGroupById(
   groupId: number
 ): Promise<DbSubscriptionGroup | null> {
   const rows = await query<DbSubscriptionGroup[]>(
-    `SELECT id, subscription_plan_id, period_start, cuts_used, owner_user_id
+    `SELECT id, subscription_plan_id, period_start, cuts_used, cuts_allowance, owner_user_id
      FROM client_subscription_groups WHERE id = ? LIMIT 1`,
     [groupId]
   );
@@ -51,15 +65,21 @@ export async function createSubscriptionGroup(data: {
   periodStart: string;
   ownerUserId: number;
   cutsUsed?: number;
+  cutsAllowance?: number;
 }): Promise<number> {
+  const allowance =
+    data.cutsAllowance != null && Number.isFinite(data.cutsAllowance) && data.cutsAllowance > 0
+      ? Math.floor(data.cutsAllowance)
+      : null;
   const [res] = await pool.execute(
     `INSERT INTO client_subscription_groups
-     (subscription_plan_id, period_start, cuts_used, owner_user_id)
-     VALUES (?, ?, ?, ?)`,
+     (subscription_plan_id, period_start, cuts_used, cuts_allowance, owner_user_id)
+     VALUES (?, ?, ?, ?, ?)`,
     [
       data.planId,
       data.periodStart,
       Math.max(0, data.cutsUsed ?? 0),
+      allowance,
       data.ownerUserId,
     ]
   );
@@ -113,12 +133,12 @@ export async function listSubscriptionGroupMembers(
 export async function incrementGroupCutsUsed(
   groupId: number,
   planId: string,
-  cutsPerMonth: number
+  cutsAllowance: number
 ): Promise<boolean> {
   const [res] = await pool.execute(
     `UPDATE client_subscription_groups SET cuts_used = cuts_used + 1
      WHERE id = ? AND subscription_plan_id = ? AND cuts_used < ?`,
-    [groupId, planId, cutsPerMonth]
+    [groupId, planId, cutsAllowance]
   );
   return ((res as { affectedRows?: number }).affectedRows ?? 0) > 0;
 }
@@ -132,7 +152,7 @@ export async function decrementGroupCutsUsed(groupId: number): Promise<void> {
 
 export async function setGroupSubscriptionUsage(
   groupId: number,
-  data: { cutsUsed?: number; periodStart?: string }
+  data: { cutsUsed?: number; periodStart?: string; cutsAllowance?: number; planId?: string }
 ): Promise<void> {
   const sets: string[] = [];
   const params: (number | string)[] = [];
@@ -145,10 +165,36 @@ export async function setGroupSubscriptionUsage(
     sets.push('period_start = ?');
     params.push(data.periodStart.slice(0, 10));
   }
+  if (data.cutsAllowance !== undefined) {
+    sets.push('cuts_allowance = ?');
+    params.push(Math.max(1, Math.floor(data.cutsAllowance)));
+  }
+  if (data.planId !== undefined) {
+    sets.push('subscription_plan_id = ?');
+    params.push(data.planId);
+  }
   if (sets.length === 0) return;
 
   params.push(groupId);
   await query(`UPDATE client_subscription_groups SET ${sets.join(', ')} WHERE id = ?`, params);
+}
+
+/** Suma cortes al cupo de un abono vigente (compra o asignación apilada). */
+export async function addCutsToGroupAllowance(
+  groupId: number,
+  data: {
+    cutsToAdd: number;
+    planId: string;
+    periodStart: string;
+    currentAllowance: number;
+  }
+): Promise<void> {
+  const nextAllowance = Math.max(1, Math.floor(data.currentAllowance) + Math.floor(data.cutsToAdd));
+  await setGroupSubscriptionUsage(groupId, {
+    cutsAllowance: nextAllowance,
+    planId: data.planId,
+    periodStart: data.periodStart,
+  });
 }
 
 export async function userHasAnySubscriptionLink(userId: number): Promise<boolean> {

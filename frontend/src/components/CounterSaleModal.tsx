@@ -440,7 +440,9 @@ export default function CounterSaleModal({ saleDate, onClose, onSaved }: Props) 
             <p className="mt-2 text-xs text-amber-800">
               {selectedClient.name} ya tiene «{selectedClient.subscription.planName}» con{' '}
               {selectedClient.subscription.cutsRemaining} corte
-              {selectedClient.subscription.cutsRemaining === 1 ? '' : 's'}. Esta venta lo reemplaza por uno nuevo.
+              {selectedClient.subscription.cutsRemaining === 1 ? '' : 's'}. Esta venta suma{' '}
+              {selectedPlan.cutsPerMonth} corte{selectedPlan.cutsPerMonth === 1 ? '' : 's'} al cupo (quedaría
+              con {selectedClient.subscription.cutsRemaining + selectedPlan.cutsPerMonth}).
             </p>
           )}
           {selectedPlan && !selectedClient && (clientsLoading || typedClientName.length < 2) && (

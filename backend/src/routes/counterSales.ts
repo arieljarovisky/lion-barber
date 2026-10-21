@@ -154,7 +154,10 @@ router.post('/', async (req: AuthRequest, res) => {
       res.status(201).json({ item });
     } catch (err) {
       if (purchased) {
-        await revokePurchasedSubscription(clientUserId, purchased.groupId).catch(() => undefined);
+        await revokePurchasedSubscription(clientUserId, purchased.groupId, {
+          planId,
+          cutsAdded: purchased.cutsAdded,
+        }).catch(() => undefined);
       }
       if (lines.length > 0) await syncAppointmentProductStock(lines, null).catch(() => undefined);
       throw err;
@@ -180,7 +183,9 @@ router.delete('/:id', async (req, res) => {
       return res.status(409).json({ error: 'Este día está cerrado. Reabrí la caja para anular la venta.' });
     }
     if (existing.subscriptionGroupId != null && existing.clientUserId != null) {
-      await revokePurchasedSubscription(existing.clientUserId, existing.subscriptionGroupId);
+      await revokePurchasedSubscription(existing.clientUserId, existing.subscriptionGroupId, {
+        planId: existing.subscriptionPlanId,
+      });
     }
     await syncAppointmentProductStock(existing.products, null);
     const ok = await repo.deleteCounterSale(id);

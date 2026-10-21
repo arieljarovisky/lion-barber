@@ -371,12 +371,18 @@ export async function initDb(): Promise<void> {
       subscription_plan_id VARCHAR(50) NOT NULL,
       period_start DATE NOT NULL,
       cuts_used INT NOT NULL DEFAULT 0,
+      cuts_allowance INT NULL,
       owner_user_id INT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       KEY idx_sub_group_plan (subscription_plan_id),
       KEY idx_sub_group_owner (owner_user_id)
     )
   `);
+  if (!(await tableHasColumn('client_subscription_groups', 'cuts_allowance'))) {
+    await pool.execute(
+      'ALTER TABLE client_subscription_groups ADD COLUMN cuts_allowance INT NULL'
+    );
+  }
   try {
     await pool.execute('ALTER TABLE users ADD COLUMN subscription_group_id INT NULL');
   } catch (e: unknown) {
