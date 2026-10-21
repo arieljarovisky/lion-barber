@@ -17,26 +17,20 @@ function fmtDate(ymd: string): string {
   return `${d}/${m}/${y}`;
 }
 
-function buildNewWebAppointmentMessage(app: Appointment): string {
-  const depositLine = app.depositPaid
-    ? 'Seña: Pagada'
-    : 'Seña: No requerida (abono / exento)';
+function buildAppointmentPaidMessage(app: Appointment): string {
   return [
-    'Nuevo turno desde la web',
+    'Nuevo turno con seña confirmada',
     '',
     `Cliente: ${app.name}`,
     `Servicio: ${app.service}`,
     `Fecha: ${fmtDate(app.date)}`,
     `Hora: ${app.time}`,
     `Telefono cliente: ${app.phone}`,
-    depositLine,
   ].join('\n');
 }
 
-/** Avisa por WhatsApp al barbero asignado cuando se confirma un turno de la web. */
-export async function notifyBarberByWhatsappOnNewWebAppointment(
-  app: Appointment
-): Promise<void> {
+/** Opcional: WhatsApp vía Twilio si está configurado (los avisos principales van por push nativo). */
+export async function notifyBarberByWhatsappOnDepositPaid(app: Appointment): Promise<void> {
   try {
     const cfg = getTwilioConfig();
     if (!cfg) return;
@@ -45,17 +39,12 @@ export async function notifyBarberByWhatsappOnNewWebAppointment(
 
     const barber = await getBarberById(barberId);
     const to = barber?.whatsappPhone?.trim();
-    if (!to) {
-      console.warn(
-        `[WhatsApp] Barbero ${barberId} sin whatsapp_phone: no se notificó el turno ${app.id}`
-      );
-      return;
-    }
+    if (!to) return;
 
     const body = new URLSearchParams();
     body.set('From', `whatsapp:${cfg.fromNumber}`);
     body.set('To', `whatsapp:${to}`);
-    body.set('Body', buildNewWebAppointmentMessage(app));
+    body.set('Body', buildAppointmentPaidMessage(app));
 
     const auth = Buffer.from(`${cfg.accountSid}:${cfg.authToken}`).toString('base64');
     const res = await fetch(
@@ -78,9 +67,4 @@ export async function notifyBarberByWhatsappOnNewWebAppointment(
   } catch (err) {
     console.error('[WhatsApp] Error enviando notificación al barbero', err);
   }
-}
-
-/** @deprecated Usar notifyBarberByWhatsappOnNewWebAppointment */
-export async function notifyBarberByWhatsappOnDepositPaid(app: Appointment): Promise<void> {
-  await notifyBarberByWhatsappOnNewWebAppointment(app);
 }

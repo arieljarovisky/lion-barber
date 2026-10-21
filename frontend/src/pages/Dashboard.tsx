@@ -39,6 +39,7 @@ import {
   Download,
   ExternalLink,
   ShoppingBag,
+  Bell,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -62,6 +63,11 @@ import ClientProfileLink from '../components/ClientProfileLink';
 import ServicePaymentSplitsEditor from '../components/ServicePaymentSplitsEditor';
 import { api, ApiError, downloadDatabaseBackup } from '../api';
 import type { CounterSale } from '../api';
+import {
+  getCurrentPushSubscriptionEndpoint,
+  isWebPushSupported,
+  subscribeBarberWebPush,
+} from '../utils/webPush';
 import { BARBER_COMMISSION_PERCENT, BARBER_PRODUCT_COMMISSION_PERCENT } from '../constants/barberBusiness';
 import { DEPOSIT_PERCENT } from '../constants/deposit';
 import { canInvoiceAppointmentAfip, getInvoiceBarberScope } from '../utils/barberAfip';
@@ -363,6 +369,9 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const knownPaidAppointmentIdsRef = useRef<Set<string>>(new Set());
   const didInitPaidAppointmentsRef = useRef(false);
   const requestedBrowserNotificationPermissionRef = useRef(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushSupported] = useState(() => isWebPushSupported());
 
   const showToast = useCallback((message: string, kind: 'ok' | 'err' = 'ok') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -379,6 +388,13 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     };
   }, []);
 
+  useEffect(() => {
+    if (!pushSupported) return;
+    void getCurrentPushSubscriptionEndpoint().then((endpoint) => {
+      setPushEnabled(Boolean(endpoint));
+    });
+  }, [pushSupported]);
+
   const { profile, isAdmin, isSuperAdmin, canAccessDashboard, refreshProfile } = useAuth();
   const confirm = useConfirm();
   const staffBarberId = profile?.role === 'staff' ? profile.barberId ?? null : null;
@@ -391,6 +407,33 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     (barberId: string) => staffCanEditAll || !staffBarberId || staffBarberId === barberId,
     [staffCanEditAll, staffBarberId]
   );
+
+  const enablePushNotifications = useCallback(async () => {
+    setPushBusy(true);
+    try {
+      const result = await subscribeBarberWebPush();
+      if (result.ok === true) {
+        setPushEnabled(true);
+        showToast('Notificaciones activadas en este celular');
+        return;
+      }
+      const fail = result as Extract<typeof result, { ok: false }>;
+      if (fail.reason === 'denied') {
+        showToast('Tenés que permitir notificaciones en el celular', 'err');
+      } else if (fail.reason === 'unsupported') {
+        showToast(
+          'Este navegador no soporta notificaciones. En iPhone: Agregar a inicio y abrir desde ahí.',
+          'err'
+        );
+      } else if (fail.reason === 'unavailable') {
+        showToast('Las notificaciones push no están configuradas en el servidor', 'err');
+      } else {
+        showToast(fail.message || 'No se pudieron activar las notificaciones', 'err');
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  }, [showToast]);
 
   /** Avisos en el navegador cuando aparece un turno nuevo de la web (sin creador de staff). */
   const notifyBarberForPaidAppointments = useCallback(
@@ -2182,6 +2225,32 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
             Tu cuenta de empleado no está vinculada a un barbero. Pedile al administrador que te envíe una invitación
             desde Equipo eligiendo tu nombre en la agenda.
+          </div>
+        )}
+        {canAccessDashboard && pushSupported && !pushEnabled && (
+          <div className="mb-4 flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-zinc-900">Notificaciones de turnos web</p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Activá el aviso flotante en este celular cuando entre un turno nuevo desde la web. En iPhone: Agregar a
+                pantalla de inicio y abrir la app desde ahí.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={pushBusy}
+              onClick={() => void enablePushNotifications()}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-900 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+            >
+              <Bell size={16} />
+              {pushBusy ? 'Activando…' : 'Activar notificaciones'}
+            </button>
+          </div>
+        )}
+        {canAccessDashboard && pushSupported && pushEnabled && (
+          <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900">
+            <Bell size={16} className="shrink-0" />
+            <span>Notificaciones activadas en este celular para turnos nuevos de la web.</span>
           </div>
         )}
         <div className={agendasOnly ? 'hidden' : 'mb-6 flex flex-col gap-4 sm:mb-8 sm:gap-6 lg:flex-row lg:items-center lg:justify-between'}>
@@ -4006,8 +4075,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
               </h3>
               <p className="text-sm text-zinc-500 mt-1">
                 {isSuperAdmin
-                  ? `Nombre, WhatsApp para avisos de turnos web, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al cargarlos en el turno) y tope mensual AFIP. La factura AFIP es por el importe completo.`
-                  : `Nombre, WhatsApp para avisos de turnos web y comisión de referencia (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos).`}
+                  ? `Nombre, comisión (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos al cargarlos en el turno) y tope mensual AFIP. La factura AFIP es por el importe completo.`
+                  : `Nombre público y comisión de referencia (${BARBER_COMMISSION_PERCENT}% servicio, ${BARBER_PRODUCT_COMMISSION_PERCENT}% productos).`}
               </p>
               {shopLoading ? (
                 <p className="text-zinc-400 mt-4">Cargando...</p>
@@ -4062,46 +4131,6 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                             className="w-20 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
                           />
                           <span className="text-zinc-500 text-sm">%</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-end gap-3">
-                        <div className="min-w-[220px] flex-1">
-                          <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">
-                            WhatsApp (avisos de turnos web)
-                          </label>
-                          <input
-                            type="tel"
-                            inputMode="tel"
-                            autoComplete="tel"
-                            placeholder="+54911..."
-                            defaultValue={b.whatsappPhone ?? ''}
-                            key={`${b.id}-wa-${b.whatsappPhone ?? ''}`}
-                            onBlur={(e) => {
-                              const next = e.target.value.trim() || null;
-                              const prev = (b.whatsappPhone ?? '').trim() || null;
-                              if (next === prev) return;
-                              void api
-                                .updateBarber(b.id, { whatsappPhone: next })
-                                .then(() => {
-                                  loadData();
-                                  showToast(
-                                    next
-                                      ? `WhatsApp de ${b.name} guardado`
-                                      : `WhatsApp de ${b.name} quitado`
-                                  );
-                                })
-                                .catch((err) =>
-                                  showToast(
-                                    err instanceof Error ? err.message : 'No se pudo guardar el WhatsApp',
-                                    'err'
-                                  )
-                                );
-                            }}
-                            className="w-full max-w-xs border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900"
-                          />
-                          <p className="mt-1 text-[11px] text-zinc-500">
-                            Formato internacional, ej. +54911…. Ahí le llegan los turnos nuevos de la web.
-                          </p>
                         </div>
                       </div>
                       {isSuperAdmin && (

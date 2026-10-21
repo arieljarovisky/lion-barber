@@ -1,6 +1,8 @@
 {
   "name": "Lion Barber",
   "short_name": "Lion Barber",
+  "start_url": "/dashboard",
+  "scope": "/",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
@@ -15,5 +17,6 @@
   ],
   "theme_color": "#09090b",
   "background_color": "#09090b",
-  "display": "standalone"
+  "display": "standalone",
+  "orientation": "portrait-primary"
 }

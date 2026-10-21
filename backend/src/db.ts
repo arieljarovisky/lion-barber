@@ -1000,6 +1000,23 @@ export async function initDb(): Promise<void> {
     if (code !== 'ER_DUP_KEYNAME') throw e;
   }
 
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      barber_id VARCHAR(50) NULL,
+      endpoint VARCHAR(500) NOT NULL,
+      p256dh VARCHAR(255) NOT NULL,
+      auth VARCHAR(255) NOT NULL,
+      user_agent VARCHAR(500) NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_push_endpoint (endpoint),
+      KEY idx_push_user (user_id),
+      KEY idx_push_barber (barber_id)
+    )
+  `);
+
   const serviceCountRows = await query<{ count: number }[]>('SELECT COUNT(*) as count FROM services');
   if (serviceCountRows[0].count === 0) {
     const services = [

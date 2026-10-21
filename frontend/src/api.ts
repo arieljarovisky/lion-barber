@@ -879,6 +879,19 @@ export const api = {
 
   getBarbers: () => fetchApi<Barber[]>('/api/barbers'),
 
+  getPushVapidPublicKey: () => fetchApi<{ publicKey: string }>('/api/push/vapid-public-key'),
+
+  subscribePush: (data: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    fetchApi<{ ok: boolean; id: number; barberId: string | null }>('/api/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  unsubscribePush: (endpoint: string) =>
+    fetchApi<void>(`/api/push/subscribe?endpoint=${encodeURIComponent(endpoint)}`, {
+      method: 'DELETE',
+    }),
+
   getBarberSchedule: (barberId: string) =>
     fetchApi<{ francos: BarberFrancoRow[]; blocks: BarberTimeBlockRow[] }>(
       `/api/barber-schedule/${encodeURIComponent(barberId)}`

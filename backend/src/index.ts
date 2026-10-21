@@ -23,6 +23,7 @@ import counterSales from './routes/counterSales.js';
 import subscriptionPlans from './routes/subscriptionPlans.js';
 import promotions from './routes/promotions.js';
 import pointsRedemptionOptions from './routes/pointsRedemptionOptions.js';
+import pushRoutes from './routes/push.js';
 import { runAppointmentReminderEmails } from './jobs/runAppointmentReminderEmails.js';
 import { runExpirePendingPayments } from './jobs/runExpirePendingPayments.js';
 import { backfillMissingDepositAmountsFromMercadoPago } from './services/mercadopagoDepositBackfill.js';
@@ -67,6 +68,7 @@ app.use('/api/afip', afip);
 app.use('/api/expenses', expenses);
 app.use('/api/cash-close', cashClose);
 app.use('/api/admin', admin);
+app.use('/api/push', pushRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });

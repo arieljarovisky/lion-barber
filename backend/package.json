@@ -18,7 +18,8 @@
     "luxon": "^3.7.2",
     "mercadopago": "^2.12.0",
     "mysql2": "^3.11.0",
-    "nodemailer": "^8.0.7"
+    "nodemailer": "^8.0.7",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -27,6 +28,7 @@
     "@types/luxon": "^3.7.1",
     "@types/node": "^22.14.0",
     "@types/nodemailer": "^8.0.0",
+    "@types/web-push": "^3.6.4",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2"
   }
