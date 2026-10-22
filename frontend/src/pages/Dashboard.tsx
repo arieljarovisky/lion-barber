@@ -414,7 +414,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       const result = await subscribeBarberWebPush();
       if (result.ok === true) {
         setPushEnabled(true);
-        showToast('Notificaciones activadas en este celular');
+        showToast(
+          isAdmin
+            ? 'Listo: esta cuenta recibe turnos de todos los barberos'
+            : 'Listo: vas a recibir solo tus turnos'
+        );
         return;
       }
       const fail = result as Extract<typeof result, { ok: false }>;
@@ -437,17 +441,24 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     } finally {
       setPushBusy(false);
     }
-  }, [showToast]);
+  }, [isAdmin, showToast]);
 
-  /** Avisos en el navegador cuando aparece un turno nuevo de la web (sin creador de staff). */
+  /**
+   * Avisos en el navegador (dashboard abierto):
+   * - admin (Lion Barber): todos los turnos web de todos los barberos
+   * - staff/barbero: solo los turnos web de su barbero
+   */
   const notifyBarberForPaidAppointments = useCallback(
     (list: Appointment[]) => {
-      if (profile?.role !== 'staff') return;
-      const staffBid = profile.barberId?.trim() || null;
+      const role = profile?.role;
+      if (role !== 'admin' && role !== 'staff') return;
+      const staffBid = role === 'staff' ? profile?.barberId?.trim() || null : null;
+      if (role === 'staff' && !staffBid) return;
+
       const webScheduled = list.filter((a) => {
         if (a.status !== 'scheduled') return false;
         if (a.createdByUserId != null) return false;
-        if (staffBid && !staffCanViewAll && a.barberId !== staffBid) return false;
+        if (role === 'staff' && a.barberId !== staffBid) return false;
         return true;
       });
       const nextKnown = new Set(webScheduled.map((a) => a.id));
@@ -462,10 +473,14 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
 
       for (const app of newWeb) {
         const depositHint = app.depositPaid ? 'seña confirmada' : 'sin seña';
-        showToast(`Nuevo turno web (${depositHint}): ${app.time} - ${app.name}`, 'ok');
+        const barberHint = role === 'admin' && app.barber ? ` · ${app.barber}` : '';
+        showToast(
+          `Nuevo turno web (${depositHint}): ${app.time} - ${app.name}${barberHint}`,
+          'ok'
+        );
         if (typeof window === 'undefined' || !('Notification' in window)) continue;
         const title = 'Nuevo turno desde la web';
-        const body = `${app.name} · ${app.date} ${app.time}`;
+        const body = `${app.name}${barberHint} · ${app.date} ${app.time}`;
         if (Notification.permission === 'granted') {
           new Notification(title, { body });
           continue;
@@ -483,7 +498,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         }
       }
     },
-    [profile?.role, profile?.barberId, staffCanViewAll, showToast]
+    [profile?.role, profile?.barberId, showToast]
   );
 
   const loadAdminClients = useCallback(async () => {
@@ -2234,10 +2249,12 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         {canAccessDashboard && pushSupported && !pushEnabled && (
           <div className="mb-4 flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
-              <p className="text-sm font-bold text-zinc-900">Notificaciones de turnos web</p>
+              <p className="text-sm font-bold text-zinc-900">Notificaciones de turnos</p>
               <p className="mt-0.5 text-xs text-zinc-500">
-                Activá el aviso flotante en este celular cuando entre un turno nuevo desde la web. En iPhone: Agregar a
-                pantalla de inicio y abrir la app desde ahí.
+                {isAdmin
+                  ? 'Con la cuenta Lion Barber vas a recibir todos los turnos nuevos de todos los barberos.'
+                  : 'Con tu cuenta de barbero vas a recibir solo los turnos nuevos asignados a vos.'}{' '}
+                En iPhone: Agregar a pantalla de inicio y abrir la app desde ahí.
               </p>
             </div>
             <button
@@ -2254,7 +2271,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         {canAccessDashboard && pushSupported && pushEnabled && (
           <div className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-900">
             <Bell size={16} className="shrink-0" />
-            <span>Notificaciones activadas en este celular para turnos nuevos de la web.</span>
+            <span>
+              {isAdmin
+                ? 'Notificaciones activadas: esta cuenta recibe turnos de todos los barberos.'
+                : 'Notificaciones activadas: solo vas a recibir tus turnos.'}
+            </span>
           </div>
         )}
         <div className={agendasOnly ? 'hidden' : 'mb-6 flex flex-col gap-4 sm:mb-8 sm:gap-6 lg:flex-row lg:items-center lg:justify-between'}>

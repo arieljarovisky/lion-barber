@@ -84,18 +84,27 @@ export async function deletePushSubscriptionById(id: number): Promise<void> {
   await pool.execute('DELETE FROM push_subscriptions WHERE id = ?', [id]);
 }
 
-/** Dispositivos del barbero asignado (+ admins suscriptos a todos los turnos web). */
+/**
+ * Destinatarios de un turno nuevo:
+ * - cuentas admin (p. ej. Lion Barber): siempre todos los turnos de todos los barberos
+ * - cuentas staff/barbero: solo turnos de su barbero actual (users.barber_id)
+ */
 export async function listPushSubscriptionsForBarber(
   barberId: string
 ): Promise<PushSubscriptionRecord[]> {
   const bid = barberId.trim();
   if (!bid) return [];
   const rows = await query<DbRow[]>(
-    `SELECT id, user_id, barber_id, endpoint, p256dh, auth
-     FROM push_subscriptions
-     WHERE barber_id = ?
-        OR (barber_id IS NULL AND user_id IN (SELECT id FROM users WHERE role = 'admin'))
-     ORDER BY id ASC`,
+    `SELECT ps.id, ps.user_id, ps.barber_id, ps.endpoint, ps.p256dh, ps.auth
+     FROM push_subscriptions ps
+     INNER JOIN users u ON u.id = ps.user_id
+     WHERE u.role = 'admin'
+        OR (
+          u.role = 'staff'
+          AND TRIM(COALESCE(u.barber_id, '')) <> ''
+          AND TRIM(u.barber_id) = ?
+        )
+     ORDER BY ps.id ASC`,
     [bid]
   );
   return rows.map(rowToSub);

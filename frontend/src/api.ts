@@ -882,7 +882,12 @@ export const api = {
   getPushVapidPublicKey: () => fetchApi<{ publicKey: string }>('/api/push/vapid-public-key'),
 
   subscribePush: (data: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
-    fetchApi<{ ok: boolean; id: number; barberId: string | null }>('/api/push/subscribe', {
+    fetchApi<{
+      ok: boolean;
+      id: number;
+      barberId: string | null;
+      scope: 'all_barbers' | 'own_barber';
+    }>('/api/push/subscribe', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

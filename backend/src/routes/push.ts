@@ -39,7 +39,10 @@ router.post('/subscribe', requireAuth, requireStaffOrAdmin, async (req: AuthRequ
     });
   }
 
-  const barberId = user.role === 'staff' ? user.barberId!.trim() : null;
+  // Admin (Lion Barber): barberId null → recibe todos los turnos.
+  // Staff/barbero: solo los de su barbero vinculado.
+  const barberId = user.role === 'admin' ? null : user.barberId!.trim();
+  const scope = user.role === 'admin' ? 'all_barbers' : 'own_barber';
 
   try {
     const item = await upsertPushSubscription({
@@ -54,6 +57,7 @@ router.post('/subscribe', requireAuth, requireStaffOrAdmin, async (req: AuthRequ
       ok: true,
       id: item.id,
       barberId: item.barberId,
+      scope,
     });
   } catch (e) {
     console.error(e);

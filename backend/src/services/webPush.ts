@@ -58,9 +58,12 @@ export function buildWebAppointmentPushPayload(app: Appointment): {
   tag: string;
 } {
   const depositHint = app.depositPaid ? 'Seña pagada' : 'Sin seña';
+  const barberLabel = (app.barber ?? app.barberId ?? '').trim();
+  const barberPart = barberLabel ? ` · ${barberLabel}` : '';
+  const fromWeb = app.createdByUserId == null;
   return {
-    title: 'Nuevo turno desde la web',
-    body: `${app.name} · ${app.service} · ${fmtDate(app.date)} ${app.time} · ${depositHint}`,
+    title: fromWeb ? 'Nuevo turno desde la web' : 'Nuevo turno agendado',
+    body: `${app.name} · ${app.service}${barberPart} · ${fmtDate(app.date)} ${app.time} · ${depositHint}`,
     url: '/dashboard',
     tag: `appointment-${app.id}`,
   };
@@ -90,7 +93,10 @@ async function sendToSubscription(
   }
 }
 
-/** Notificación flotante nativa al celular del barbero (y admins suscriptos). */
+/**
+ * Push nativo: el barbero asignado recibe solo su turno;
+ * las cuentas admin (Lion Barber) reciben todos los turnos de todos los barberos.
+ */
 export async function notifyBarberPushOnNewWebAppointment(app: Appointment): Promise<void> {
   if (!ensureVapid()) return;
   const barberId = app.barberId?.trim();

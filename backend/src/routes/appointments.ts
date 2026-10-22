@@ -17,6 +17,7 @@ import {
   notifyShopPhoneAppointmentCreated,
   notifyShopPhoneAppointmentRescheduled,
 } from '../services/mobileNotifications.js';
+import { notifyBarberPushOnNewWebAppointment } from '../services/webPush.js';
 import { isRealClientEmail, sendAppointmentScheduledEmail, sendAppointmentUpdatedEmail, sendAppointmentCancelledEmail } from '../services/email.js';
 import { findUserById } from '../repositories/users.js';
 import type { Appointment, AppointmentProductLine } from '../types.js';
@@ -403,6 +404,8 @@ router.post('/', optionalAuth, async (req, res) => {
     });
     if ((created.status ?? 'scheduled') === 'scheduled') {
       void notifyShopPhoneAppointmentCreated(created);
+      // Mismo alcance que turnos web: barbero solo el suyo; admin Lion Barber todos.
+      void notifyBarberPushOnNewWebAppointment(created);
       if (parseNotifyClientByEmail(req.body as Record<string, unknown>)) {
         void notifyClientAppointmentEmail(created, 'scheduled');
       }
