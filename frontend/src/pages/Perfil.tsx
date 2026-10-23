@@ -493,6 +493,23 @@ export default function Perfil() {
           </div>
           <h1 className="text-xl sm:text-2xl font-serif font-black text-white break-words px-2">{profile.name}</h1>
           <p className="text-zinc-400 text-xs sm:text-sm mt-1 break-all px-2 max-w-full">{profile.email}</p>
+          {profile.subscription && (
+            <p className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#e5c185]/35 bg-[#e5c185]/10 px-3.5 py-1.5 text-sm font-bold text-[#e5c185]">
+              <Scissors size={16} className="shrink-0" aria-hidden />
+              <span className="min-w-0 truncate">
+                {profile.subscription.cutsRemaining > 0 ? (
+                  <>
+                    Te quedan{' '}
+                    <span className="tabular-nums">{profile.subscription.cutsRemaining}</span> de{' '}
+                    <span className="tabular-nums">{profile.subscription.cutsPerMonth}</span> corte
+                    {profile.subscription.cutsPerMonth === 1 ? '' : 's'}
+                  </>
+                ) : (
+                  <>Sin cortes disponibles en tu abono</>
+                )}
+              </span>
+            </p>
+          )}
         </div>
 
         {profile.subscription && (() => {
