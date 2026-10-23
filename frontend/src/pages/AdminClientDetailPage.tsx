@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, Trash2, ShieldCheck, StickyNote, Save, Repeat, UserPlus, Users, X } from 'lucide-react';
+import { ChevronLeft, Trash2, ShieldCheck, StickyNote, Save, Repeat, UserPlus, Users, X, Scissors } from 'lucide-react';
 import DashboardPanelShell, { dashboardPanelHref, type DashboardPanelId } from '../components/DashboardPanelShell';
 import AdminClientAvatar from '../components/AdminClientAvatar';
 import ClientSearchInput from '../components/ClientSearchInput';
@@ -485,6 +485,28 @@ export default function AdminClientDetailPage() {
                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Puntos</span>
                       <span className="text-2xl font-black text-[#b39055]">{client.points}</span>
                     </div>
+                    {client.subscription && (
+                      <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-right min-w-[9.5rem]">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-violet-700">
+                          <Scissors size={12} aria-hidden />
+                          Abono
+                        </span>
+                        <p className="mt-0.5 text-2xl font-black tabular-nums text-violet-950">
+                          {client.subscription.cutsRemaining}
+                          <span className="text-sm font-bold text-violet-600">
+                            /{client.subscription.cutsPerMonth}
+                          </span>
+                        </p>
+                        <p className="text-[11px] font-semibold text-violet-800">
+                          {client.subscription.cutsRemaining === 1
+                            ? 'corte restante'
+                            : 'cortes restantes'}
+                        </p>
+                        <p className="mt-0.5 truncate text-[10px] text-violet-600/90" title={client.subscription.planName}>
+                          {client.subscription.planName}
+                        </p>
+                      </div>
+                    )}
                     {clientAccountBalanceOwedArs(client.accountBalanceArs) > 0 && (
                       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-right">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">

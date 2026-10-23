@@ -478,9 +478,10 @@ export default function AdminClientsListPage() {
                           {c.subscription && (
                             <span
                               className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700"
-                              title={`Abono: ${c.subscription.cutsRemaining}/${c.subscription.cutsPerMonth} cortes disponibles`}
+                              title={`${c.subscription.planName}: ${c.subscription.cutsRemaining} de ${c.subscription.cutsPerMonth} cortes disponibles`}
                             >
-                              Abono
+                              Abono · {c.subscription.cutsRemaining} corte
+                              {c.subscription.cutsRemaining === 1 ? '' : 's'}
                             </span>
                           )}
                           {c.depositExempt && !c.subscription && (
@@ -588,9 +589,10 @@ export default function AdminClientsListPage() {
                             {c.subscription && (
                               <span
                                 className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700"
-                                title={`Abono: ${c.subscription.cutsRemaining}/${c.subscription.cutsPerMonth} cortes`}
+                                title={`${c.subscription.planName}: ${c.subscription.cutsRemaining} de ${c.subscription.cutsPerMonth} cortes disponibles`}
                               >
-                                Abono
+                                Abono · {c.subscription.cutsRemaining} corte
+                                {c.subscription.cutsRemaining === 1 ? '' : 's'}
                               </span>
                             )}
                             {c.depositExempt && !c.subscription && (
