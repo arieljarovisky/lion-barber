@@ -298,7 +298,10 @@ async function createMercadoPagoSenaPreference(
   return { preferenceId, ...(url ? { url } : {}) };
 }
 
-/** Referencia compacta en external_reference (máx. ~256 caracteres en MP). */
+/**
+ * Datos estructurados del turno (JSON legacy en external_reference, o metadata lb_*).
+ * La referencia visible en MP ahora es texto legible; el webhook prioriza metadata.
+ */
 interface BookingRefV1 {
   v: 1;
   a: string;
@@ -327,14 +330,19 @@ interface ProductOrderRefV2 {
   u: string;
 }
 
-function buildSubscriptionRef(input: { planId: string; userId: number }): string {
-  const ref: SubscriptionRefV2 = {
-    v: 2,
-    k: 'subscription',
-    p: input.planId,
-    u: String(input.userId),
-  };
-  return JSON.stringify(ref);
+/** Mercado Pago limita external_reference a ~256 caracteres. */
+function clampMpExternalReference(value: string): string {
+  const trimmed = value.replace(/\s+/g, ' ').trim();
+  if (trimmed.length <= 256) return trimmed;
+  return `${trimmed.slice(0, 253)}...`;
+}
+
+/** Texto legible en "Referencia adicional" de Mercado Pago (abono). */
+function buildSubscriptionRef(input: { planId: string; planName: string; userId: number }): string {
+  const planLabel = input.planName.trim() || input.planId;
+  return clampMpExternalReference(
+    `Abono — ${planLabel} — usuario ${input.userId}`
+  );
 }
 
 function parseSubscriptionRef(
@@ -346,7 +354,7 @@ function parseSubscriptionRef(
       const o = JSON.parse(externalReference) as SubscriptionRefV2;
       if (o.v === 2 && o.k === 'subscription' && o.p && o.u) return o;
     } catch {
-      /* otro formato */
+      /* formato legible nuevo u otro */
     }
   }
   if (metadata && typeof metadata === 'object') {
@@ -358,14 +366,11 @@ function parseSubscriptionRef(
   return null;
 }
 
+/** Texto legible en "Referencia adicional" de Mercado Pago (productos). */
 function buildProductOrderRef(input: { orderId: number; userId: number }): string {
-  const ref: ProductOrderRefV2 = {
-    v: 2,
-    k: 'product_order',
-    o: String(input.orderId),
-    u: String(input.userId),
-  };
-  return JSON.stringify(ref);
+  return clampMpExternalReference(
+    `Productos — pedido ${input.orderId} — usuario ${input.userId}`
+  );
 }
 
 function parseProductOrderRef(
@@ -377,7 +382,7 @@ function parseProductOrderRef(
       const o = JSON.parse(externalReference) as ProductOrderRefV2;
       if (o.v === 2 && o.k === 'product_order' && o.o && o.u) return o;
     } catch {
-      /* otro formato */
+      /* formato legible nuevo u otro */
     }
   }
   if (metadata && typeof metadata === 'object') {
@@ -430,7 +435,11 @@ async function createMercadoPagoSubscriptionPreference(
   config: MercadoPagoConfig,
   input: { planId: string; planName: string; amountArs: number; userId: number }
 ): Promise<{ preferenceId: string; url?: string }> {
-  const externalReference = buildSubscriptionRef({ planId: input.planId, userId: input.userId });
+  const externalReference = buildSubscriptionRef({
+    planId: input.planId,
+    planName: input.planName,
+    userId: input.userId,
+  });
   const base = getFrontendUrl();
   const apiPublic = getApiPublicUrl();
   const preference = new Preference(config);
@@ -467,6 +476,7 @@ async function createMercadoPagoSubscriptionPreference(
   return { preferenceId, ...(url ? { url } : {}) };
 }
 
+/** Texto legible en "Referencia adicional" de Mercado Pago (seña / turno). */
 function buildBookingRef(input: {
   appointmentId: string;
   name: string;
@@ -479,26 +489,17 @@ function buildBookingRef(input: {
   durationMinutes: number;
   userId: string;
 }): string {
-  const ref: BookingRefV1 = {
-    v: 1,
-    a: input.appointmentId,
-    n: input.name,
-    p: input.phone,
-    s: input.service,
-    i: input.serviceId,
-    b: input.barberId,
-    d: input.date,
-    t: input.time,
-    m: input.durationMinutes,
-    u: input.userId,
-  };
-  const j = JSON.stringify(ref);
-  if (j.length > 256) {
-    throw new Error(
-      'Los datos del turno superan el límite de Mercado Pago. Probá con un nombre más corto.'
-    );
-  }
-  return j;
+  const name = input.name.trim() || 'Cliente';
+  const service = input.service.trim();
+  const parts = [
+    'Seña',
+    name,
+    `${input.date} ${input.time}`,
+    service || null,
+    `turno ${input.appointmentId}`,
+    `usuario ${input.userId}`,
+  ].filter((p): p is string => Boolean(p && String(p).trim()));
+  return clampMpExternalReference(parts.join(' — '));
 }
 
 function parseBookingRef(
@@ -510,7 +511,7 @@ function parseBookingRef(
       const o = JSON.parse(externalReference) as BookingRefV1;
       if (o.v === 1 && o.a && o.n && o.b && o.d && o.t) return o;
     } catch {
-      /* preferencia antigua u otro formato */
+      /* formato legible nuevo / preferencia antigua */
     }
   }
   if (metadata && typeof metadata === 'object') {
