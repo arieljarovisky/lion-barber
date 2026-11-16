@@ -91,9 +91,9 @@ import type {
   SubscriptionPlan,
   SitePromotion,
   AdminClientWithHistory,
-  type PointsRedemptionOption,
-  type ServicePaymentSplit,
-  type BarberInvoicingUsage,
+  PointsRedemptionOption,
+  ServicePaymentSplit,
+  BarberInvoicingUsage,
 } from '../api';
 import {
   appointmentCommissionableServiceAmountArs,
@@ -123,6 +123,7 @@ import {
   buildDayTimelineRows,
   buildTimeSlotsInRange,
   normalizeAppointmentTime,
+  SLOT_STEP_MINUTES,
   TIMELINE_ROW_UNIT_REM,
   timeToMinutes,
 } from '../utils/agendaTimeline';
@@ -1125,6 +1126,56 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     }
   };
 
+  const handleBlockSlotFromAgenda = async (slotDateStr: string, slotTime: string, barberId: string) => {
+    if (!canStaffManageBarber(barberId)) {
+      showToast('Solo podés bloquear horarios en tu propia agenda.', 'error');
+      return;
+    }
+    const { confirmed: ok } = await confirm({
+      title: 'Bloquear horario',
+      message: `¿Bloquear el horario de las ${slotTime} el ${format(parseISO(slotDateStr + 'T12:00:00'), "d 'de' MMMM", { locale: es })}?`,
+      variant: 'danger',
+      confirmLabel: 'Bloquear',
+    });
+    if (!ok) return;
+    try {
+      const slotMinutes = timeToMinutes(slotTime);
+      const endMinutes = slotMinutes + SLOT_STEP_MINUTES;
+      const endHour = Math.floor(endMinutes / 60);
+      const endMin = endMinutes % 60;
+      const timeEnd = `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`;
+      await api.addBarberTimeBlock(barberId, {
+        blockDate: slotDateStr,
+        weekday: null,
+        timeStart: slotTime,
+        timeEnd,
+      });
+      setAgendaRestrictionsByBarber((prev) => {
+        const cfg = prev[barberId] ?? { offWeekdays: new Set<number>(), blocks: [] };
+        return {
+          ...prev,
+          [barberId]: {
+            ...cfg,
+            blocks: [
+              ...cfg.blocks,
+              {
+                id: Date.now(),
+                barberId,
+                blockDate: slotDateStr,
+                weekday: null,
+                timeStart: slotTime,
+                timeEnd,
+              },
+            ],
+          },
+        };
+      });
+      showToast('Horario bloqueado', 'ok');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'No se pudo bloquear el horario', 'error');
+    }
+  };
+
   const handlePrevDay = () => setSelectedDate((d) => subDays(d, 1));
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1));
   const handleToday = () => setSelectedDate(startOfDay(new Date()));
@@ -1480,21 +1531,33 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           );
         }
         return (
-          <button
+          <div
             key={row.slot}
-            type="button"
-            onClick={() => openCreateModalForSlot(dateStr, row.slot, barber.id)}
-            className="flex w-full items-center gap-2 rounded-lg py-2.5 text-left text-sm min-h-[2.75rem] transition-colors hover:bg-emerald-50/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/40"
-            title={`Nuevo turno con ${barber.name} · ${row.slot}`}
+            className="flex w-full items-center gap-2 rounded-lg py-2.5 text-left text-sm min-h-[2.75rem]"
           >
             <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold tabular-nums">
               {row.slot}
             </span>
-            <span className="flex flex-1 items-center gap-1.5 border border-dashed border-zinc-200/80 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:border-[#e5c185] hover:text-[#b39055]">
-              <Plus size={12} aria-hidden />
-              Libre
-            </span>
-          </button>
+            <div className="flex flex-1 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => openCreateModalForSlot(dateStr, row.slot, barber.id)}
+                className="flex flex-1 items-center gap-1.5 border border-dashed border-zinc-200/80 rounded-lg px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:border-[#e5c185] hover:text-[#b39055] hover:bg-amber-50/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/40"
+                title={`Agendar turno con ${barber.name} · ${row.slot}`}
+              >
+                <Plus size={12} aria-hidden />
+                Libre
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBlockSlotFromAgenda(dateStr, row.slot, barber.id)}
+                className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40"
+                title={`Bloquear horario · ${row.slot}`}
+              >
+                <Ban size={14} aria-hidden />
+              </button>
+            </div>
+          </div>
         );
       }
       if (row.kind === 'blocked') {
@@ -2725,18 +2788,32 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                           }
                           return (
                             <td key={dateStr} className="py-2 px-2 align-top border-l border-zinc-100">
-                              <button
-                                type="button"
-                                onClick={() => openCreateModalForSlot(dateStr, slot, selectedBarberId)}
-                                className="group w-full rounded-lg border border-dashed border-zinc-200 bg-zinc-50/80 text-left transition-colors hover:border-[#e5c185] hover:bg-amber-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/50"
+                              <div
+                                className="group w-full rounded-lg border border-dashed border-zinc-200 bg-zinc-50/80 text-left transition-colors hover:border-[#e5c185] hover:bg-amber-50/60"
                                 style={{ minHeight: `${TIMELINE_ROW_UNIT_REM}rem` }}
-                                title={`Nuevo turno · ${format(parseISO(dateStr + 'T12:00:00'), 'EEE d MMM', { locale: es })} ${slot}`}
                               >
-                                <span className="flex h-full min-h-[2.5rem] w-full items-center justify-center gap-1 px-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400 group-hover:text-[#b39055]">
-                                  <Plus size={14} strokeWidth={2.5} className="opacity-70" aria-hidden />
-                                  <span className="hidden sm:inline">Turno</span>
-                                </span>
-                              </button>
+                                <div className="flex h-full min-h-[2.5rem] w-full items-center justify-center gap-1 px-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => openCreateModalForSlot(dateStr, slot, selectedBarberId)}
+                                    className="flex-1 flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400 group-hover:text-[#b39055] hover:text-[#b39055] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/50 py-1 rounded"
+                                    title={`Agendar turno · ${format(parseISO(dateStr + 'T12:00:00'), 'EEE d MMM', { locale: es })} ${slot}`}
+                                  >
+                                    <Plus size={14} strokeWidth={2.5} className="opacity-70" aria-hidden />
+                                    <span className="hidden sm:inline">Turno</span>
+                                  </button>
+                                  {canStaffManageBarber(selectedBarberId) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleBlockSlotFromAgenda(dateStr, slot, selectedBarberId)}
+                                      className="p-1 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40"
+                                      title={`Bloquear horario · ${slot}`}
+                                    >
+                                      <Ban size={12} aria-hidden />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </td>
                           );
                         })}
@@ -2785,6 +2862,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                       ).map((row) => {
                         if (row.kind === 'free') {
                           const bid = appointmentsByBarber[0]?.barber.id;
+                          const canManageSlot = bid ? canStaffManageBarber(bid) : false;
                           return (
                             <li key={row.slot} className="flex gap-3 sm:gap-5 p-3 sm:p-4 bg-zinc-50/30 min-h-[3.25rem]">
                               <div className="w-16 sm:w-20 shrink-0 text-right pt-0.5">
@@ -2792,16 +2870,26 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                                   {row.slot}
                                 </span>
                               </div>
-                              <div className="flex-1 min-w-0 border-l-2 border-zinc-200 pl-4 sm:pl-5 -ml-px">
+                              <div className="flex-1 min-w-0 border-l-2 border-zinc-200 pl-4 sm:pl-5 -ml-px flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => openCreateModalForSlot(dateStr, row.slot, bid)}
-                                  className="flex w-full items-center gap-2 rounded-xl border border-dashed border-zinc-200 bg-white/60 px-3 py-2.5 text-left text-sm text-zinc-500 transition-colors hover:border-[#e5c185] hover:bg-amber-50/50 hover:text-[#b39055] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/50"
-                                  title={`Nuevo turno a las ${row.slot}`}
+                                  className="flex flex-1 items-center gap-2 rounded-xl border border-dashed border-zinc-200 bg-white/60 px-3 py-2.5 text-left text-sm text-zinc-500 transition-colors hover:border-[#e5c185] hover:bg-amber-50/50 hover:text-[#b39055] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/50"
+                                  title={`Agendar turno a las ${row.slot}`}
                                 >
                                   <Plus size={16} className="shrink-0 opacity-60" aria-hidden />
                                   <span className="font-semibold">Libre — clic para agendar</span>
                                 </button>
+                                {canManageSlot && bid && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleBlockSlotFromAgenda(dateStr, row.slot, bid)}
+                                    className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40"
+                                    title={`Bloquear horario · ${row.slot}`}
+                                  >
+                                    <Ban size={16} aria-hidden />
+                                  </button>
+                                )}
                               </div>
                             </li>
                           );
@@ -2924,6 +3012,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                     adminClients={adminClients}
                     shopWhatsappMessageTemplate={shopWhatsappMessageTemplate}
                     onCreateSlot={openCreateModalForSlot}
+                    onBlockSlot={handleBlockSlotFromAgenda}
                     onEdit={tryOpenEditModal}
                     onDelete={tryDeleteAppointment}
                     manageBarberId={staffBarberId}

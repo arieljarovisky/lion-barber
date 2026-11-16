@@ -1,4 +1,4 @@
-import { Plus, Pencil, Trash2, MessageCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, MessageCircle, Ban } from 'lucide-react';
 import type { AdminClientWithHistory, Appointment, Barber } from '../api';
 import AppointmentPaymentBadge from './AppointmentPaymentBadge';
 import ClientProfileLink from './ClientProfileLink';
@@ -27,6 +27,8 @@ type Props = {
   /** Si se define, solo esa columna permite crear/editar/eliminar (cuentas barbero). */
   manageBarberId?: string | null;
   onCreateSlot: (dateStr: string, slot: string, barberId: string) => void;
+  /** Bloquear un slot libre (opcional, si no se pasa no se muestra la opción). */
+  onBlockSlot?: (dateStr: string, slot: string, barberId: string) => void;
   onEdit: (app: Appointment) => void;
   onDelete: (id: string) => void;
   /** Altura máxima del área scrolleable (CSS). */
@@ -51,6 +53,7 @@ function renderTimelineRow(
     adminClients: AdminClientWithHistory[];
     shopWhatsappMessageTemplate: string | null;
     onCreateSlot: Props['onCreateSlot'];
+    onBlockSlot: Props['onBlockSlot'];
     onEdit: Props['onEdit'];
     onDelete: Props['onDelete'];
     canManage: boolean;
@@ -63,6 +66,7 @@ function renderTimelineRow(
     adminClients,
     shopWhatsappMessageTemplate,
     onCreateSlot,
+    onBlockSlot,
     onEdit,
     onDelete,
     canManage,
@@ -85,21 +89,35 @@ function renderTimelineRow(
       );
     }
     return (
-      <button
+      <div
         key={row.slot}
-        type="button"
-        onClick={() => onCreateSlot(dateStr, row.slot, barberId)}
-        className="flex w-full items-center gap-2 rounded-lg py-2.5 text-left text-sm min-h-[2.75rem] transition-colors hover:bg-emerald-50/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/40"
-        title={`Nuevo turno · ${row.slot}`}
+        className="flex w-full items-center gap-2 rounded-lg py-2.5 text-left text-sm min-h-[2.75rem]"
       >
         <span className="w-14 font-mono text-zinc-500 flex-shrink-0 text-xs font-semibold">
           {row.slot}
         </span>
-        <span className="flex flex-1 items-center gap-1.5 border border-dashed border-zinc-200/80 rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:border-[#e5c185] hover:text-[#b39055]">
-          <Plus size={12} aria-hidden />
-          Libre
-        </span>
-      </button>
+        <div className="flex flex-1 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onCreateSlot(dateStr, row.slot, barberId)}
+            className="flex flex-1 items-center gap-1.5 border border-dashed border-zinc-200/80 rounded-md px-2.5 py-1.5 text-xs font-medium text-zinc-400 hover:border-[#e5c185] hover:text-[#b39055] hover:bg-amber-50/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e5c185]/40"
+            title={`Agendar turno · ${row.slot}`}
+          >
+            <Plus size={12} aria-hidden />
+            Libre
+          </button>
+          {onBlockSlot && (
+            <button
+              type="button"
+              onClick={() => onBlockSlot(dateStr, row.slot, barberId)}
+              className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40"
+              title={`Bloquear horario · ${row.slot}`}
+            >
+              <Ban size={14} aria-hidden />
+            </button>
+          )}
+        </div>
+      </div>
     );
   }
 
@@ -204,6 +222,7 @@ export default function BarberDayCalendarsGrid({
   adminClients,
   shopWhatsappMessageTemplate,
   onCreateSlot,
+  onBlockSlot,
   onEdit,
   onDelete,
   manageBarberId = null,
@@ -289,6 +308,7 @@ export default function BarberDayCalendarsGrid({
                   adminClients,
                   shopWhatsappMessageTemplate,
                   onCreateSlot,
+                  onBlockSlot,
                   onEdit,
                   onDelete,
                   canManage: !manageBarberId || manageBarberId === barber.id,
