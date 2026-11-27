@@ -15,6 +15,7 @@ router.get('/', async (_req, res) => {
       weekdayHours: s.weekdayHours,
       closedDates: s.closedDates,
       whatsappMessageTemplate: s.whatsappMessageTemplate,
+      delayMessageTemplate: s.delayMessageTemplate,
     });
   } catch (err) {
     console.error(err);
@@ -31,6 +32,7 @@ router.patch('/', requireAuth, requireAdmin, async (req, res) => {
     weekdayHours,
     closedDates,
     whatsappMessageTemplate,
+    delayMessageTemplate,
   } = req.body as {
     cutoffHours?: number;
     openWeekdays?: number[];
@@ -39,6 +41,7 @@ router.patch('/', requireAuth, requireAdmin, async (req, res) => {
     weekdayHours?: Record<number, { openTime?: string; closeTime?: string }>;
     closedDates?: string[];
     whatsappMessageTemplate?: string | null;
+    delayMessageTemplate?: string | null;
   };
   try {
     const updated = await repo.updateShopSettings({
@@ -50,6 +53,9 @@ router.patch('/', requireAuth, requireAdmin, async (req, res) => {
       ...(closedDates != null ? { closedDates } : {}),
       ...(Object.prototype.hasOwnProperty.call(req.body ?? {}, 'whatsappMessageTemplate')
         ? { whatsappMessageTemplate: whatsappMessageTemplate ?? null }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(req.body ?? {}, 'delayMessageTemplate')
+        ? { delayMessageTemplate: delayMessageTemplate ?? null }
         : {}),
     });
     res.json(updated);

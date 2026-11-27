@@ -323,6 +323,8 @@ export interface ShopSettings {
   closedDates: string[];
   /** Plantilla del mensaje prellenado al abrir WhatsApp desde la agenda (null = mensaje por defecto). */
   whatsappMessageTemplate?: string | null;
+  /** Plantilla del mensaje de demora por WhatsApp (null = mensaje por defecto). */
+  delayMessageTemplate?: string | null;
 }
 
 export interface BarberFrancoRow {
@@ -746,6 +748,7 @@ export const api = {
         | 'weekdayHours'
         | 'closedDates'
         | 'whatsappMessageTemplate'
+        | 'delayMessageTemplate'
       >
     >
   ) =>

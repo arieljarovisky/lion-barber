@@ -132,6 +132,8 @@ import {
   appointmentNeedsManualContact,
   buildAppointmentWhatsappUrl,
   buildDelayWhatsappUrl,
+  DEFAULT_DELAY_MESSAGE,
+  DELAY_MESSAGE_HELP,
 } from '../utils/appointmentWhatsapp';
 
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
@@ -344,6 +346,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const [shopClosedDates, setShopClosedDates] = useState<string[]>([]);
   const [closedDateInput, setClosedDateInput] = useState('');
   const [shopWhatsappMessageTemplate, setShopWhatsappMessageTemplate] = useState('');
+  const [shopDelayMessageTemplate, setShopDelayMessageTemplate] = useState('');
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
   const [backupDownloading, setBackupDownloading] = useState(false);
@@ -936,6 +939,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
         setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
         setShopWhatsappMessageTemplate(s.whatsappMessageTemplate ?? '');
+        setShopDelayMessageTemplate(s.delayMessageTemplate ?? '');
       })
       .catch(() => {});
     return () => {
@@ -958,6 +962,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
           setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
           setShopWhatsappMessageTemplate(s.whatsappMessageTemplate ?? '');
+          setShopDelayMessageTemplate(s.delayMessageTemplate ?? '');
           setClosedDateInput('');
         }
       })
@@ -2251,8 +2256,10 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         weekdayHours: shopWeekdayHours,
         closedDates: shopClosedDates,
         whatsappMessageTemplate: shopWhatsappMessageTemplate.trim() === '' ? null : shopWhatsappMessageTemplate.trim(),
+        delayMessageTemplate: shopDelayMessageTemplate.trim() === '' ? null : shopDelayMessageTemplate.trim(),
       });
       setShopWhatsappMessageTemplate(updated.whatsappMessageTemplate ?? '');
+      setShopDelayMessageTemplate(updated.delayMessageTemplate ?? '');
       showToast('Configuración guardada correctamente');
     } catch (err) {
       setShopError(err instanceof Error ? err.message : 'Error al guardar');
@@ -4218,6 +4225,25 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 </p>
               </div>
               <div>
+                <h3 className="font-black text-lg text-zinc-900">Mensaje de demora</h3>
+                <p className="text-sm text-zinc-500 mt-1">
+                  Texto para avisar demora por WhatsApp desde el modal de editar cita. Dejalo vacío para el mensaje automático.
+                </p>
+                <p className="text-xs text-zinc-500 mt-2">{DELAY_MESSAGE_HELP}</p>
+                <textarea
+                  value={shopDelayMessageTemplate}
+                  onChange={(e) => setShopDelayMessageTemplate(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  spellCheck={false}
+                  className="mt-3 w-full border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 font-mono leading-relaxed"
+                  placeholder={DEFAULT_DELAY_MESSAGE}
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  {shopDelayMessageTemplate.length} / 2000 caracteres
+                </p>
+              </div>
+              <div>
                 <h3 className="font-black text-lg text-zinc-900">Días abiertos</h3>
                 <p className="text-sm text-zinc-500 mt-1">Solo los días marcados permiten reservar en la web.</p>
                 <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mt-4 mb-1">
@@ -4952,7 +4978,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                     </label>
                     <div className="flex flex-wrap gap-2">
                       {[5, 10, 15, 20, 30].map((minutes) => {
-                        const url = buildDelayWhatsappUrl(editingAppointment, minutes);
+                        const url = buildDelayWhatsappUrl(editingAppointment, minutes, shopDelayMessageTemplate);
                         if (!url) return null;
                         return (
                           <a
