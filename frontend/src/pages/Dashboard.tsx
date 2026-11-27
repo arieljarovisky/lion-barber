@@ -130,6 +130,7 @@ import {
 import {
   appointmentNeedsManualContact,
   buildAppointmentWhatsappUrl,
+  buildDelayWhatsappUrl,
 } from '../utils/appointmentWhatsapp';
 
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
@@ -4799,6 +4800,34 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                       </p>
                     </div>
                   </>
+                )}
+                {editingAppointment && appointmentNeedsManualContact(editingAppointment) && (
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                      Avisar demora por WhatsApp
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[5, 10, 15, 20, 30].map((minutes) => {
+                        const url = buildDelayWhatsappUrl(editingAppointment, minutes);
+                        if (!url) return null;
+                        return (
+                          <a
+                            key={minutes}
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm font-medium hover:bg-emerald-100 transition-colors"
+                          >
+                            <MessageCircle size={14} />
+                            {minutes} min
+                          </a>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Abre WhatsApp con un mensaje avisando que estás demorado.
+                    </p>
+                  </div>
                 )}
                 {(editingAppointment?.userId != null || linkedClientId != null) && (
                   <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 cursor-pointer">

@@ -25,3 +25,14 @@ export function buildAppointmentWhatsappUrl(
   const body = applyWhatsappMessageTemplate(messageTemplate, app);
   return `https://wa.me/${phone}?text=${encodeURIComponent(body)}`;
 }
+
+export function buildDelayWhatsappUrl(
+  app: Appointment,
+  delayMinutes: number
+): string | null {
+  const phone = buildWhatsappPhone(app.phone ?? '');
+  if (!phone) return null;
+  const clientName = (app.name ?? '').trim().split(/\s+/)[0] || 'Cliente';
+  const body = `Hola ${clientName}, disculpá la demora. Estamos ${delayMinutes} minutos demorados. ¡Ya te atendemos!`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(body)}`;
+}
