@@ -9,6 +9,7 @@ export interface ShopSettingsRow {
   weekday_hours?: string | null;
   closed_dates?: string | null;
   whatsapp_message_template?: string | null;
+  delay_message_template?: string | null;
 }
 
 const DEFAULT_OPEN = '1,2,3,4,5,6,7';
@@ -122,9 +123,10 @@ export async function getShopSettings(): Promise<{
   weekdayHours: WeekdayHours;
   closedDates: string[];
   whatsappMessageTemplate: string | null;
+  delayMessageTemplate: string | null;
 }> {
   const rows = await query<ShopSettingsRow[]>(
-    'SELECT cutoff_hours, open_weekdays, deposit_percent, close_time, weekday_hours, closed_dates, whatsapp_message_template FROM shop_settings WHERE id = 1'
+    'SELECT cutoff_hours, open_weekdays, deposit_percent, close_time, weekday_hours, closed_dates, whatsapp_message_template, delay_message_template FROM shop_settings WHERE id = 1'
   );
   const row = rows[0];
   if (!row) {
@@ -136,12 +138,16 @@ export async function getShopSettings(): Promise<{
       weekdayHours: defaultWeekdayHours(),
       closedDates: [],
       whatsappMessageTemplate: null,
+      delayMessageTemplate: null,
     };
   }
   const closeTime = normalizeCloseTime(row.close_time);
   const tpl = row.whatsapp_message_template;
   const whatsappMessageTemplate =
     typeof tpl === 'string' && tpl.trim().length > 0 ? tpl.trim().slice(0, 8000) : null;
+  const delayTpl = row.delay_message_template;
+  const delayMessageTemplate =
+    typeof delayTpl === 'string' && delayTpl.trim().length > 0 ? delayTpl.trim().slice(0, 2000) : null;
   return {
     cutoffHours: row.cutoff_hours,
     openWeekdays: parseOpenWeekdays(row.open_weekdays),
@@ -150,6 +156,7 @@ export async function getShopSettings(): Promise<{
     weekdayHours: parseWeekdayHours(row.weekday_hours, closeTime),
     closedDates: parseClosedDates(row.closed_dates),
     whatsappMessageTemplate,
+    delayMessageTemplate,
   };
 }
 
@@ -161,6 +168,7 @@ export async function updateShopSettings(data: {
   weekdayHours?: Partial<Record<number, Partial<DayHours>>>;
   closedDates?: string[];
   whatsappMessageTemplate?: string | null;
+  delayMessageTemplate?: string | null;
 }): Promise<{
   cutoffHours: number;
   openWeekdays: number[];
@@ -169,6 +177,7 @@ export async function updateShopSettings(data: {
   weekdayHours: WeekdayHours;
   closedDates: string[];
   whatsappMessageTemplate: string | null;
+  delayMessageTemplate: string | null;
 }> {
   const current = await getShopSettings();
   const cutoffHours =
@@ -206,9 +215,18 @@ export async function updateShopSettings(data: {
       whatsappMessageTemplate = raw.trim().slice(0, 8000);
     }
   }
+  let delayMessageTemplate = current.delayMessageTemplate;
+  if (Object.prototype.hasOwnProperty.call(data, 'delayMessageTemplate')) {
+    const raw = data.delayMessageTemplate;
+    if (raw == null || (typeof raw === 'string' && raw.trim() === '')) {
+      delayMessageTemplate = null;
+    } else if (typeof raw === 'string') {
+      delayMessageTemplate = raw.trim().slice(0, 2000);
+    }
+  }
   const openStr = openWeekdays.join(',');
   await pool.execute(
-    'UPDATE shop_settings SET cutoff_hours = ?, open_weekdays = ?, deposit_percent = ?, close_time = ?, weekday_hours = ?, closed_dates = ?, whatsapp_message_template = ? WHERE id = 1',
+    'UPDATE shop_settings SET cutoff_hours = ?, open_weekdays = ?, deposit_percent = ?, close_time = ?, weekday_hours = ?, closed_dates = ?, whatsapp_message_template = ?, delay_message_template = ? WHERE id = 1',
     [
       cutoffHours,
       openStr,
@@ -217,7 +235,8 @@ export async function updateShopSettings(data: {
       JSON.stringify(weekdayHours),
       JSON.stringify(closedDates),
       whatsappMessageTemplate,
+      delayMessageTemplate,
     ]
   );
-  return { cutoffHours, openWeekdays, depositPercent, closeTime, weekdayHours, closedDates, whatsappMessageTemplate };
+  return { cutoffHours, openWeekdays, depositPercent, closeTime, weekdayHours, closedDates, whatsappMessageTemplate, delayMessageTemplate };
 }

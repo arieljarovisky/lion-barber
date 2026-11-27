@@ -132,6 +132,8 @@ import {
   appointmentNeedsManualContact,
   buildAppointmentWhatsappUrl,
   buildDelayWhatsappUrl,
+  DEFAULT_DELAY_MESSAGE,
+  DELAY_MESSAGE_HELP,
 } from '../utils/appointmentWhatsapp';
 
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
@@ -323,6 +325,8 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
   const [blockMode, setBlockMode] = useState<'once' | 'weekly'>('once');
+  const [blockGroupModalOpen, setBlockGroupModalOpen] = useState(false);
+  const [selectedBlockGroup, setSelectedBlockGroup] = useState<BarberTimeBlockRow[] | null>(null);
   const [blockDate, setBlockDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [blockWeekday, setBlockWeekday] = useState(1);
   const [blockTimeStart, setBlockTimeStart] = useState('13:00');
@@ -344,6 +348,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   const [shopClosedDates, setShopClosedDates] = useState<string[]>([]);
   const [closedDateInput, setClosedDateInput] = useState('');
   const [shopWhatsappMessageTemplate, setShopWhatsappMessageTemplate] = useState('');
+  const [shopDelayMessageTemplate, setShopDelayMessageTemplate] = useState('');
   const [shopLoading, setShopLoading] = useState(false);
   const [shopSaving, setShopSaving] = useState(false);
   const [backupDownloading, setBackupDownloading] = useState(false);
@@ -936,6 +941,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
         setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
         setShopWhatsappMessageTemplate(s.whatsappMessageTemplate ?? '');
+        setShopDelayMessageTemplate(s.delayMessageTemplate ?? '');
       })
       .catch(() => {});
     return () => {
@@ -958,6 +964,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
           setShopWeekdayHours(normalizeWeekdayHours(s.weekdayHours, s.closeTime || '20:00'));
           setShopClosedDates(Array.isArray(s.closedDates) ? s.closedDates : []);
           setShopWhatsappMessageTemplate(s.whatsappMessageTemplate ?? '');
+          setShopDelayMessageTemplate(s.delayMessageTemplate ?? '');
           setClosedDateInput('');
         }
       })
@@ -1121,6 +1128,80 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     try {
       await api.deleteBarberTimeBlock(scheduleBarberId, id);
       await loadSchedule();
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Error al eliminar');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const groupedTimeBlocks = useMemo(() => {
+    if (!timeBlocks.length) return [];
+    const sorted = [...timeBlocks].sort((a, b) => {
+      const dateA = a.blockDate ?? '';
+      const dateB = b.blockDate ?? '';
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      const weekdayA = a.weekday ?? 0;
+      const weekdayB = b.weekday ?? 0;
+      if (weekdayA !== weekdayB) return weekdayA - weekdayB;
+      return a.timeStart.localeCompare(b.timeStart);
+    });
+    const groups: BarberTimeBlockRow[][] = [];
+    for (const block of sorted) {
+      const lastGroup = groups[groups.length - 1];
+      if (!lastGroup) {
+        groups.push([block]);
+        continue;
+      }
+      const lastBlock = lastGroup[lastGroup.length - 1];
+      const sameDate = block.blockDate === lastBlock.blockDate;
+      const sameWeekday = block.weekday === lastBlock.weekday;
+      const isConsecutive = lastBlock.timeEnd === block.timeStart;
+      if ((sameDate || sameWeekday) && isConsecutive) {
+        lastGroup.push(block);
+      } else {
+        groups.push([block]);
+      }
+    }
+    return groups;
+  }, [timeBlocks]);
+
+  const deleteBlocksInGroup = async (blocks: BarberTimeBlockRow[]) => {
+    if (!scheduleBarberId || !canAccessDashboard) return;
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      for (const b of blocks) {
+        await api.deleteBarberTimeBlock(scheduleBarberId, b.id);
+      }
+      await loadSchedule();
+      setBlockGroupModalOpen(false);
+      setSelectedBlockGroup(null);
+      showToast(`${blocks.length === 1 ? 'Bloqueo eliminado' : `${blocks.length} bloqueos eliminados`}`, 'ok');
+    } catch (err) {
+      setScheduleError(err instanceof Error ? err.message : 'Error al eliminar');
+    } finally {
+      setSavingSchedule(false);
+    }
+  };
+
+  const deleteSingleBlockFromGroup = async (blockId: number) => {
+    if (!scheduleBarberId || !canAccessDashboard) return;
+    setSavingSchedule(true);
+    setScheduleError('');
+    try {
+      await api.deleteBarberTimeBlock(scheduleBarberId, blockId);
+      await loadSchedule();
+      if (selectedBlockGroup) {
+        const remaining = selectedBlockGroup.filter((b) => b.id !== blockId);
+        if (remaining.length === 0) {
+          setBlockGroupModalOpen(false);
+          setSelectedBlockGroup(null);
+        } else {
+          setSelectedBlockGroup(remaining);
+        }
+      }
+      showToast('Bloqueo eliminado', 'ok');
     } catch (err) {
       setScheduleError(err instanceof Error ? err.message : 'Error al eliminar');
     } finally {
@@ -2251,8 +2332,10 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         weekdayHours: shopWeekdayHours,
         closedDates: shopClosedDates,
         whatsappMessageTemplate: shopWhatsappMessageTemplate.trim() === '' ? null : shopWhatsappMessageTemplate.trim(),
+        delayMessageTemplate: shopDelayMessageTemplate.trim() === '' ? null : shopDelayMessageTemplate.trim(),
       });
       setShopWhatsappMessageTemplate(updated.whatsappMessageTemplate ?? '');
+      setShopDelayMessageTemplate(updated.delayMessageTemplate ?? '');
       showToast('Configuración guardada correctamente');
     } catch (err) {
       setShopError(err instanceof Error ? err.message : 'Error al guardar');
@@ -3831,32 +3914,57 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 </button>
               </form>
 
-              {timeBlocks.length > 0 && (
+              {groupedTimeBlocks.length > 0 && (
                 <ul className="mt-6 divide-y divide-zinc-100 border border-zinc-100 rounded-xl overflow-hidden">
-                  {timeBlocks.map((b) => (
-                    <li
-                      key={b.id}
-                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white text-sm"
-                    >
-                      <span className="text-zinc-800">
-                        {b.blockDate
-                          ? `${format(parseISO(b.blockDate), "d MMM yyyy", { locale: es })}`
-                          : `Cada ${WEEKDAY_SHORT.find((w) => w.value === b.weekday)?.label ?? '—'}`}
-                        {' · '}
-                        <span className="font-mono font-bold">
-                          {b.timeStart} – {b.timeEnd}
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        disabled={!canAccessDashboard || savingSchedule}
-                        onClick={() => deleteBlock(b.id)}
-                        className="text-red-600 hover:text-red-800 font-bold text-xs uppercase tracking-wider disabled:opacity-50"
+                  {groupedTimeBlocks.map((group) => {
+                    const first = group[0];
+                    const last = group[group.length - 1];
+                    const barberName = barbers.find((b) => b.id === scheduleBarberId)?.name ?? '—';
+                    return (
+                      <li
+                        key={`group-${first.id}`}
+                        className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white text-sm hover:bg-zinc-50 cursor-pointer transition-colors"
+                        onClick={() => {
+                          setSelectedBlockGroup(group);
+                          setBlockGroupModalOpen(true);
+                        }}
                       >
-                        Quitar
-                      </button>
-                    </li>
-                  ))}
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-zinc-800">
+                            {first.blockDate
+                              ? `${format(parseISO(first.blockDate), "d MMM yyyy", { locale: es })}`
+                              : `Cada ${WEEKDAY_SHORT.find((w) => w.value === first.weekday)?.label ?? '—'}`}
+                            {' · '}
+                            <span className="font-mono font-bold">
+                              {first.timeStart} – {last.timeEnd}
+                            </span>
+                            {group.length > 1 && (
+                              <span className="ml-2 text-xs text-zinc-500">
+                                ({group.length} slots)
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-xs text-zinc-500">{barberName}</span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!canAccessDashboard || savingSchedule}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (group.length === 1) {
+                              void deleteBlock(first.id);
+                            } else {
+                              setSelectedBlockGroup(group);
+                              setBlockGroupModalOpen(true);
+                            }
+                          }}
+                          className="text-red-600 hover:text-red-800 font-bold text-xs uppercase tracking-wider disabled:opacity-50"
+                        >
+                          {group.length === 1 ? 'Quitar' : 'Ver detalle'}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               {!scheduleLoading && timeBlocks.length === 0 && (
@@ -4215,6 +4323,25 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                 />
                 <p className="text-[11px] text-zinc-400 mt-1">
                   {shopWhatsappMessageTemplate.length} / 8000 caracteres
+                </p>
+              </div>
+              <div>
+                <h3 className="font-black text-lg text-zinc-900">Mensaje de demora</h3>
+                <p className="text-sm text-zinc-500 mt-1">
+                  Texto para avisar demora por WhatsApp desde el modal de editar cita. Dejalo vacío para el mensaje automático.
+                </p>
+                <p className="text-xs text-zinc-500 mt-2">{DELAY_MESSAGE_HELP}</p>
+                <textarea
+                  value={shopDelayMessageTemplate}
+                  onChange={(e) => setShopDelayMessageTemplate(e.target.value)}
+                  rows={3}
+                  maxLength={2000}
+                  spellCheck={false}
+                  className="mt-3 w-full border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 font-mono leading-relaxed"
+                  placeholder={DEFAULT_DELAY_MESSAGE}
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  {shopDelayMessageTemplate.length} / 2000 caracteres
                 </p>
               </div>
               <div>
@@ -4649,6 +4776,98 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
         onError={(msg) => showToast(msg, 'err')}
       />
 
+      {/* Modal detalle grupo de bloqueos */}
+      {blockGroupModalOpen && selectedBlockGroup && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto"
+          onClick={() => {
+            setBlockGroupModalOpen(false);
+            setSelectedBlockGroup(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex flex-col overflow-hidden my-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-zinc-200 flex justify-between items-center shrink-0">
+              <div>
+                <h3 className="text-xl font-black text-zinc-900">Detalle del bloqueo</h3>
+                <p className="text-sm text-zinc-500 mt-0.5">
+                  {barbers.find((b) => b.id === scheduleBarberId)?.name ?? '—'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBlockGroupModalOpen(false);
+                  setSelectedBlockGroup(null);
+                }}
+                className="p-2 text-zinc-400 hover:text-zinc-600 rounded-full hover:bg-zinc-100"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div className="p-6 flex-1 overflow-y-auto space-y-4">
+              <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-sm text-zinc-600">
+                  {selectedBlockGroup[0].blockDate
+                    ? format(parseISO(selectedBlockGroup[0].blockDate), "EEEE d 'de' MMMM yyyy", { locale: es })
+                    : `Cada ${WEEKDAY_SHORT.find((w) => w.value === selectedBlockGroup[0].weekday)?.label ?? '—'} (semanal)`}
+                </p>
+                <p className="text-lg font-bold text-zinc-900 mt-1">
+                  {selectedBlockGroup[0].timeStart} – {selectedBlockGroup[selectedBlockGroup.length - 1].timeEnd}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                  Slots individuales ({selectedBlockGroup.length})
+                </p>
+                <ul className="divide-y divide-zinc-100 border border-zinc-100 rounded-xl overflow-hidden">
+                  {selectedBlockGroup.map((block) => (
+                    <li
+                      key={block.id}
+                      className="flex items-center justify-between gap-3 px-4 py-2.5 bg-white text-sm"
+                    >
+                      <span className="font-mono text-zinc-800">
+                        {block.timeStart} – {block.timeEnd}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={savingSchedule}
+                        onClick={() => void deleteSingleBlockFromGroup(block.id)}
+                        className="text-red-600 hover:text-red-800 font-bold text-xs uppercase tracking-wider disabled:opacity-50"
+                      >
+                        Quitar
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="flex gap-3 p-6 pt-4 border-t border-zinc-200 shrink-0 bg-white">
+              <button
+                type="button"
+                onClick={() => {
+                  setBlockGroupModalOpen(false);
+                  setSelectedBlockGroup(null);
+                }}
+                className="flex-1 py-3 rounded-xl border border-zinc-200 text-zinc-700 font-bold hover:bg-zinc-50"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                disabled={savingSchedule}
+                onClick={() => void deleteBlocksInGroup(selectedBlockGroup)}
+                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold disabled:opacity-50"
+              >
+                {savingSchedule ? 'Quitando...' : `Quitar todos (${selectedBlockGroup.length})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal crear/editar cita */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto" onClick={closeModal}>
@@ -4952,7 +5171,7 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                     </label>
                     <div className="flex flex-wrap gap-2">
                       {[5, 10, 15, 20, 30].map((minutes) => {
-                        const url = buildDelayWhatsappUrl(editingAppointment, minutes);
+                        const url = buildDelayWhatsappUrl(editingAppointment, minutes, shopDelayMessageTemplate);
                         if (!url) return null;
                         return (
                           <a

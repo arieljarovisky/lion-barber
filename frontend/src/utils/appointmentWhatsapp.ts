@@ -26,13 +26,23 @@ export function buildAppointmentWhatsappUrl(
   return `https://wa.me/${phone}?text=${encodeURIComponent(body)}`;
 }
 
+export const DEFAULT_DELAY_MESSAGE = 'Hola {nombre}, disculpá la demora. Estamos {minutos} minutos demorados. ¡Ya te atendemos!';
+
+export const DELAY_MESSAGE_HELP = 'Variables: {nombre}, {nombre_completo}, {minutos}. Formato WhatsApp: *negrita* _cursiva_.';
+
 export function buildDelayWhatsappUrl(
   app: Appointment,
-  delayMinutes: number
+  delayMinutes: number,
+  template?: string | null
 ): string | null {
   const phone = buildWhatsappPhone(app.phone ?? '');
   if (!phone) return null;
   const clientName = (app.name ?? '').trim().split(/\s+/)[0] || 'Cliente';
-  const body = `Hola ${clientName}, disculpá la demora. Estamos ${delayMinutes} minutos demorados. ¡Ya te atendemos!`;
+  const fullName = (app.name ?? '').trim() || clientName;
+  const tpl = (template ?? '').trim() || DEFAULT_DELAY_MESSAGE;
+  const body = tpl
+    .replace(/{nombre}/g, clientName)
+    .replace(/{nombre_completo}/g, fullName)
+    .replace(/{minutos}/g, String(delayMinutes));
   return `https://wa.me/${phone}?text=${encodeURIComponent(body)}`;
 }
