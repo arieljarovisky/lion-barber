@@ -1,4 +1,4 @@
-import type { Appointment } from '../api';
+import type { Appointment, BarberTimeBlockRow } from '../api';
 
 export const AGENDA_TIME_SLOTS = [
   '10:00', '10:20', '10:40',
@@ -19,9 +19,15 @@ export const SLOT_STEP_MINUTES = 20;
 /** Altura visual mínima por franja de 20 min en el timeline (rem). */
 export const TIMELINE_ROW_UNIT_REM = 3.75;
 
+export interface BlockedSlotInfo {
+  slot: string;
+  block: BarberTimeBlockRow;
+}
+
 export type DayTimelineRow =
   | { kind: 'free'; slot: string }
   | { kind: 'blocked'; slot: string }
+  | { kind: 'blocked-group'; slots: string[]; block: BarberTimeBlockRow }
   | { kind: 'appointment'; slot: string; app: Appointment; span: number };
 
 export function timeToMinutes(hhmm: string): number {
@@ -68,6 +74,35 @@ export function addMinutesToClock(hhmm: string, minutes: number): string {
   return `${String(H).padStart(2, '0')}:${String(M).padStart(2, '0')}`;
 }
 
+/** Encuentra qué bloqueo aplica a un slot dado en una fecha. */
+export function getBlockForSlot(
+  slot: string,
+  dateStr: string,
+  blocks: BarberTimeBlockRow[]
+): BarberTimeBlockRow | null {
+  const slotMin = timeToMinutes(slot);
+  const weekday = getIsoWeekdayFromYmd(dateStr);
+  for (const b of blocks) {
+    const appliesByDate = b.blockDate != null && b.blockDate === dateStr;
+    const appliesByWeekday = b.blockDate == null && b.weekday === weekday;
+    if (!appliesByDate && !appliesByWeekday) continue;
+    const start = timeToMinutes(b.timeStart);
+    const end = timeToMinutes(b.timeEnd);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    if (slotMin >= start && slotMin < end) return b;
+  }
+  return null;
+}
+
+/** Parsea yyyy-MM-dd y devuelve el día de la semana ISO (1=lunes, 7=domingo). */
+function getIsoWeekdayFromYmd(ymd: string): number {
+  const [y, m, d] = ymd.split('-').map(Number);
+  if (!y || !m || !d) return 0;
+  const date = new Date(y, m - 1, d);
+  const dow = date.getDay();
+  return dow === 0 ? 7 : dow;
+}
+
 /** Una fila por bloque libre, bloqueado o turno que ocupa N franjas de 20 min. */
 export function buildDayTimelineRows(
   apps: Appointment[],
@@ -95,6 +130,52 @@ export function buildDayTimelineRows(
     } else {
       rows.push({ kind: 'free', slot });
       i += 1;
+    }
+  }
+  return rows;
+}
+
+/** Una fila por bloque libre, grupo de bloqueos o turno. Agrupa bloqueos consecutivos del mismo bloqueo. */
+export function buildDayTimelineRowsGrouped(
+  apps: Appointment[],
+  slots: string[],
+  dateStr: string,
+  blocks: BarberTimeBlockRow[]
+): DayTimelineRow[] {
+  const byStart = new Map<string, Appointment>();
+  for (const a of apps) {
+    const k = normalizeAppointmentTime(a.time);
+    if (k) byStart.set(k, a);
+  }
+  const rows: DayTimelineRow[] = [];
+  let i = 0;
+  while (i < slots.length) {
+    const slot = slots[i];
+    const app = byStart.get(slot);
+    if (app) {
+      const rawSpan = appointmentSlotSpan(app);
+      const span = Math.min(rawSpan, slots.length - i);
+      rows.push({ kind: 'appointment', slot, app, span });
+      i += span;
+    } else {
+      const block = getBlockForSlot(slot, dateStr, blocks);
+      if (block) {
+        const groupSlots: string[] = [slot];
+        let j = i + 1;
+        while (j < slots.length) {
+          const nextSlot = slots[j];
+          if (byStart.has(nextSlot)) break;
+          const nextBlock = getBlockForSlot(nextSlot, dateStr, blocks);
+          if (!nextBlock || nextBlock.id !== block.id) break;
+          groupSlots.push(nextSlot);
+          j++;
+        }
+        rows.push({ kind: 'blocked-group', slots: groupSlots, block });
+        i = j;
+      } else {
+        rows.push({ kind: 'free', slot });
+        i += 1;
+      }
     }
   }
   return rows;
