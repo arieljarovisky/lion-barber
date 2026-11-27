@@ -121,6 +121,7 @@ import {
   addMinutesToClock,
   appointmentSlotSpan,
   buildDayTimelineRows,
+  buildDayTimelineRowsGrouped,
   buildTimeSlotsInRange,
   normalizeAppointmentTime,
   SLOT_STEP_MINUTES,
@@ -130,6 +131,7 @@ import {
 import {
   appointmentNeedsManualContact,
   buildAppointmentWhatsappUrl,
+  buildDelayWhatsappUrl,
 } from '../utils/appointmentWhatsapp';
 
 function getServiceIconSource(icon?: string): { kind: 'svg' | 'emoji' | 'none'; value: string } {
@@ -1176,6 +1178,37 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
     }
   };
 
+  const deleteBlockFromAgenda = async (barberId: string, blockId: number) => {
+    if (!canStaffManageBarber(barberId)) {
+      showToast('Solo podés quitar bloqueos de tu propia agenda.', 'error');
+      return;
+    }
+    const { confirmed: ok } = await confirm({
+      title: 'Quitar bloqueo',
+      message: '¿Quitar este bloqueo de horario?',
+      variant: 'danger',
+      confirmLabel: 'Quitar bloqueo',
+    });
+    if (!ok) return;
+    try {
+      await api.deleteBarberTimeBlock(barberId, blockId);
+      setAgendaRestrictionsByBarber((prev) => {
+        const cfg = prev[barberId];
+        if (!cfg) return prev;
+        return {
+          ...prev,
+          [barberId]: {
+            ...cfg,
+            blocks: cfg.blocks.filter((b) => b.id !== blockId),
+          },
+        };
+      });
+      showToast('Bloqueo eliminado', 'ok');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'No se pudo eliminar el bloqueo', 'error');
+    }
+  };
+
   const handlePrevDay = () => setSelectedDate((d) => subDays(d, 1));
   const handleNextDay = () => setSelectedDate((d) => addDays(d, 1));
   const handleToday = () => setSelectedDate(startOfDay(new Date()));
@@ -1258,6 +1291,21 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
       return blocked;
     },
     [agendaRestrictionsByBarber, agendaTimeSlots, shopDays, shopClosedDates]
+  );
+
+  const getBlocksForBarberDate = useCallback(
+    (barberId: string | undefined, dateStrValue: string): BarberTimeBlockRow[] => {
+      if (!barberId) return [];
+      const cfg = agendaRestrictionsByBarber[barberId];
+      if (!cfg) return [];
+      const weekday = getIsoWeekdayFromYmd(dateStrValue);
+      return cfg.blocks.filter((b) => {
+        const appliesByDate = b.blockDate != null && b.blockDate === dateStrValue;
+        const appliesByWeekday = b.blockDate == null && b.weekday === weekday;
+        return appliesByDate || appliesByWeekday;
+      });
+    },
+    [agendaRestrictionsByBarber]
   );
 
   useEffect(() => {
@@ -1508,10 +1556,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
   };
 
   const renderBarberDayAgendaRows = (barber: Barber, barberAppointments: Appointment[]) =>
-    buildDayTimelineRows(
+    buildDayTimelineRowsGrouped(
       barberAppointments,
       agendaTimeSlots,
-      getBlockedSlotsForBarberDate(barber.id, dateStr)
+      dateStr,
+      getBlocksForBarberDate(barber.id, dateStr)
     ).map((row) => {
       const canManage = canStaffManageBarber(barber.id);
       if (row.kind === 'free') {
@@ -1573,6 +1622,51 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
             <span className="flex flex-1 items-center gap-1.5 border border-red-200 rounded-lg px-2.5 py-1.5 text-xs font-bold uppercase tracking-wide text-red-600">
               Bloqueado
             </span>
+          </div>
+        );
+      }
+      if (row.kind === 'blocked-group') {
+        const { slots, block } = row;
+        const firstSlot = slots[0];
+        const lastSlot = slots[slots.length - 1];
+        const endTime = addMinutesToClock(lastSlot, SLOT_STEP_MINUTES);
+        const isWeekly = block.weekday != null;
+        return (
+          <div
+            key={`blocked-group-${barber.id}-${block.id}-${firstSlot}`}
+            className="flex items-stretch gap-2 py-2.5 text-sm bg-red-50/70 rounded-lg"
+            style={{ minHeight: `${slots.length * 2.75}rem` }}
+          >
+            <span className="w-14 font-mono text-red-700 flex-shrink-0 text-xs font-semibold pt-0.5 tabular-nums">
+              {firstSlot}
+              {slots.length > 1 && (
+                <span className="block text-[10px] text-red-500 mt-0.5">{endTime}</span>
+              )}
+            </span>
+            <div className="flex-1 min-w-0 flex flex-col gap-2 border border-red-200 rounded-xl px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wide text-red-600">
+                    Bloqueado
+                  </span>
+                  <span className="ml-2 text-xs text-red-500">
+                    {firstSlot} - {endTime}
+                    {isWeekly && ' (semanal)'}
+                  </span>
+                </div>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => void deleteBlockFromAgenda(barber.id, block.id)}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-100 rounded-lg transition-colors"
+                    title="Quitar bloqueo completo"
+                  >
+                    <X size={12} />
+                    Quitar
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         );
       }
@@ -2855,10 +2949,11 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                       agendasOnly ? 'flex-1 min-h-0 overflow-y-auto overscroll-contain' : ''
                     }`}
                   >
-                      {buildDayTimelineRows(
+                      {buildDayTimelineRowsGrouped(
                         appointmentsByBarber[0].appointments,
                         agendaTimeSlots,
-                        getBlockedSlotsForBarberDate(appointmentsByBarber[0]?.barber.id, dateStr)
+                        dateStr,
+                        getBlocksForBarberDate(appointmentsByBarber[0]?.barber.id, dateStr)
                       ).map((row) => {
                         if (row.kind === 'free') {
                           const bid = appointmentsByBarber[0]?.barber.id;
@@ -2903,6 +2998,56 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                               <div className="flex-1 min-w-0 border-l-2 border-red-200 pl-4 sm:pl-5 -ml-px">
                                 <div className="flex w-full items-center gap-2 rounded-xl border border-red-200 bg-red-100/70 px-3 py-2.5 text-left text-sm text-red-700">
                                   <span className="font-semibold">Bloqueado</span>
+                                </div>
+                              </div>
+                            </li>
+                          );
+                        }
+                        if (row.kind === 'blocked-group') {
+                          const { slots, block } = row;
+                          const bid = appointmentsByBarber[0]?.barber.id;
+                          const canManageSlot = bid ? canStaffManageBarber(bid) : false;
+                          const firstSlot = slots[0];
+                          const lastSlot = slots[slots.length - 1];
+                          const endTime = addMinutesToClock(lastSlot, SLOT_STEP_MINUTES);
+                          const isWeekly = block.weekday != null;
+                          const blockRem = slots.length * TIMELINE_ROW_UNIT_REM;
+                          return (
+                            <li
+                              key={`blocked-group-${block.id}-${firstSlot}`}
+                              className="flex gap-3 sm:gap-5 p-3 sm:p-4 bg-red-50/60"
+                              style={{ minHeight: `${blockRem}rem` }}
+                            >
+                              <div className="w-16 sm:w-20 shrink-0 text-right pt-0.5 flex flex-col">
+                                <span className="font-mono text-sm font-bold text-red-700 tabular-nums">{firstSlot}</span>
+                                {slots.length > 1 && (
+                                  <span className="font-mono text-[11px] text-red-500 mt-1 tabular-nums leading-tight">
+                                    {endTime}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0 border-l-2 border-red-200 pl-4 sm:pl-5 -ml-px flex flex-col">
+                                <div className="rounded-xl border border-red-200 bg-red-100/70 p-3 sm:p-4 flex-1 flex flex-col min-h-0">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                      <span className="text-sm font-bold text-red-700">Bloqueado</span>
+                                      <span className="ml-2 text-xs text-red-600">
+                                        {firstSlot} - {endTime}
+                                        {isWeekly && ' (semanal)'}
+                                      </span>
+                                    </div>
+                                    {canManageSlot && bid && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void deleteBlockFromAgenda(bid, block.id)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-200/50 rounded-lg transition-colors"
+                                        title="Quitar bloqueo completo"
+                                      >
+                                        <X size={14} />
+                                        Quitar bloqueo
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </li>
@@ -4799,6 +4944,34 @@ export default function Dashboard({ agendasOnly = false }: { agendasOnly?: boole
                       </p>
                     </div>
                   </>
+                )}
+                {editingAppointment && appointmentNeedsManualContact(editingAppointment) && (
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-1">
+                      Avisar demora por WhatsApp
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[5, 10, 15, 20, 30].map((minutes) => {
+                        const url = buildDelayWhatsappUrl(editingAppointment, minutes);
+                        if (!url) return null;
+                        return (
+                          <a
+                            key={minutes}
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm font-medium hover:bg-emerald-100 transition-colors"
+                          >
+                            <MessageCircle size={14} />
+                            {minutes} min
+                          </a>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Abre WhatsApp con un mensaje avisando que estás demorado.
+                    </p>
+                  </div>
                 )}
                 {(editingAppointment?.userId != null || linkedClientId != null) && (
                   <label className="flex items-start gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 cursor-pointer">
